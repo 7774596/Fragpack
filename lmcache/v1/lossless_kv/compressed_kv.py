@@ -758,39 +758,25 @@ class FusedOnlineKVPacker:
         ]
 
 
-@dataclass
-class _MetadataRing:
-    """Persistent pinned/device launch metadata for one staging buffer."""
-
-    host_offsets: torch.Tensor
-    host_blocks: torch.Tensor
-    host_modes: torch.Tensor
-    host_destination_offsets: torch.Tensor
-    device_offsets: torch.Tensor
-    device_blocks: torch.Tensor
-    device_modes: torch.Tensor
-    device_destination_offsets: torch.Tensor
-
-
-class PreparedKVRestore:
-    """Launch one immutable restore plan whose metadata is already uploaded.
+class KVRestorePlan:
+    """A reusable decoder launch over fixed staging records and blocks.
 
     Args:
         kernel: Already warmed singleton or fanout TileLang kernel.
-        staging: Leased CUDA payload to read until the final completion event.
-        offsets: Device offsets for the deduplicated source records.
+        staging: CUDA byte tensor holding the records at launch time.
+        offsets: Device offsets of the deduplicated source records.
         blocks: Device destination block IDs, in source-major CSR order.
         destination_offsets: Absolute CSR indices into ``blocks``.
         modes: Device raw/packed tags, one per source.
         codebooks: Fixed device codebooks.
         destination: Registered KV tensor in the kernel's bitwise view.
-        stream: Stream on which metadata was uploaded and kernels will launch.
 
     Async/thread-safety:
-        The load thread exclusively owns this plan and its metadata ring. The
-        caller must retain the ring and staging lease until a CUDA event after
-        the submission completes, including when abandoning an unsubmitted plan.
-        Holding tensor references alone does not prevent ring or staging reuse.
+        All metadata is uploaded once when the plan is built and never
+        rewritten, so ``submit`` does no host work beyond the launch and may
+        be called any number of times, on any stream. Callers order the
+        stream after the writes that filled ``staging`` and before the next
+        writes to it or to the destination blocks.
     """
 
     def __init__(
@@ -804,41 +790,35 @@ class PreparedKVRestore:
         modes: torch.Tensor,
         codebooks: torch.Tensor,
         destination: torch.Tensor,
-        stream: torch.cuda.Stream,
     ) -> None:
         self._kernel = kernel
         self._staging = staging
+        self._staging_words = staging.view(torch.int32)
         self._offsets = offsets
         self._blocks = blocks
         self._destination_offsets = destination_offsets
         self._modes = modes
         self._codebooks = codebooks
         self._destination = destination
-        self._stream = stream
         # Destination bits are [blocks, layers, rows, K/V, dim].
         self._num_planes = 2 * int(destination.shape[1])
-        self._submitted = False
 
     @property
     def destination_count(self) -> int:
-        """Return the total destination slots covered by this immutable plan."""
+        """Return the destination blocks this plan restores."""
         return self._blocks.numel()
 
-    def submit(self) -> int:
-        """Enqueue decode of every source on the prepared stream once.
+    def submit(self, stream: torch.cuda.Stream) -> None:
+        """Enqueue the decode of every source record on ``stream``.
 
-        Returns:
-            Number of sources submitted, or zero if the plan was submitted.
-        Async/thread-safety:
-            Called on the exclusive load thread. Does not wait for the GPU; the
-            caller must observe a completion event before releasing the lease.
+        Args:
+            stream (torch.cuda.Stream): Stream ordered after the staging
+                writes; does not wait for the GPU.
         """
-        if self._submitted:
-            return 0
-        with torch.cuda.stream(self._stream):
+        with torch.cuda.stream(stream):
             self._kernel(
                 self._staging,
-                self._staging.view(torch.int32),
+                self._staging_words,
                 self._offsets,
                 self._blocks,
                 self._destination_offsets,
@@ -848,25 +828,22 @@ class PreparedKVRestore:
                 0,
                 self._num_planes,
             )
-        self._submitted = True
-        return self._offsets.numel()
 
 
 class FusedCompressedKVDecoder:
-    """Own a compiled decoder and persistent metadata for fixed staging slots.
+    """Own a compiled decoder that restores staged records into KV blocks.
 
     Args:
         kv_cache: Logical cross-layer view ``[blocks, layers, 2, tokens,
-            heads, dim]`` over vLLM's contiguous ``BLNHC`` buffer.
+            heads, dim]`` over a contiguous ``BLNHC`` buffer.
         codebooks: Plane-major static 15-entry high-byte tables.
         tile_scalars: Codec tile size of the online packed records.
-        ring_depth: Number of independently leased load staging buffers.
-        max_slots_per_buffer: Maximum slot records described by one launch.
+        max_slots_per_buffer: Maximum slot records of one staging buffer; the
+            kernels are compiled for staging of exactly this many raw blocks.
 
     Async/thread-safety:
-        Constructed before request traffic. ``decode`` is called only on the
-        LoadPipeline thread; metadata rings are independently indexed by the
-        staging buffer lease.
+        Constructed before request traffic. ``plan`` uploads metadata
+        synchronously on a private stream; plans are immutable and reusable.
     """
 
     def __init__(
@@ -875,12 +852,11 @@ class FusedCompressedKVDecoder:
         kv_cache: torch.Tensor,
         codebooks: bytes,
         tile_scalars: int,
-        ring_depth: int,
         max_slots_per_buffer: int,
     ) -> None:
         fp8 = kv_dtype_bytes(kv_cache) == 1
-        if ring_depth <= 0 or max_slots_per_buffer <= 0 or tile_scalars <= 0:
-            raise ValueError("compressed decoder ring geometry must be positive")
+        if max_slots_per_buffer <= 0 or tile_scalars <= 0:
+            raise ValueError("compressed decoder geometry must be positive")
         self._kv_cache = kv_cache
         self._num_blocks = int(kv_cache.shape[0])
         self._num_layers = int(kv_cache.shape[1])
@@ -888,6 +864,7 @@ class FusedCompressedKVDecoder:
         self._plane_scalars = int(np.prod(kv_cache.shape[3:]))
         self._tile_scalars = tile_scalars
         self._tiles_per_plane = (self._plane_scalars + tile_scalars - 1) // tile_scalars
+        self._staging_bytes = max_slots_per_buffer * int(kv_cache[0].nbytes)
         expected_codebooks = self._num_planes * CODEBOOK_ENTRIES
         if len(codebooks) != expected_codebooks:
             raise ValueError("compressed codebooks do not match KV layer geometry")
@@ -906,7 +883,7 @@ class FusedCompressedKVDecoder:
                 plane_scalars=self._plane_scalars,
                 head_dim=head_dim,
                 tile_scalars=self._tile_scalars,
-                staging_bytes=max_slots_per_buffer * int(kv_cache[0].nbytes),
+                staging_bytes=self._staging_bytes,
                 fanout=fanout,
                 fp8=fp8,
             )
@@ -918,96 +895,48 @@ class FusedCompressedKVDecoder:
                 dtype=np.uint8,
             ).copy()
         ).to(kv_cache.device)
-        self._rings = tuple(
-            self._allocate_metadata(kv_cache.device, max_slots_per_buffer)
-            for _ in range(ring_depth)
-        )
+        self._upload_stream = torch.cuda.Stream(device=kv_cache.device)
 
-    def decode(
+    def plan(
         self,
         *,
         staging: torch.Tensor,
         staging_offsets: list[int],
         block_ids: list[int],
         modes: list[int],
-        buffer_index: int,
-        stream: torch.cuda.Stream,
-    ) -> int:
-        """Decode shared sources once directly into all registered KV targets.
+    ) -> KVRestorePlan:
+        """Build a reusable restore of fixed staging records into KV blocks.
+
+        Equal staging offsets name one source record decoded once into each
+        of its blocks (fanout).
 
         Args:
-            staging: GPU byte tensor filled by the server transfer layer.
-            staging_offsets: Start of each indexed slot record in staging.
-            block_ids: Matching, distinct destination physical vLLM blocks.
-            modes: Zero for raw slots and one for compressed slots.
-            buffer_index: Fixed staging/metadata ring index.
-            stream: LoadPipeline CUDA stream ordered after transfer completion.
-
-        Returns:
-            Number of logical slots restored by this launch.
-
-        Raises:
-            ValueError: If metadata lengths, capacity, or block IDs are invalid.
-
-        Async/thread-safety:
-            Called on one load thread. The caller retains the staging lease and
-            synchronizes ``stream`` before reusing its ring index.
-        """
-        plan = self.prepare(
-            staging=staging,
-            staging_offsets=staging_offsets,
-            block_ids=block_ids,
-            modes=modes,
-            buffer_index=buffer_index,
-            stream=stream,
-        )
-        if plan is None:
-            return 0
-        plan.submit()
-        return plan.destination_count
-
-    def prepare(
-        self,
-        *,
-        staging: torch.Tensor,
-        staging_offsets: list[int],
-        block_ids: list[int],
-        modes: list[int],
-        buffer_index: int,
-        stream: torch.cuda.Stream,
-    ) -> PreparedKVRestore | None:
-        """Validate and upload restore metadata without launching the decoder.
-
-        Args:
-            staging: Completed server transfer's leased GPU byte tensor.
-            staging_offsets: One source record offset per destination.
-            block_ids: Matching distinct destination physical KV blocks.
+            staging: CUDA byte tensor of exactly the compiled staging size.
+            staging_offsets: Start of each slot's record in ``staging``.
+            block_ids: Matching distinct destination KV blocks.
             modes: Matching zero/raw or one/packed record modes.
-            buffer_index: Exclusively leased staging/metadata ring index.
-            stream: Stream ordered after transfer completion.
+
         Returns:
-            Restore plan sharing the original buffers, or None for empty input.
+            KVRestorePlan: The immutable launch.
+
         Raises:
-            ValueError: On invalid lengths, capacity, IDs or conflicting modes.
+            ValueError: On invalid lengths, staging, IDs or conflicting modes.
+
         Async/thread-safety:
-            Call only on the load thread. The ring's pinned and device metadata
-            must remain immutable until an event after the plan's last kernel
-            completes. This call uploads metadata but does not launch decode.
+            Synchronizes a private upload stream (not the caller's), so build
+            plans off the hot path and reuse them.
         """
         slot_count = len(staging_offsets)
-        if not (slot_count == len(block_ids) == len(modes)):
+        if not (slot_count == len(block_ids) == len(modes)) or slot_count == 0:
             raise ValueError("compressed restore metadata lengths do not match")
-        if slot_count == 0:
-            return None
-        if not 0 <= buffer_index < len(self._rings):
-            raise ValueError("compressed metadata ring index is invalid")
-        ring = self._rings[buffer_index]
-        if slot_count > ring.host_offsets.numel():
-            raise ValueError("compressed restore exceeds metadata ring capacity")
-        if staging.device != self._kv_cache.device or staging.dtype is not torch.uint8:
-            raise ValueError("compressed staging must be a CUDA byte tensor")
-        if staging.data_ptr() % 4 or staging.numel() % 4:
-            raise ValueError("compressed restore needs 4-byte aligned staging")
+        if (
+            staging.device != self._kv_cache.device
+            or staging.dtype is not torch.uint8
+            or staging.numel() != self._staging_bytes
+            or not staging.is_contiguous()
+            or staging.data_ptr() % 4
+        ):
+            raise ValueError("compressed staging does not match the decoder")
         if any(offset < 0 or offset >= staging.numel() for offset in staging_offsets):
             raise ValueError("compressed restore staging offset is out of bounds")
         if any(block < 0 or block >= self._num_blocks for block in block_ids):
@@ -1017,22 +946,14 @@ class FusedCompressedKVDecoder:
         if any(mode not in (0, 1) for mode in modes):
             raise ValueError("compressed restore slot mode is invalid")
         header_bytes = slot_header_bytes(self._num_planes)
-        if any(
-            mode == 1 and offset + header_bytes > staging.numel()
-            for offset, mode in zip(staging_offsets, modes, strict=True)
-        ):
-            raise ValueError("compressed record header exceeds staging capacity")
         raw_slot_bytes = int(self._kv_cache[0].nbytes)
         if any(
-            mode == 0 and offset + raw_slot_bytes > staging.numel()
+            offset + (header_bytes if mode == 1 else raw_slot_bytes) > staging.numel()
             for offset, mode in zip(staging_offsets, modes, strict=True)
         ):
-            raise ValueError("raw restore record exceeds staging capacity")
-        # Equal staging offsets identify the same immutable source record in
-        # this lease. Group only within the current completed transfer: there
-        # is no cross-request wait or persistent GPU cache. Destination lists
-        # form a CSR map so arbitrary fanout remains a runtime dimension and
-        # every source scalar is decoded once before its final KV writes.
+            raise ValueError("compressed restore record exceeds staging capacity")
+        # Destination lists form a CSR map so every source scalar is decoded
+        # once before its final KV writes.
         sources: dict[int, tuple[int, list[int]]] = {}
         for offset, mode, block in zip(staging_offsets, modes, block_ids, strict=True):
             existing = sources.get(offset)
@@ -1042,7 +963,6 @@ class FusedCompressedKVDecoder:
                 if existing[0] != mode:
                     raise ValueError("compressed restore source has conflicting modes")
                 existing[1].append(block)
-        source_count = len(sources)
         destination_offsets = [0]
         destinations: list[int] = []
         source_modes: list[int] = []
@@ -1050,78 +970,22 @@ class FusedCompressedKVDecoder:
             destinations.extend(targets)
             destination_offsets.append(len(destinations))
             source_modes.append(mode)
-        source_offsets = list(sources)
-
-        # The decoder metadata is small, but this method runs once for every
-        # cache-hit batch.  Per-element tensor assignment takes the Python
-        # interpreter lock for every slot and creates a host-side dispatch
-        # point before the asynchronous H2D copies. Convert each list
-        # once into its declared dtype and copy through the contiguous NumPy
-        # view of the persistent pinned tensor instead.
-        np.copyto(
-            ring.host_offsets[:source_count].numpy(),
-            np.asarray(source_offsets, dtype=np.int64),
-        )
-        np.copyto(
-            ring.host_blocks[:slot_count].numpy(),
-            np.asarray(destinations, dtype=np.int32),
-        )
-        np.copyto(
-            ring.host_modes[:source_count].numpy(),
-            np.asarray(source_modes, dtype=np.int32),
-        )
-        np.copyto(
-            ring.host_destination_offsets[: source_count + 1].numpy(),
-            np.asarray(destination_offsets, dtype=np.int32),
-        )
-        with torch.cuda.stream(stream):
-            ring.device_offsets[:source_count].copy_(
-                ring.host_offsets[:source_count], non_blocking=True
+        device = self._kv_cache.device
+        with torch.inference_mode(False), torch.cuda.stream(self._upload_stream):
+            offsets = torch.tensor(list(sources), dtype=torch.int64, device=device)
+            blocks = torch.tensor(destinations, dtype=torch.int32, device=device)
+            csr = torch.tensor(destination_offsets, dtype=torch.int32, device=device)
+            source_mode_tensor = torch.tensor(
+                source_modes, dtype=torch.int32, device=device
             )
-            ring.device_blocks[:slot_count].copy_(
-                ring.host_blocks[:slot_count], non_blocking=True
-            )
-            ring.device_modes[:source_count].copy_(
-                ring.host_modes[:source_count], non_blocking=True
-            )
-            fanout = source_count < slot_count
-            if fanout:
-                ring.device_destination_offsets[: source_count + 1].copy_(
-                    ring.host_destination_offsets[: source_count + 1], non_blocking=True
-                )
-        return PreparedKVRestore(
-            kernel=self._kernels[fanout],
+        self._upload_stream.synchronize()
+        return KVRestorePlan(
+            kernel=self._kernels[len(sources) < slot_count],
             staging=staging,
-            offsets=ring.device_offsets[:source_count],
-            blocks=ring.device_blocks[:slot_count],
-            destination_offsets=ring.device_destination_offsets[: source_count + 1],
-            modes=ring.device_modes[:source_count],
+            offsets=offsets,
+            blocks=blocks,
+            destination_offsets=csr,
+            modes=source_mode_tensor,
             codebooks=self._codebooks,
             destination=self._kv_bits,
-            stream=stream,
         )
-
-    @staticmethod
-    def _allocate_metadata(device: torch.device, capacity: int) -> _MetadataRing:
-        # vLLM registers KV caches under InferenceMode, while this metadata is
-        # updated later on the load thread. Explicitly create normal tensors so
-        # thread-local InferenceMode state at construction cannot make the ring
-        # immutable outside that context.
-        with torch.inference_mode(False):
-            host_offsets = torch.empty(capacity, dtype=torch.int64, pin_memory=True)
-            host_blocks = torch.empty(capacity, dtype=torch.int32, pin_memory=True)
-            host_modes = torch.empty(capacity, dtype=torch.int32, pin_memory=True)
-            return _MetadataRing(
-                host_offsets=host_offsets,
-                host_blocks=host_blocks,
-                host_modes=host_modes,
-                host_destination_offsets=torch.empty(
-                    capacity + 1, dtype=torch.int32, pin_memory=True
-                ),
-                device_offsets=torch.empty(capacity, dtype=torch.int64, device=device),
-                device_blocks=torch.empty(capacity, dtype=torch.int32, device=device),
-                device_modes=torch.empty(capacity, dtype=torch.int32, device=device),
-                device_destination_offsets=torch.empty(
-                    capacity + 1, dtype=torch.int32, device=device
-                ),
-            )

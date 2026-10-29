@@ -13,9 +13,10 @@ its own thread and CUDA stream: the handler only gathers the chunks into the
 worker's buffer pool and returns; the worker encodes, reserves one L1 object
 per record, copies it to host and commits it; FragPack block blobs
 (``fragpack_blob_transfer``) are stored by the same worker. Retrieves copy
-each record into a codec staging buffer, decode in place, and scatter the raw
-chunks into the paged KV cache, all on the context stream without host
-synchronization.
+each record into the codec's record buffers, decode with launch metadata
+uploaded once per batch shape, and scatter the raw chunks into the paged KV
+cache straight from the decoder's output, all on the context stream without
+host synchronization.
 """
 
 # Standard
@@ -477,11 +478,6 @@ class LosslessKVTransfer:
             max(self._width, config.store_pool_chunks or 2 * self._width),
             self._codec.raw_bytes,
         )
-        with torch.cuda.device(device):
-            self._retrieve_staging = [
-                torch.empty(self._codec.raw_bytes, dtype=torch.uint8, device=device)
-                for _ in range(self._width)
-            ]
 
     def layout_desc(self, num_tokens: int) -> MemoryLayoutDesc:
         """Return the registered object layout: a bound on stored records.
@@ -602,16 +598,16 @@ class LosslessKVTransfer:
             batch = memory_objs[start : start + self._width]
             if any(obj is None for obj in batch):
                 raise ValueError("lossless KV retrieve has a missing record")
-            staging = self._retrieve_staging[: len(batch)]
             sizes = [obj.get_size() for obj in batch]
-            for buf, obj, size in zip(staging, batch, sizes, strict=True):
+            buffers = self._codec.record_buffers(len(batch), stream)
+            for buf, obj, size in zip(buffers, batch, sizes, strict=True):
                 lmcache_memcpy_async_h2d(obj, buf[:size])
-            self._codec.decode(staging, sizes, stream)
+            chunks = self._codec.decode_records(sizes, stream)
             launch_paged_kv_copy(
                 self._cache_context,
                 block_ids_gpu,
                 start,
-                staging,
+                chunks,
                 max(0, skip_first_n_tokens - start * chunk_tokens),
                 lmcache_native.TransferDirection.H2D,
             )
