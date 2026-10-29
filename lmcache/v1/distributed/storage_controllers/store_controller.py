@@ -677,10 +677,9 @@ class StoreController(StorageControllerInterface):
             )
             self._status_in_flight_count += 1
 
-            # All objects for a single store task share one layout (L1
-            # allocates uniform MemoryObjs per chunk), so total bytes is
-            # size * count — avoids summing N identical values.
-            total_bytes = successful_objs[0].get_size() * len(successful_objs)
+            # Objects sized by their data (compressed records) differ in
+            # size, so sum per object.
+            total_bytes = sum(obj.get_size() for obj in successful_objs)
             self._event_bus.publish(
                 Event(
                     event_type=EventType.L2_STORE_SUBMITTED,

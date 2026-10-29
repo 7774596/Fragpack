@@ -3,7 +3,7 @@
 
 # Standard
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 import threading
 import time
 
@@ -23,6 +23,7 @@ from lmcache.v1.gpu_connector.utils import LayoutHints
 from lmcache.v1.kv_layer_groups import ObjectGroupInfo
 from lmcache.v1.memory_management import MemoryObj
 from lmcache.v1.mp_observability.event import Event, EventType, next_transfer_key
+from lmcache.v1.multiprocess.config import LosslessKVConfig
 from lmcache.v1.multiprocess.custom_types import (
     IPCCacheServerKey,
     KVCache,
@@ -30,6 +31,10 @@ from lmcache.v1.multiprocess.custom_types import (
 from lmcache.v1.multiprocess.engine_context import MPCacheServerContext
 from lmcache.v1.multiprocess.engine_module import InstanceLivenessTarget
 from lmcache.v1.multiprocess.group_view import EngineGroupInfo
+from lmcache.v1.multiprocess.lossless_kv_transfer import (
+    LosslessKVTransfer,
+    StoreTally,
+)
 from lmcache.v1.multiprocess.modules.lookup import resolve_prefetched_obj_keys
 from lmcache.v1.multiprocess.native_completion import (
     DeviceHostFuncDispatcher,
@@ -169,11 +174,21 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
 
     Args:
         ctx: The shared engine context.
+        lossless_kv: Lossless KV codec options; disabled when None.
     """
 
-    def __init__(self, ctx: MPCacheServerContext) -> None:
+    def __init__(
+        self,
+        ctx: MPCacheServerContext,
+        lossless_kv: LosslessKVConfig | None = None,
+    ) -> None:
         self._ctx = ctx
+        self._lossless_kv = lossless_kv or LosslessKVConfig()
         self._cache_contexts: dict[int, ContextEntry] = {}
+        # Codec store/retrieve per registered cache context, keyed by the
+        # context's id(); only populated when the codec is enabled. Entries
+        # are removed before their context is released, so ids never alias.
+        self._lossless_transfers: dict[int, LosslessKVTransfer] = {}
         # Guards all reads/writes of _cache_contexts. The reaper mutates it
         # off the MQ main loop, so register/unregister/store/retrieve and
         # report_status all serialize through this lock. Held only for dict
@@ -389,6 +404,12 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         if not entries:
             return
         for entry in entries:
+            with self._lock:
+                lossless_kv = self._lossless_transfers.pop(
+                    id(entry.cache_context), None
+                )
+            if lossless_kv is not None:
+                lossless_kv.close()
             entry.cache_context.close()
             self._ctx.layout_desc_registry.unregister(
                 entry.model_name, entry.world_size
@@ -493,17 +514,29 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         num_object_groups = kv_groups_manager.num_object_groups
         event_backend = get_event_ipc_backend(cache_context.device)
         event_backend.check_event_support(cache_context.device)
-        layout_desc = get_layout_desc(
-            cache_context, self._ctx.chunk_size, object_group_id=0
-        )
-        # One layout per object group, also in the single-group case: no
-        # None special-casing downstream (group 0 maps to the merged layout).
-        group_layout_descs = {
-            gid: get_layout_desc(
-                cache_context, self._ctx.chunk_size, object_group_id=gid
+        lossless_kv = (
+            LosslessKVTransfer(
+                cache_context, self._ctx.storage_manager, self._lossless_kv
             )
-            for gid in range(num_object_groups)
-        }
+            if self._lossless_kv.enabled
+            else None
+        )
+        if lossless_kv is not None:
+            # Codec objects are flat byte records; the layout bounds them.
+            layout_desc = lossless_kv.layout_desc(self._ctx.chunk_size)
+            group_layout_descs = {0: layout_desc}
+        else:
+            layout_desc = get_layout_desc(
+                cache_context, self._ctx.chunk_size, object_group_id=0
+            )
+            # One layout per object group, also in the single-group case: no
+            # None special-casing downstream (group 0 maps to the merged layout).
+            group_layout_descs = {
+                gid: get_layout_desc(
+                    cache_context, self._ctx.chunk_size, object_group_id=gid
+                )
+                for gid in range(num_object_groups)
+            }
         attn_desc = kv_groups_manager.get_attn_desc()
         self._ctx.layout_desc_registry.register(
             model_name,
@@ -522,6 +555,8 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                 has_liveness_signal=False,
                 event_backend=event_backend,
             )
+            if lossless_kv is not None:
+                self._lossless_transfers[id(cache_context)] = lossless_kv
 
         logger.info(
             "Registered KV cache for GPU ID %d with %d layers",
@@ -631,6 +666,7 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         event_backend = entry.event_backend
         if event_backend is None:
             raise RuntimeError("Registered cache context has no event backend")
+        lossless_kv = self._lossless_transfer(cache_context)
 
         num_object_groups = cache_context.kv_layer_groups_manager.num_object_groups
         obj_keys_per_obj_group = self._ctx.resolve_obj_keys(
@@ -749,10 +785,33 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
             all_dict: dict[ObjectKey, MemoryObj] = {}
             total_bytes: int = 0
             store_succeeded = False
+            codec_queued: list[bool] = []
+            # The codec worker commits its records and reports MP_STORE_END
+            # itself, after this handler has returned the completion event.
+            tally = (
+                None
+                if lossless_kv is None
+                else StoreTally(
+                    self._codec_store_reporter(
+                        key,
+                        instance_id,
+                        model_name,
+                        cache_context,
+                        transfer_key,
+                        num_chunks * self._ctx.chunk_size,
+                        st,
+                    )
+                )
+            )
             try:
                 for obj_group_id in range(num_object_groups):
                     obj_keys = obj_keys_per_obj_group[obj_group_id]
                     skip_mask = skipped_chunks[obj_group_id]
+                    if lossless_kv is not None and tally is not None:
+                        codec_queued = lossless_kv.submit_store(
+                            block_ids_per_group_gpu, obj_keys, skip_mask, tally
+                        )
+                        continue
                     keys_to_reserve = [
                         k for i, k in enumerate(obj_keys) if not skip_mask[i]
                     ]
@@ -802,32 +861,48 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                 event_backend.record_event(event, cache_context.stream)
                 # Fail closed: commit the reserved objects only when every chunk
                 # copied successfully; otherwise the whole store is skipped.
+                # Codec stores have no objects here; their worker commits them.
                 stored_count = len(all_dict) if store_succeeded else 0
-                if stored_count:
-                    submit_callback_to_stream(
-                        cache_context.cupy_stream,
-                        "finish_write_by_owner",
-                        completion,
-                    )
+                if tally is not None:
+                    tally.seal(store_succeeded)
                 else:
-                    total_bytes = 0
-                num_tokens = num_chunks * self._ctx.chunk_size if stored_count else 0
-                self._ctx.event_bus.publish_on_stream(
-                    cache_context.cupy_stream,
-                    Event(
-                        event_type=EventType.MP_STORE_END,
-                        session_id=key.request_id,
-                        metadata={
-                            "stored_count": stored_count,
-                            "device": str(cache_context.device),
-                            "engine_id": instance_id,
-                            "model_name": model_name,
-                            "total_bytes": total_bytes,
-                            "num_tokens": num_tokens,
-                            "transfer_key": transfer_key,
-                        },
-                    ),
-                )
+                    if stored_count:
+                        submit_callback_to_stream(
+                            cache_context.cupy_stream,
+                            "finish_write_by_owner",
+                            completion,
+                        )
+                    else:
+                        total_bytes = 0
+                    num_tokens = (
+                        num_chunks * self._ctx.chunk_size if stored_count else 0
+                    )
+                    self._ctx.event_bus.publish_on_stream(
+                        cache_context.cupy_stream,
+                        Event(
+                            event_type=EventType.MP_STORE_END,
+                            session_id=key.request_id,
+                            metadata={
+                                "stored_count": stored_count,
+                                "device": str(cache_context.device),
+                                "engine_id": instance_id,
+                                "model_name": model_name,
+                                "total_bytes": total_bytes,
+                                "num_tokens": num_tokens,
+                                "transfer_key": transfer_key,
+                            },
+                        ),
+                    )
+
+        if tally is not None:
+            # Codec records commit asynchronously; a chunk counts as stored
+            # once it is queued for the worker.
+            return (
+                event_backend.export_event(event, cache_context.device),
+                store_succeeded,
+                [store_succeeded and queued for queued in codec_queued]
+                or [False] * num_chunks,
+            )
 
         ed = time.perf_counter()
         if stored_count:
@@ -913,6 +988,7 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         event_backend = entry.event_backend
         if event_backend is None:
             raise RuntimeError("Registered cache context has no event backend")
+        lossless_kv = self._lossless_transfer(cache_context)
 
         num_object_groups = cache_context.kv_layer_groups_manager.num_object_groups
         obj_keys_per_obj_group = self._ctx.resolve_obj_keys(
@@ -1049,6 +1125,12 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                     total_bytes += sum(mo.get_size() for mo in window_objs)
                     # None-pad the skipped prefix so block-id slicing is unchanged.
                     memory_objs: list[MemoryObj | None] = [None] * skip + window_objs
+                    if lossless_kv is not None:
+                        lossless_kv.retrieve(
+                            block_ids_per_group_gpu, memory_objs, skip_first_n_tokens
+                        )
+                        prefetched_keys.extend(in_window_keys)
+                        continue
                     transfer_kv_per_object_group(
                         cache_context,
                         block_ids_per_group_gpu,
@@ -1107,6 +1189,74 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
             event_backend.export_event(event, cache_context.device),
             retrieve_succeeded,
         )
+
+    def _lossless_transfer(
+        self, cache_context: BaseCacheContext
+    ) -> LosslessKVTransfer | None:
+        """Return the codec store/retrieve of a registered context, if any.
+
+        Args:
+            cache_context: A registered cache context.
+
+        Returns:
+            The context's ``LosslessKVTransfer``; None without the codec.
+        """
+        with self._lock:
+            return self._lossless_transfers.get(id(cache_context))
+
+    def _codec_store_reporter(
+        self,
+        key: IPCCacheServerKey,
+        instance_id: int,
+        model_name: str,
+        cache_context: BaseCacheContext,
+        transfer_key: str,
+        num_tokens: int,
+        start_time: float,
+    ) -> Callable[[int, int], None]:
+        """Return the callback publishing MP_STORE_END of one codec store.
+
+        It runs once, on the codec worker thread after the request's last
+        batch commits (or on the handler thread if nothing was submitted),
+        so the event is published directly rather than on a stream.
+
+        Args:
+            key: The IPC key of the store.
+            instance_id: The GPU instance ID.
+            model_name: The model of the registered cache.
+            cache_context: The registered cache context.
+            transfer_key: Identity of this store operation.
+            num_tokens: Tokens covered by the store.
+            start_time: ``time.perf_counter()`` when the store began.
+
+        Returns:
+            A callable taking ``(stored_count, total_bytes)``.
+        """
+
+        def report(stored_count: int, total_bytes: int) -> None:
+            self._ctx.event_bus.publish(
+                Event(
+                    event_type=EventType.MP_STORE_END,
+                    session_id=key.request_id,
+                    metadata={
+                        "stored_count": stored_count,
+                        "device": str(cache_context.device),
+                        "engine_id": instance_id,
+                        "model_name": model_name,
+                        "total_bytes": total_bytes,
+                        "num_tokens": num_tokens if stored_count else 0,
+                        "transfer_key": transfer_key,
+                    },
+                )
+            )
+            if stored_count:
+                logger.info(
+                    "Stored %d lossless KV records in %.3f seconds",
+                    stored_count,
+                    time.perf_counter() - start_time,
+                )
+
+        return report
 
     def _publish_token_bindings(
         self, key: IPCCacheServerKey, obj_keys: list[ObjectKey]

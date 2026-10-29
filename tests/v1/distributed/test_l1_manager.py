@@ -1309,6 +1309,23 @@ class TestDelete:
 # =============================================================================
 
 
+class TestContains:
+    """Tests for L1Manager.contains(): only resident (committed) keys count."""
+
+    def test_contains_only_committed_keys(self, basic_l1_config, basic_layout):
+        manager = L1Manager(basic_l1_config)
+        staged, committed, absent = (make_object_key(i) for i in range(3))
+        manager.reserve_write([staged, committed], [False, False], basic_layout)
+        manager.finish_write([committed])
+
+        assert manager.contains([staged, committed, absent]) == [False, True, False]
+        # A resident key is exactly one reserve_write refuses.
+        result = manager.reserve_write([committed], [False], basic_layout)
+        assert result[committed][0] == L1Error.KEY_NOT_WRITABLE
+
+        manager.close()
+
+
 class TestGetObjectState:
     """
     Tests for L1Manager.get_object_state() method.

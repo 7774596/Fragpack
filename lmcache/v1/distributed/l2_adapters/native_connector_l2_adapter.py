@@ -363,6 +363,11 @@ class NativeConnectorL2Adapter(L2AdapterInterface):
         with self._lock:
             return self._completed_loads.pop(task_id, None)
 
+    def stored_object_sizes(self, keys: list[ObjectKey]) -> list[int | None]:
+        """Return the size recorded when each key's store completed."""
+        with self._lock:
+            return [self._key_sizes.get(key) for key in keys]
+
     # ---------------------------------------------------------------
     # Eviction Interface
     # ---------------------------------------------------------------

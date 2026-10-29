@@ -513,6 +513,22 @@ class L2AdapterInterface(ABC):
         """
         return self._max_capacity_bytes > 0
 
+    def stored_object_sizes(self, keys: list[ObjectKey]) -> list[int | None]:
+        """Return the stored byte size of each key, when the adapter knows it.
+
+        Loads must provide a buffer of exactly the stored size; callers
+        storing objects whose size depends on their data use this to size
+        load buffers.
+
+        Args:
+            keys (list[ObjectKey]): Keys to look up.
+
+        Returns:
+            list[int | None]: One size per key; None when unknown. The
+            default implementation knows no sizes.
+        """
+        return [None] * len(keys)
+
     def delete(self, keys: list[ObjectKey]) -> None:
         """
         Delete a batch of objects from L2 storage.

@@ -230,11 +230,11 @@ def _build_server_components(
     # the InstanceLivenessTargets the reaper scans.
     transfer_modules: list[EngineModule] = []
     if mp_config.supported_transfer_mode == "lmcache_driven":
-        transfer_modules.append(LMCacheDrivenTransferModule(ctx))
+        transfer_modules.append(LMCacheDrivenTransferModule(ctx, mp_config.lossless_kv))
     elif mp_config.supported_transfer_mode == "engine_driven":
         transfer_modules.append(EngineDrivenTransferModule(ctx))
     elif mp_config.supported_transfer_mode == "auto":
-        transfer_modules.append(LMCacheDrivenTransferModule(ctx))
+        transfer_modules.append(LMCacheDrivenTransferModule(ctx, mp_config.lossless_kv))
         transfer_modules.append(EngineDrivenTransferModule(ctx))
     else:
         raise ValueError(

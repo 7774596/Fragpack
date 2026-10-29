@@ -1615,3 +1615,19 @@ class TestPadBuffersToAlignment:
             assert adp_padded.get_usage().total_bytes_used == 4096
         finally:
             adp_padded.close()
+
+
+class TestStoredObjectSizes:
+    def test_sizes_follow_completed_stores_and_deletes(self, adapter):
+        store_fd = adapter.get_store_event_fd()
+        stored, absent = create_object_key(1), create_object_key(2)
+
+        assert adapter.stored_object_sizes([stored]) == [None]
+        obj = create_memory_obj(size=100)
+        adapter.submit_store_task([stored], [obj])
+        wait_for_event_fd(store_fd, timeout=5.0)
+        adapter.pop_completed_store_tasks()
+
+        assert adapter.stored_object_sizes([stored, absent]) == [obj.get_size(), None]
+        adapter.delete([stored])
+        assert adapter.stored_object_sizes([stored]) == [None]

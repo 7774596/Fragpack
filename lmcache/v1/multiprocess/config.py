@@ -151,13 +151,17 @@ class MPServerConfig:
     server_modules: list[ExtServerModuleSpec] = field(default_factory=list)
     """Out-of-tree server-module factories to load after built-in modules."""
 
+    lossless_kv: "LosslessKVConfig" = field(default_factory=lambda: LosslessKVConfig())
+    """Strict-lossless KV compression of stored chunks (disabled by default)."""
+
     def __post_init__(self) -> None:
         """Validate the worker-reaping timeouts.
 
         Raises:
             ValueError: If a timeout is non-finite, the reap timeout is
-                negative or a non-zero value below the 30 s floor, or the
-                registration grace is below the reap timeout.
+                negative or a non-zero value below the 30 s floor, the
+                registration grace is below the reap timeout, or the lossless
+                KV codec is enabled outside default LMCache-driven transfer.
         """
         reap = self.worker_reap_timeout_seconds
         grace = self.worker_registration_grace_seconds
@@ -175,6 +179,63 @@ class MPServerConfig:
             raise ValueError(
                 "worker registration grace must be >= the worker reap timeout "
                 f"({reap}s); got {grace}"
+            )
+        if self.lossless_kv.enabled and (
+            self.supported_transfer_mode != "lmcache_driven"
+            or self.engine_type != "default"
+        ):
+            raise ValueError(
+                "the lossless KV codec needs --supported-transfer-mode "
+                "lmcache_driven and --engine-type default"
+            )
+
+
+@dataclass
+class LosslessKVConfig:
+    """Strict-lossless KV compression on the LMCache-driven transfer path.
+
+    When enabled, each stored chunk is the variable-length record of
+    ``lmcache.v1.lossless_kv.KVMajorChunkCodec``; see
+    ``lmcache.v1.multiprocess.lossless_kv_transfer``.
+    """
+
+    enabled: bool = False
+    """Store compressed records instead of raw chunks."""
+
+    codebook_dir: str | None = None
+    """Calibration artifact directory for the served model; None uses the
+    model-independent generic codebooks."""
+
+    capacity_ratio: float | None = None
+    """Pad every record to this fraction of raw (a fixed capacity class);
+    None stores variable-length records."""
+
+    batch_size: int = 8
+    """Chunks encoded or decoded per codec call. Encoding reads record
+    lengths back once per batch, so wider batches mean fewer host syncs."""
+
+    store_pool_chunks: int | None = None
+    """Raw chunk buffers gathered ahead of the encoder; None means two
+    batches, so one batch is gathered while the previous one encodes."""
+
+    def __post_init__(self) -> None:
+        """Validate the codec options.
+
+        Raises:
+            ValueError: If a size is not positive or the capacity ratio is
+                outside ``(0, 1]``.
+        """
+        if self.batch_size < 1:
+            raise ValueError(f"lossless KV batch must be >= 1; got {self.batch_size}")
+        if self.store_pool_chunks is not None and self.store_pool_chunks < 1:
+            raise ValueError(
+                "lossless KV store pool must be >= 1 chunk; "
+                f"got {self.store_pool_chunks}"
+            )
+        if self.capacity_ratio is not None and not 0.0 < self.capacity_ratio <= 1.0:
+            raise ValueError(
+                f"lossless KV capacity ratio must be in (0, 1]; "
+                f"got {self.capacity_ratio}"
             )
 
 
@@ -575,6 +636,41 @@ def add_mp_server_args(
         '"factory_name":"build_server_modules",'
         '"config":{"name":"demo"}}\'.',
     )
+    lossless_group = parser.add_argument_group(
+        "Lossless KV", "Strict-lossless compression of stored KV chunks"
+    )
+    lossless_group.add_argument(
+        "--lossless-kv-codec",
+        action="store_true",
+        help="Store each chunk as a strict-lossless compressed record "
+        "(BF16 or FP8 KV, one full-attention KV group, CUDA only).",
+    )
+    lossless_group.add_argument(
+        "--lossless-kv-codebooks",
+        type=str,
+        default=None,
+        help="Calibration artifact directory for the served model. Default "
+        "uses the model-independent generic codebooks.",
+    )
+    lossless_group.add_argument(
+        "--lossless-kv-capacity",
+        type=float,
+        default=None,
+        help="Pad every record to this fraction of raw instead of storing "
+        "variable-length records.",
+    )
+    lossless_group.add_argument(
+        "--lossless-kv-batch",
+        type=int,
+        default=LosslessKVConfig.batch_size,
+        help="Chunks per codec call. Default is %(default)s.",
+    )
+    lossless_group.add_argument(
+        "--lossless-kv-store-pool",
+        type=int,
+        default=None,
+        help="Raw chunk buffers gathered ahead of the encoder. Default is two batches.",
+    )
     return parser
 
 
@@ -630,6 +726,13 @@ def parse_args_to_mp_server_config(
         enable=args.enable or [],
         kv_event_log_size=args.kv_event_log_size,
         server_modules=parse_server_module_specs(args.server_module or []),
+        lossless_kv=LosslessKVConfig(
+            enabled=args.lossless_kv_codec,
+            codebook_dir=args.lossless_kv_codebooks,
+            capacity_ratio=args.lossless_kv_capacity,
+            batch_size=args.lossless_kv_batch,
+            store_pool_chunks=args.lossless_kv_store_pool,
+        ),
     )
 
 

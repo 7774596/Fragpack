@@ -24,12 +24,16 @@ import itertools
 import select
 import threading
 
+# Third Party
+import torch
+
 # First Party
 from lmcache.lmcache_native import Bitmap
 from lmcache.logging import init_logger
 from lmcache.v1.distributed.api import (
     FetchingPolicy,
     GroupedObjectKeys,
+    MemoryLayoutDesc,
     ObjectKey,
     PrefetchLockMode,
     PrefetchResult,
@@ -217,16 +221,32 @@ def _scatter_bitmaps_full_global(
     return ret
 
 
+def _is_byte_layout(layout_desc: MemoryLayoutDesc) -> bool:
+    """Whether a group layout is one flat ``uint8`` buffer.
+
+    Such a layout marks objects sized by their data (for example
+    variable-length compressed records): it only bounds them, and an L2 load
+    needs a buffer of exactly the stored size.
+    """
+    return (
+        len(layout_desc.shapes) == 1
+        and layout_desc.dtypes[0] == torch.uint8
+        and len(layout_desc.shapes[0]) == 1
+    )
+
+
 def _reserve_l1_cells(
     l1_manager: L1ManagerInterface,
     key_groups: list[GroupedObjectKeys],
     cells: Bitmap2D,
     retain: dict[ObjectKey, bool],
     tag: str,
+    stored_sizes: dict[ObjectKey, int] | None = None,
 ) -> tuple[Bitmap2D, dict[ObjectKey, "MemoryObj"], int]:
     """Reserve a staging buffer in one L1 manager for every cell in ``cells``.
 
-    Each row is reserved with its own key group's layout.
+    Each row is reserved with its own key group's layout, except keys with a
+    known stored size, which get a flat ``uint8`` buffer of that size.
 
     Args:
         l1_manager: The manager to reserve in.
@@ -236,6 +256,8 @@ def _reserve_l1_cells(
         retain: Whether each key in ``cells`` stays resident after the
             reader is done.
         tag: The writer tag for the reservations.
+        stored_sizes: L2 stored size of byte-layout keys (see
+            ``_is_byte_layout``); other keys use their group layout.
 
     Returns:
         The tuple of (L1 reserve result, reserved objects, failed count).
@@ -252,12 +274,25 @@ def _reserve_l1_cells(
         if not cols:
             continue
         keys = row.gather(group.keys)
-        results = l1_manager.reserve_write(
-            keys=keys,
-            is_temporary=[not retain[key] for key in keys],
-            layout_desc=group.layout_desc,
-            tag=tag,
-        )
+        # Keys of one stored size share a reservation.
+        by_size: dict[int | None, list[ObjectKey]] = defaultdict(list)
+        for key in keys:
+            by_size[(stored_sizes or {}).get(key)].append(key)
+        results = {}
+        for size, size_keys in by_size.items():
+            layout_desc = group.layout_desc
+            if size is not None:
+                layout_desc = MemoryLayoutDesc(
+                    shapes=[torch.Size((size,))], dtypes=[torch.uint8]
+                )
+            results.update(
+                l1_manager.reserve_write(
+                    keys=size_keys,
+                    is_temporary=[not retain[key] for key in size_keys],
+                    layout_desc=layout_desc,
+                    tag=tag,
+                )
+            )
         for col, key in zip(cols, keys, strict=True):
             error, mem_obj = results[key]
             if error != L1Error.SUCCESS or mem_obj is None:
@@ -1223,9 +1258,15 @@ class PrefetchController(StorageControllerInterface):
         num_failed_reservations = 0
 
         cells_by_l1, retain = self._build_l1_allocation_plans(request)
+        stored_sizes = self._stored_byte_sizes(request)
         for l1_idx, cells in cells_by_l1.items():
             success, objs, l1_failed_count = _reserve_l1_cells(
-                self._l1_managers[l1_idx], request.key_groups, cells, retain, tag
+                self._l1_managers[l1_idx],
+                request.key_groups,
+                cells,
+                retain,
+                tag,
+                stored_sizes,
             )
             l1_reserved_keys[l1_idx] = success
             reserved_objs.update(objs)
@@ -1380,6 +1421,40 @@ class PrefetchController(StorageControllerInterface):
             else:
                 cells_by_l1[l1_idx] = planned.copy()
         return cells_by_l1, retain
+
+    def _stored_byte_sizes(
+        self, request: InFlightPrefetchRequest
+    ) -> dict[ObjectKey, int]:
+        """Return the L2 stored size of planned keys in byte-layout groups.
+
+        Typed KV layouts have one fixed size and are left out.
+
+        Args:
+            request: The in-flight request whose L2 plan is sized.
+
+        Returns:
+            Stored size by key, for byte-layout keys whose adapter knows it.
+        """
+        byte_rows = [_is_byte_layout(group.layout_desc) for group in request.key_groups]
+        if not any(byte_rows):
+            return {}
+        sizes: dict[ObjectKey, int] = {}
+        for l2_idx, planned in request.key_states.l2_locked_keys.items():
+            keys = [
+                key
+                for row_id, (group, row) in enumerate(
+                    zip(request.key_groups, planned, strict=True)
+                )
+                if byte_rows[row_id]
+                for key in row.gather(group.keys)
+            ]
+            if not keys:
+                continue
+            stored = self._l2_adapters[l2_idx].stored_object_sizes(keys)
+            for key, size in zip(keys, stored, strict=True):
+                if size is not None:
+                    sizes[key] = size
+        return sizes
 
     def _get_l2_affinity_manager(self, l2_adapter_idx: int) -> int:
         """Get the L1 manager index that has affinity with the given L2 adapter index.

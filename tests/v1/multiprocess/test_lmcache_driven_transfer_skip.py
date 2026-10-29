@@ -12,6 +12,7 @@
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock, call
+import threading
 
 # Third Party
 import pytest
@@ -176,6 +177,9 @@ def _make_module(monkeypatch, num_chunks, num_chunks_in_sw, group_kinds=()):
 
     ctx.storage_manager.unsafe_read = MagicMock(side_effect=fake_read)
     module._ctx = ctx
+    # No lossless KV codec for these contexts.
+    module._lock = threading.Lock()
+    module._lossless_transfers = {}
 
     transfer_calls: list[tuple[int, list]] = []
 

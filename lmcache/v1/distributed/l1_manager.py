@@ -1203,6 +1203,19 @@ class L1Manager(L1ManagerInterface):
             "read_ttl_seconds": self._read_ttl_seconds,
         }
 
+    @l1_mgr_synchronized
+    def contains(self, keys: list[ObjectKey]) -> list[bool]:
+        """Return whether each key has a resident object.
+
+        Args:
+            keys: The object keys to check.
+
+        Returns:
+            One flag per key; ``reserve_write`` refuses a True key with
+            ``KEY_NOT_WRITABLE``. Staging objects are not counted.
+        """
+        return [key in self._objects for key in keys]
+
     # Debugging APIs
     @l1_mgr_synchronized
     def get_object_state(self, key: ObjectKey) -> L1ObjectState | None:

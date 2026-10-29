@@ -294,6 +294,10 @@ class L1ManagerInterface(Protocol):
         """Reserve a write buffer per key for the writer ``tag``."""
         ...
 
+    def contains(self, keys: list[ObjectKey]) -> list[bool]:
+        """Whether each key has a resident object (``reserve_write`` refuses it)."""
+        ...
+
     def finish_write(
         self, keys: list[ObjectKey], tag: str = ""
     ) -> dict[ObjectKey, L1Error]:

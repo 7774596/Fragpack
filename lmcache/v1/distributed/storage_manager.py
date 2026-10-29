@@ -354,6 +354,25 @@ class StorageManager:
 
         return result
 
+    def l1_contains(self, keys: list[ObjectKey]) -> list[bool]:
+        """Return whether each key already has a resident object in some L1.
+
+        Lets a writer whose object size depends on the data (for example a
+        compressed record) skip producing it for keys that ``reserve_write``
+        would refuse. The answer can be stale by the time the writer reserves.
+
+        Args:
+            keys (list[ObjectKey]): Keys to check.
+
+        Returns:
+            list[bool]: One flag per key.
+        """
+        found = [False] * len(keys)
+        for manager in self._write_managers:
+            for i, hit in enumerate(manager.contains(keys)):
+                found[i] = found[i] or hit
+        return found
+
     def finish_write(
         self,
         keys: list[ObjectKey],
