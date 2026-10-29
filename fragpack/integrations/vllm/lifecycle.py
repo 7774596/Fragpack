@@ -34,6 +34,109 @@ class OpenBlocks:
         self.block_tokens = block_tokens
         self.blocks: dict[str, list[int]] = {}
         self.computed: dict[str, int] = {}
+        self._batch_requests: dict[int, str] | None = None
+        self._dummy_step = False
+
+    def begin_step(self, *, dummy_run: bool) -> None:
+        """Discard the previous batch identity before any runner early return.
+
+        Args:
+            dummy_run (bool): Whether this step uses synthetic request metadata.
+
+        Returns:
+            None. Persistent request block lists are unchanged.
+
+        Async/thread-safety:
+            Mutates host state on the model-runner thread; no I/O or CUDA access.
+        """
+        self._batch_requests = None
+        self._dummy_step = dummy_run
+
+    def bind_batch(self, req_ids: list[str], req_indices: NDArray[np.intp]) -> None:
+        """Bind real requests to the runner indices carried by attention metadata.
+
+        Args:
+            req_ids (list[str]): Request ids returned by the runner's batch gather.
+            req_indices (NDArray[np.intp]): Matching CPU request-table indices.
+
+        Returns:
+            None. The binding is valid only until the next begin_step call.
+
+        Raises:
+            RuntimeError: If binding synthetic requests during a dummy step.
+            ValueError: If indices do not uniquely identify the supplied requests.
+
+        Async/thread-safety:
+            Reads CPU metadata and mutates host state on the model-runner thread.
+            No device readback occurs.
+        """
+        if self._dummy_step:
+            raise RuntimeError("cannot bind real requests during a dummy step")
+        if req_indices.ndim != 1 or len(req_ids) != len(req_indices):
+            raise ValueError("request ids and runner indices must have equal lengths")
+        binding = {
+            int(index): req_id
+            for req_id, index in zip(req_ids, req_indices, strict=True)
+        }
+        if len(binding) != len(req_ids) or any(index < 0 for index in binding):
+            raise ValueError("runner request indices must be unique and nonnegative")
+        self._batch_requests = binding
+
+    def prefill_blocks(
+        self,
+        req_indices: NDArray[np.intp] | None,
+        page_counts: NDArray[np.int64],
+    ) -> list[list[int]] | None:
+        """Resolve attention rows to their live host-side physical block lists.
+
+        Args:
+            req_indices (NDArray[np.intp] | None): CPU runner indices for these
+                attention rows, including any reorder or microbatch slice.
+            page_counts (NDArray[np.int64]): Number of context pages per row.
+
+        Returns:
+            list[list[int]] | None: Independent lists trimmed to page_counts, in
+            attention-row order. None means this is explicitly a dummy step.
+
+        Raises:
+            RuntimeError: If a real step has no batch binding, an unknown request,
+                missing row indices, or fewer allocated blocks than required.
+            ValueError: If row counts differ or a requested page count is negative.
+
+        Async/thread-safety:
+            Reads host state on the model-runner thread; no I/O or CUDA access.
+            Real batches fail closed instead of reusing stale or guessed mappings.
+        """
+        if self._dummy_step:
+            return None
+        if self._batch_requests is None:
+            raise RuntimeError("prefill requires a real runner batch binding")
+        if req_indices is None:
+            raise RuntimeError("prefill requires CPU runner request indices")
+        if (
+            req_indices.ndim != 1
+            or page_counts.ndim != 1
+            or len(req_indices) != len(page_counts)
+        ):
+            raise ValueError("prefill request indices and page counts must match")
+        rows: list[list[int]] = []
+        for index, count in zip(req_indices, page_counts, strict=True):
+            count = int(count)
+            if count < 0:
+                raise ValueError("prefill page counts must be nonnegative")
+            req_id = self._batch_requests.get(int(index))
+            blocks = self.blocks.get(req_id) if req_id is not None else None
+            if blocks is None:
+                raise RuntimeError(
+                    f"prefill runner request index {int(index)} is unknown"
+                )
+            if len(blocks) < count:
+                raise RuntimeError(
+                    f"prefill request {req_id!r} needs {count} blocks; "
+                    f"only {len(blocks)} are tracked"
+                )
+            rows.append(blocks[:count])
+        return rows
 
     def update(self, so: Any) -> None:
         """Apply host scheduler metadata in the V2 model runner's update order.

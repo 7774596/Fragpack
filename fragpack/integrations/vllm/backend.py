@@ -59,6 +59,7 @@ from fragpack.compression.attn_tables import load_tables
 from fragpack.integrations.vllm.capacity import FragPackCapacity, publish_capacity
 from fragpack.integrations.vllm.compat import install_tracker, require_supported_vllm
 from fragpack.integrations.vllm.lifecycle import OpenBlocks
+from fragpack.integrations.vllm.prefill import PrefillPlan, plan_prefill_groups
 from fragpack.logging import init_logger
 from fragpack.ops.fused_attn_decode import (
     GQA,
@@ -94,7 +95,8 @@ class PrefillGroup:
     """Prefill rows attended in one workspace pass.
 
     Attributes:
-        src_blocks: int32 ``[P]`` blocks decoded into workspace pages ``0..P``.
+        src_blocks: int32 ``[P]`` distinct blocks decoded into workspace pages.
+            Requests in this pass share pages for common physical blocks.
         block_table: int32 ``[R, max_pages]`` workspace page ids per row.
         cu_seqlens_q: int32 ``[R + 1]`` query offsets relative to ``tok0``.
         seqused_k: int32 ``[R]`` context lengths.
@@ -392,37 +394,42 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
         qsl: np.ndarray,
         seq: np.ndarray,
     ) -> list[PrefillGroup]:
-        pages = -(-seq // BLOCK_TOKENS)
-        groups: list[PrefillGroup] = []
-        start, used = first, 0
-        for r in range(first, num_reqs):
-            if used + pages[r] > self.workspace_pages and r > start:
-                groups.append(self._prefill_group(cam, start, r, qsl, seq, pages))
-                start, used = r, 0
-            used += int(pages[r])
-        groups.append(self._prefill_group(cam, start, num_reqs, qsl, seq, pages))
-        return groups
+        pages = -(-seq[first:num_reqs] // BLOCK_TOKENS)
+        indices = None if cam.req_idx is None else cam.req_idx[first:num_reqs]
+        blocks = _TRACKER.prefill_blocks(indices, pages)
+        if blocks is None:
+            # Dummy/profile runs have no real request ownership. Unique synthetic
+            # identities retain the original non-sharing plan; source coordinates
+            # still read the runner's GPU block table, never these synthetic IDs.
+            offsets = np.concatenate(([0], np.cumsum(pages)))
+            blocks = [
+                list(range(a, b))
+                for a, b in zip(offsets[:-1], offsets[1:], strict=True)
+            ]
+        return [
+            self._prefill_group(cam, first, plan, qsl, seq)
+            for plan in plan_prefill_groups(blocks, self.workspace_pages)
+        ]
 
     def _prefill_group(
         self,
         cam: CommonAttentionMetadata,
-        r0: int,
-        r1: int,
+        first: int,
+        plan: PrefillPlan,
         qsl: np.ndarray,
         seq: np.ndarray,
-        pages: np.ndarray,
     ) -> PrefillGroup:
-        n = r1 - r0
-        pg = pages[r0:r1]
-        offs = np.concatenate(([0], np.cumsum(pg)))
-        total, width = int(offs[-1]), int(pg.max())
-        rows = np.repeat(np.arange(r0, r1), pg)
-        cols = np.arange(total) - np.repeat(offs[:-1], pg)
-        table = np.zeros((n, width), dtype=np.int64)
-        for i in range(n):
-            table[i, : pg[i]] = np.arange(offs[i], offs[i + 1])
+        r0, r1 = first + plan.first, first + plan.stop
+        n, width = plan.block_table.shape
+        total = len(plan.source_rows)
         host = np.concatenate(
-            (rows, cols, table.ravel(), qsl[r0 : r1 + 1] - qsl[r0], seq[r0:r1])
+            (
+                plan.source_rows + first,
+                plan.source_columns,
+                plan.block_table.ravel(),
+                qsl[r0 : r1 + 1] - qsl[r0],
+                seq[r0:r1],
+            )
         )
         dev = torch.from_numpy(host).pin_memory().to(self.device, non_blocking=True)
         a, b, c, d = (

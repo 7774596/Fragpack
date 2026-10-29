@@ -9,6 +9,7 @@ import sys
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
+import numpy as np
 import pytest
 
 from fragpack.integrations.vllm import compat
@@ -36,6 +37,12 @@ def _runner_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
             """Return unchanged arguments to expose wrapper forwarding behavior."""
             return scheduler_output, args, kwargs
 
+        def gather_batch_req_state(
+            self, scheduler_output: Any, dummy_run: bool
+        ) -> tuple[Any, int]:
+            """Return real CPU identities, or no identities for a dummy batch."""
+            return (None, 1) if dummy_run else scheduler_output.batch_result
+
     module.GPUModelRunner = Runner
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module
@@ -52,6 +59,10 @@ def _step() -> SimpleNamespace:
         block_table_updates=None,
         scheduled_cached_reqs=SimpleNamespace(
             req_ids=[], num_computed_tokens=[], new_block_ids=[], resumed_req_ids=set()
+        ),
+        batch_result=(
+            SimpleNamespace(req_ids=["a"], idx_mapping_np=np.array([8], dtype=np.intp)),
+            1,
         ),
     )
 
@@ -136,8 +147,10 @@ def test_installation_is_idempotent_and_rejects_a_second_tracker(
     tracker = OpenBlocks(128)
     adapter.install_tracker(tracker, use_v2_model_runner=True)
     installed = runner_module.GPUModelRunner.execute_model
+    installed_gather = runner_module.GPUModelRunner.gather_batch_req_state
     adapter.install_tracker(tracker, use_v2_model_runner=True)
     assert runner_module.GPUModelRunner.execute_model is installed
+    assert runner_module.GPUModelRunner.gather_batch_req_state is installed_gather
     with pytest.raises(RuntimeError, match="already has a tracker"):
         adapter.install_tracker(OpenBlocks(128), use_v2_model_runner=True)
     runner_module.GPUModelRunner().execute_model(_step())
@@ -187,3 +200,79 @@ def test_plugin_rejects_version_before_registration(
     monkeypatch.setattr(adapter.metadata, "version", lambda name: "0.31.0")
     with pytest.raises(RuntimeError, match="release-specific"):
         plugin.register()
+
+
+def test_gather_binds_actual_runner_order_and_preserves_return_identity(
+    adapter: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The backend sees runner indices, even when requests were reordered."""
+    runner_module = _runner_module(monkeypatch)
+    tracker = OpenBlocks(128)
+    original = runner_module.GPUModelRunner.execute_model
+
+    def observe(self: Any, so: Any, *args: Any, **kwargs: Any) -> Any:
+        result = self.gather_batch_req_state(so, dummy_run=False)
+        assert result is so.batch_result
+        assert tracker.prefill_blocks(np.array([8, 3]), np.array([2, 1])) == [
+            [10, 11],
+            [20],
+        ]
+        return original(self, so, *args, **kwargs)
+
+    runner_module.GPUModelRunner.execute_model = observe
+    adapter.install_tracker(tracker, use_v2_model_runner=True)
+    step = _step()
+    step.scheduled_new_reqs.append(
+        SimpleNamespace(req_id="b", block_ids=([20, 21],), num_computed_tokens=128)
+    )
+    step.batch_result = (
+        SimpleNamespace(req_ids=["b", "a"], idx_mapping_np=np.array([3, 8])),
+        1,
+    )
+    assert runner_module.GPUModelRunner().execute_model(step) == (step, (), {})
+
+
+@pytest.mark.parametrize("positional", [False, True])
+def test_dummy_execution_discards_real_binding_before_original_runner(
+    adapter: ModuleType, monkeypatch: pytest.MonkeyPatch, positional: bool
+) -> None:
+    """Dummy/profile inputs cannot inherit a real batch's runner-index mapping."""
+    runner_module = _runner_module(monkeypatch)
+    tracker = OpenBlocks(128)
+    tracker.begin_step(dummy_run=False)
+    tracker.update(_step())
+    tracker.bind_batch(["a"], np.array([8]))
+
+    def observe(self: Any, so: Any, *args: Any, **kwargs: Any) -> None:
+        assert tracker.prefill_blocks(np.array([8]), np.array([2])) is None
+        assert self.gather_batch_req_state(so, True) == (None, 1)
+        assert tracker.live_blocks().tolist() == [11]
+
+    runner_module.GPUModelRunner.execute_model = observe
+    adapter.install_tracker(tracker, use_v2_model_runner=True)
+    runner = runner_module.GPUModelRunner()
+    if positional:
+        runner.execute_model(None, None, True)
+    else:
+        runner.execute_model(None, dummy_run=True)
+
+
+def test_real_early_return_discards_previous_batch_binding(
+    adapter: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A zero-token step may return before gathering and must leave no mapping."""
+    runner_module = _runner_module(monkeypatch)
+    tracker = OpenBlocks(128)
+    tracker.begin_step(dummy_run=False)
+    tracker.update(_step())
+    tracker.bind_batch(["a"], np.array([8]))
+
+    def no_forward(self: Any, so: Any, *args: Any, **kwargs: Any) -> None:
+        with pytest.raises(RuntimeError, match="batch binding"):
+            tracker.prefill_blocks(np.array([8]), np.array([2]))
+
+    runner_module.GPUModelRunner.execute_model = no_forward
+    adapter.install_tracker(tracker, use_v2_model_runner=True)
+    step = _step()
+    step.scheduled_new_reqs = []
+    runner_module.GPUModelRunner().execute_model(step)

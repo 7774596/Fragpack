@@ -39,14 +39,29 @@ publish partially valid records or free records still owned by the destination.
 
 Decode reconstructs operands inside the attention kernel and combines partial
 attention results. Prefill gathers cached context into a bounded BF16 workspace
-for FlashAttention. This is not a claim that every operation avoids raw KV
-materialization.
+for FlashAttention. Within each workspace pass, a physical KV block is gathered
+once and all requests referencing it share the decoded page. Passes count
+unique blocks against the workspace budget and preserve request/token order;
+a block can be gathered again in a later pass, layer, or model step. Shared
+pages are read-only during attention, and the next gather reuses the workspace
+only after the previous attention on the same stream. Open tails and closed
+records still use the existing gather implementation. This reduces duplicate
+materialization; it does not fuse decompression into prefill attention or
+reduce the preallocated workspace size.
+
+The host planner uses the scheduler's mirrored block lists and the V2 runner's
+actual request-index mapping, never a GPU-to-CPU block-table readback. Dummy
+runs use the original non-sharing behavior without consulting a previous real
+batch. This planning change adds no hardware requirement; the existing SM90
+store, gather, and attention requirements remain.
 
 ## Integration boundary
 
 The vLLM adapter changes the KV page specification, provides metadata, and
-registers a `CUSTOM` backend. It wraps the V2 model runner's execution method
-at runtime to observe scheduler block lists. No vLLM source files are edited,
+registers a `CUSTOM` backend. It wraps the V2 model runner's execution and
+batch-state gathering methods at runtime to observe scheduler block lists and bind request indices to those
+lists. Real prefill metadata without this binding is rejected rather than
+silently using stale block ownership. No vLLM source files are edited,
 but this wrapper is a version-sensitive integration point.
 
 The initial compatibility target is SM90, BF16 KV, head size and block size 128,
