@@ -309,6 +309,59 @@ def test_chunk_codec_engine_decode_leaves_raw_batches_to_scratch() -> None:
     assert torch.equal(alloc, before)
 
 
+@pytest.mark.integration
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.parametrize("kv_dtype", [torch.bfloat16, torch.float8_e4m3fn])
+def test_chunk_codec_encodes_engine_blocks_like_staged_chunks(
+    kv_dtype: torch.dtype,
+) -> None:
+    codec = _codec(max_chunks=3, capacity_ratio=None, fused_kv=True, kv_dtype=kv_dtype)
+    alloc, layers = _layer_major_engine(9, kv_dtype)
+    codec.attach_engine_cache(layer_major_kv_view(layers, _HEADS, _HEAD_DIM))
+    assert codec.engine_store
+    stream = torch.cuda.Stream()
+    compressible = (
+        (lambda seed: _chunk(codec, seed, compressible=True))
+        if kv_dtype is torch.bfloat16
+        else (lambda seed: _fp8_chunk(codec, seed))
+    )
+    # The middle chunk is incompressible and stays raw.
+    originals = [
+        compressible(31),
+        _chunk(codec, 32, compressible=False),
+        compressible(33),
+    ]
+    targets = [6, 1, 4]
+    engine = alloc.view(torch.uint8)
+    for block, original in zip(targets, originals, strict=True):
+        engine[:, block].copy_(original.view(_LAYERS, *engine.shape[2:]))
+    staged = [chunk.clone() for chunk in originals]
+    lengths = codec.encode(staged, stream)
+    assert lengths[0] < codec.raw_bytes and lengths[2] < codec.raw_bytes
+    assert lengths[1] == codec.raw_bytes
+
+    staging = torch.full((3 * codec.raw_bytes,), 0x5A, dtype=torch.uint8, device="cuda")
+    pending = codec.encode_engine_blocks(targets, staging, stream)
+    # The pack read the blocks, so the engine may overwrite them.
+    with torch.cuda.stream(stream):
+        engine[:, targets] = 0
+    records = codec.engine_records(pending, staging, stream)
+    stream.synchronize()
+    assert [record.numel() for record in records] == lengths
+    # A raw chunk is stored in the chunk layout; record padding is unspecified.
+    assert torch.equal(records[1], originals[1])
+
+    # The records decode back like any stored bytes, whatever their padding.
+    buffers = codec.record_buffers(3, stream)
+    with torch.cuda.stream(stream):
+        for buf, record in zip(buffers, records, strict=True):
+            buf[: record.numel()].copy_(record)
+    outputs = codec.decode_records(lengths, stream)
+    stream.synchronize()
+    for output, original in zip(outputs, originals, strict=True):
+        assert torch.equal(output, original)
+
+
 def test_layer_major_kv_view_rejects_scattered_layers() -> None:
     alloc = torch.zeros(3, 2, 4, 2, 8)
     adjacent = [alloc[i] for i in range(3)]

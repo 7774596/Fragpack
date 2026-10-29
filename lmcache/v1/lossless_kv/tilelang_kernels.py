@@ -861,7 +861,7 @@ def _build_store_count_prefix(
                 if tx == 0:
                     # Planes differ in escape density, so fit is judged per
                     # slot: layout falls back to raw only when the summed
-                    # records exceed the slot.
+                    # records would not shrink the slot.
                     totals[row] = running
                     raw_totals[row] = raw_running
 
@@ -939,7 +939,8 @@ def _build_store_layout(
                             # Every lane reads lane 31 so the next group's base
                             # stays warp-uniform.
                             record_cursor = record_cursor + T.shfl_sync(inclusive, 31)
-                        if record_cursor > slot_stride:
+                        # A record that would not shrink the slot stays raw.
+                        if (record_cursor + 4095) // 4096 * 4096 >= slot_stride:
                             raw = 1
                         if lane == 0:
                             slot_sizes[warp] = (

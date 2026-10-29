@@ -42,6 +42,7 @@ from lmcache.v1.lossless_kv.compressed_kv import (
     FusedCompressedKVDecoder,
     FusedOnlineKVPacker,
     KVRestorePlan,
+    PendingPack,
     kv_dtype_bytes,
     warm_fused_online_kv_packer,
 )
@@ -256,6 +257,8 @@ class KVMajorChunkCodec:
         self._restore_plans: dict[tuple[int, ...], KVRestorePlan] = {}
         # Decoder into the engine's own KV blocks, and its plans by batch size.
         self._engine_decoder: FusedCompressedKVDecoder | None = None
+        # Packer reading the engine's own KV blocks (variable records only).
+        self._engine_packer: FusedOnlineKVPacker | None = None
         self._engine_plans: dict[int, KVRestorePlan] = {}
         # Scratch and staging are shared by calls that may use other streams.
         self._encode_done: torch.cuda.Event | None = None
@@ -447,6 +450,11 @@ class KVMajorChunkCodec:
             outputs[index] = out
         return outputs
 
+    @property
+    def engine_store(self) -> bool:
+        """Return whether :meth:`encode_engine_blocks` is available."""
+        return self._engine_packer is not None
+
     def attach_engine_cache(self, kv_cache: torch.Tensor) -> None:
         """Compile a decoder that restores records straight into engine blocks.
 
@@ -478,7 +486,93 @@ class KVMajorChunkCodec:
                 tile_scalars=ONLINE_TILE_SCALARS,
                 max_slots_per_buffer=self._max_chunks,
             )
+            # A capacity class pads records in place, which needs raw-sized
+            # buffers per chunk; only variable records pack from the engine.
+            self._engine_packer = (
+                None
+                if self._fixed_capacity
+                else FusedOnlineKVPacker(
+                    kv_cache=kv_cache,
+                    codebooks=self._codebooks,
+                    tile_scalars=ONLINE_TILE_SCALARS,
+                    max_slots_per_buffer=self._max_chunks,
+                )
+            )
         self._engine_plans.clear()
+
+    def encode_engine_blocks(
+        self, blocks: list[int], staging: torch.Tensor, stream: torch.cuda.Stream
+    ) -> PendingPack:
+        """Enqueue the records of chunks held in engine blocks.
+
+        Args:
+            blocks (list[int]): Engine block ID of each chunk, at most
+                ``max_chunks``.
+            staging (torch.Tensor): 16-byte aligned CUDA uint8 buffer of at
+                least ``len(blocks) * raw_bytes`` bytes; it receives the
+                records and must stay untouched until their consumers finish.
+            stream (torch.cuda.Stream): Stream ordered after the blocks'
+                producer. Every call must use the same stream.
+
+        Returns:
+            PendingPack: Pass it to :meth:`engine_records` exactly once.
+
+        Raises:
+            ValueError: If no engine cache is attached, records have a fixed
+                capacity class, or the arguments do not match.
+
+        Async/thread-safety:
+            Never synchronizes; the blocks may be reused once ``stream``
+            passes this call.
+        """
+        if self._engine_packer is None:
+            raise ValueError("no engine KV cache is attached for variable records")
+        return self._engine_packer.launch_pack(
+            staging=staging,
+            block_ids=blocks,
+            logical_slots=list(range(len(blocks))),
+            slot_stride=self._geometry.slot_size,
+            stream=stream,
+        )
+
+    def engine_records(
+        self, pending: PendingPack, staging: torch.Tensor, stream: torch.cuda.Stream
+    ) -> list[torch.Tensor]:
+        """Wait for :meth:`encode_engine_blocks` and return the stored bytes.
+
+        Args:
+            pending (PendingPack): The pack of ``staging``.
+            staging (torch.Tensor): The buffer given to ``encode_engine_blocks``.
+            stream (torch.cuda.Stream): Stream ordered after the pack.
+
+        Returns:
+            list[torch.Tensor]: Each chunk's stored bytes as a uint8 view of
+            ``staging``, exactly what :meth:`encode` stores: the record, or
+            ``raw_bytes`` of the raw chunk in the codec's chunk layout.
+
+        Raises:
+            ValueError: If no engine cache is attached.
+
+        Async/thread-safety:
+            Waits on the host for the pack; raw chunks are converted to the
+            chunk layout on ``stream``, so read the views on ``stream``. One
+            thread at a time.
+        """
+        if self._engine_packer is None:
+            raise ValueError("no engine KV cache is attached for variable records")
+        raw = self._geometry.slot_size
+        outputs: list[torch.Tensor] = []
+        for record in self._engine_packer.collect(pending):
+            start = record.source_offset
+            if record.mode is SlotMode.COMPRESSED:
+                if record.stored_length >= raw:
+                    raise RuntimeError("compressed engine record is not below raw")
+                outputs.append(staging[start : start + record.stored_length])
+                continue
+            chunk = staging[start : start + raw]
+            self._planes_to_chunk(chunk, stream)
+            outputs.append(chunk)
+        return outputs
 
     def decode_records_to_engine(
         self, lengths: list[int], blocks: torch.Tensor, stream: torch.cuda.Stream
@@ -592,6 +686,22 @@ class KVMajorChunkCodec:
             dtype=self._scratch_dtype,
             device=device,
         )
+
+    def _planes_to_chunk(self, chunk: torch.Tensor, stream: torch.cuda.Stream) -> None:
+        """Rewrite a packer raw record (planes back to back) as a fused chunk."""
+        geometry = self._geometry
+        rows = geometry.block_tokens * geometry.num_kv_heads
+        shape = (geometry.num_layers, 2, rows, geometry.head_dim)
+        with self._encode_lock:
+            self._order_after(self._encode_done, stream)
+            planes = self._pack_staging[: geometry.slot_size]
+            with torch.cuda.stream(stream):
+                planes.copy_(chunk)
+                chunk.view(self._scratch_dtype).view(
+                    geometry.num_layers, rows, 2, geometry.head_dim
+                ).copy_(planes.view(self._scratch_dtype).view(shape).transpose(1, 2))
+                self._encode_done = torch.cuda.Event()
+                self._encode_done.record(stream)
 
     def _physical_view(self, chunk: torch.Tensor) -> torch.Tensor:
         """View a raw uint8 chunk buffer in the codec's physical block order."""

@@ -440,3 +440,68 @@ def test_codec_round_trips_from_l2_after_l1_eviction(client) -> None:
             _assert_blocks_equal(layers, _blocks(i, 1), dst)
     finally:
         client.unregister_kv_cache(instance_id).result(timeout=_TIMEOUT)
+
+
+@gpu
+@pytest.mark.parametrize(
+    ("dtype", "instance_id"), [(torch.bfloat16, 7006), (torch.uint8, 7007)]
+)
+def test_codec_round_trips_through_engine_blocks(
+    client, dtype: torch.dtype, instance_id: int
+) -> None:
+    """Chunk-sized pages in one allocation store and retrieve bit-exact.
+
+    Such caches are packed from and decoded into the engine blocks directly;
+    a raw chunk and a partly skipped chunk exercise the fallbacks.
+    """
+    model = f"lossless-engine-{dtype}"
+    shape = (_LAYERS, 64, _CHUNK, _HEADS, 2 * _HEAD_SIZE)
+    generator = torch.Generator(device=torch_device_type).manual_seed(instance_id)
+    values = torch.randn(shape, generator=generator, device=torch_device_type)
+    alloc = (
+        values.to(torch.float8_e4m3fn).view(torch.uint8)
+        if dtype == torch.uint8
+        else values.to(dtype)
+    )
+    noise = torch.randint(
+        0,
+        256,
+        alloc[:, 3].view(torch.uint8).shape,
+        dtype=torch.uint8,
+        generator=generator,
+        device=torch_device_type,
+    )
+    alloc[:, 4].view(torch.uint8).copy_(noise)  # chunk 3 stays raw
+    layers = [alloc[layer] for layer in range(_LAYERS)]
+    keepalive: list = []
+    _register(client, instance_id, layers, model)
+    try:
+        num_chunks = 6
+        # Block 0 is the engine's null block, which stores are skipped for.
+        src_blocks = list(range(1, 1 + num_chunks))
+        _store(
+            client,
+            _cache_key(model, 1, num_chunks, "store"),
+            instance_id,
+            src_blocks,
+            keepalive,
+        )
+        torch_dev.synchronize()
+        time.sleep(1.0)  # records commit on the codec worker
+        key = _cache_key(model, 1, num_chunks, "retrieve")
+        assert _lookup(client, key) == num_chunks
+
+        dst = list(range(40, 40 + num_chunks))
+        alloc[:, dst] = 0
+        # Skips are page-granular: chunk 0 is skipped, while the page of the
+        # partly skipped chunk 1 is restored whole.
+        skip = _CHUNK + _CHUNK // 2
+        assert _retrieve(client, key, instance_id, dst, skip, keepalive)
+        torch_dev.synchronize()
+
+        src = alloc[:, src_blocks].view(torch.uint8)
+        out = alloc[:, dst].view(torch.uint8)
+        assert not out[:, 0].any()
+        assert torch.equal(out[:, 1:], src[:, 1:])
+    finally:
+        client.unregister_kv_cache(instance_id).result(timeout=_TIMEOUT)

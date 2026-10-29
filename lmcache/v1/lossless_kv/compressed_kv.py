@@ -6,6 +6,7 @@
 from dataclasses import dataclass
 from typing import Any
 import os
+import threading
 
 # Third Party
 from numpy.typing import NDArray
@@ -312,8 +313,40 @@ class OnlinePackedSlot:
     stored_length: int
 
 
+@dataclass(frozen=True)
+class _PackHostBuffers:
+    """Pinned host inputs and metadata outputs of one in-flight pack."""
+
+    block_ids: torch.Tensor
+    logical_slots: torch.Tensor
+    totals: torch.Tensor
+    raw_totals: torch.Tensor
+    overflow: torch.Tensor
+    symbol_bits: torch.Tensor
+
+
+@dataclass(frozen=True)
+class PendingPack:
+    """A pack enqueued by ``FusedOnlineKVPacker.launch_pack``.
+
+    Its staging records are complete once ``done`` has passed; pass it to
+    ``FusedOnlineKVPacker.collect`` exactly once to learn their spans.
+    """
+
+    logical_slots: tuple[int, ...]
+    slot_stride: int
+    done: torch.cuda.Event
+    host: _PackHostBuffers
+
+
 class FusedOnlineKVPacker:
-    """Encode live KV blocks directly into a CUDA store staging buffer."""
+    """Encode live KV blocks directly into a CUDA store staging buffer.
+
+    Async/thread-safety:
+        Every launch must use one CUDA stream, since launches share device
+        scratch ordered only by that stream. ``launch_pack`` and ``collect``
+        may run on different threads.
+    """
 
     def __init__(
         self,
@@ -407,26 +440,11 @@ class FusedOnlineKVPacker:
         ) = single_read_geometry
         max_tiles = (self._plane_scalars + self._tile_scalars - 1) // self._tile_scalars
         total_count = self._max_slots * self._num_planes
+        # Pinned host buffers of packs still in flight; one set per pack, so
+        # a pack's ids upload and metadata readback never race the next's.
+        self._host_lock = threading.Lock()
+        self._host_free = [self._new_host_buffers()]
         with torch.inference_mode(False):
-            self._host_block_ids = torch.empty(
-                self._max_slots, dtype=torch.int32, pin_memory=True
-            )
-            self._host_logical_slots = torch.empty(
-                self._max_slots, dtype=torch.int64, pin_memory=True
-            )
-            # Planning stays device-resident until the compact per-plane
-            # totals are known. The host only needs those totals to return
-            # variable-length spans; the fused compact stage serializes
-            # descriptors directly into each staging header.
-            self._host_totals = torch.empty(
-                total_count, dtype=torch.uint32, pin_memory=True
-            )
-            self._host_raw_totals = torch.empty(
-                total_count, dtype=torch.uint32, pin_memory=True
-            )
-            self._host_overflow = torch.empty(
-                self._max_slots, dtype=torch.uint32, pin_memory=True
-            )
             self._device_block_ids = torch.empty(
                 self._max_slots, dtype=torch.int32, device=self._device
             )
@@ -447,9 +465,6 @@ class FusedOnlineKVPacker:
             )
             self._device_slot_offsets = torch.empty(
                 self._max_slots, dtype=torch.int64, device=self._device
-            )
-            self._host_symbol_bits = torch.empty(
-                self._max_slots, dtype=torch.int32, pin_memory=True
             )
             self._device_symbol_bits = torch.empty(
                 self._max_slots, dtype=torch.int32, device=self._device
@@ -500,6 +515,53 @@ class FusedOnlineKVPacker:
 
         Returns:
             Actual mode, source offset, and stored length for every slot.
+
+        Async/thread-safety:
+            Waits for the pack on the host; see :meth:`launch_pack` to defer.
+        """
+        return self.collect(
+            self.launch_pack(
+                staging=staging,
+                block_ids=block_ids,
+                logical_slots=logical_slots,
+                slot_stride=slot_stride,
+                stream=stream,
+                valid_token_count=valid_token_count,
+            )
+        )
+
+    def launch_pack(
+        self,
+        *,
+        staging: torch.Tensor,
+        block_ids: list[int],
+        logical_slots: list[int],
+        slot_stride: int,
+        stream: torch.cuda.Stream,
+        valid_token_count: int | None = None,
+    ) -> PendingPack:
+        """Enqueue a pack of selected live blocks without waiting for it.
+
+        Args:
+            staging: CUDA byte buffer of at least ``len(block_ids) *
+                slot_stride`` bytes, 16-byte aligned, receiving the records
+                back to back; it must not be reused before ``collect``.
+            block_ids: Physical blocks in logical order.
+            logical_slots: Slot IDs written into record headers.
+            slot_stride: Raw bytes of one block.
+            stream: The packer's CUDA stream, ordered after the blocks'
+                producer.
+            valid_token_count: Optional valid token extent for a partial tail.
+
+        Returns:
+            The pending pack; ``collect`` returns its record spans.
+
+        Raises:
+            ValueError: If the arguments do not match the packer geometry.
+
+        Async/thread-safety:
+            Never synchronizes. The blocks may be reused once ``stream``
+            passes this call.
         """
         if not block_ids or len(block_ids) != len(logical_slots):
             raise ValueError("online packer block metadata is invalid")
@@ -522,20 +584,91 @@ class FusedOnlineKVPacker:
         )
         if not 0 < effective_valid_tokens <= slot_count * self._geometry.block_tokens:
             raise ValueError("online packer valid token extent is invalid")
-        # The fixed writer performs count, prefix construction, and payload
-        # emission on the TileLang stream, then compacts only the live payload
-        # bytes. The fixed envelope is internal scratch; transfer bytes and
-        # on-disk records remain variable-length.
-        return self._pack_fixed_into(
-            staging=staging,
-            block_ids=block_ids,
-            logical_slots=logical_slots,
+        with self._host_lock:
+            host = self._host_free.pop() if self._host_free else None
+        if host is None:
+            host = self._new_host_buffers()
+        try:
+            # The fixed writer performs count, prefix construction, and
+            # payload emission on the TileLang stream, then compacts only the
+            # live payload bytes. The fixed envelope is internal scratch;
+            # transfer bytes and on-disk records remain variable-length.
+            self._launch_fixed(
+                staging=staging,
+                block_ids=block_ids,
+                logical_slots=logical_slots,
+                slot_stride=slot_stride,
+                stream=stream,
+                valid_token_count=effective_valid_tokens,
+                host=host,
+            )
+            done = torch.cuda.Event()
+            done.record(stream)
+        except BaseException:
+            self._release_host_buffers(host)
+            raise
+        return PendingPack(
+            logical_slots=tuple(int(slot) for slot in logical_slots),
             slot_stride=slot_stride,
-            stream=stream,
-            valid_token_count=effective_valid_tokens,
+            done=done,
+            host=host,
         )
 
-    def _pack_fixed_into(
+    def collect(self, pending: PendingPack) -> list[OnlinePackedSlot]:
+        """Wait for a pending pack and return its record spans.
+
+        Args:
+            pending: A pack from :meth:`launch_pack`, collected only once.
+
+        Returns:
+            Packed slot metadata with raw mode for overflow records.
+            Compressed records retain their actual variable-length payloads
+            in the staging buffer; a raw record holds the block's planes
+            back to back.
+
+        Raises:
+            RuntimeError: If the device metadata is inconsistent.
+
+        Async/thread-safety:
+            Synchronizes on the pack's completion event, not the stream.
+        """
+        pending.done.synchronize()
+        try:
+            return self._plan_spans(pending)
+        finally:
+            self._release_host_buffers(pending.host)
+
+    def _new_host_buffers(self) -> _PackHostBuffers:
+        """Allocate pinned buffers for one in-flight pack of ``max_slots``."""
+        # Planning stays device-resident until the compact per-plane totals
+        # are known. The host only needs those totals to return
+        # variable-length spans; the fused compact stage serializes
+        # descriptors directly into each staging header.
+        rows = self._max_slots * self._num_planes
+        with torch.inference_mode(False):
+            return _PackHostBuffers(
+                block_ids=torch.empty(
+                    self._max_slots, dtype=torch.int32, pin_memory=True
+                ),
+                logical_slots=torch.empty(
+                    self._max_slots, dtype=torch.int64, pin_memory=True
+                ),
+                totals=torch.empty(rows, dtype=torch.uint32, pin_memory=True),
+                raw_totals=torch.empty(rows, dtype=torch.uint32, pin_memory=True),
+                overflow=torch.empty(
+                    self._max_slots, dtype=torch.uint32, pin_memory=True
+                ),
+                symbol_bits=torch.empty(
+                    self._max_slots, dtype=torch.int32, pin_memory=True
+                ),
+            )
+
+    def _release_host_buffers(self, host: _PackHostBuffers) -> None:
+        """Return one pack's pinned buffers for reuse."""
+        with self._host_lock:
+            self._host_free.append(host)
+
+    def _launch_fixed(
         self,
         *,
         staging: torch.Tensor,
@@ -544,8 +677,9 @@ class FusedOnlineKVPacker:
         slot_stride: int,
         stream: torch.cuda.Stream,
         valid_token_count: int,
-    ) -> list[OnlinePackedSlot]:
-        """Pack records through a fixed scratch envelope and compact them.
+        host: _PackHostBuffers,
+    ) -> None:
+        """Enqueue the fixed-scratch pack and its metadata readback.
 
         Args:
             staging: CUDA byte buffer receiving slot records.
@@ -554,24 +688,18 @@ class FusedOnlineKVPacker:
             slot_stride: Raw bytes reserved for one source slot.
             stream: CUDA stream ordering source reads and staging writes.
             valid_token_count: Number of valid prompt tokens in this batch.
-
-        Returns:
-            Packed slot metadata with raw mode for overflow records.  Compressed
-            records retain their actual variable-length payloads in ``staging``.
+            host: This pack's pinned buffers.
 
         Async/thread-safety:
-            Called under the store pipeline staging lock. The stream is
-            synchronized once after this method returns by the caller, after
-            the host has planned variable record spans.  Header serialization
-            is fused into the final TileLang compact launch.
+            Header serialization is fused into the final TileLang compact
+            launch; the host reads the metadata after the pack's event.
         """
         slot_count = len(block_ids)
-        max_tiles = (self._plane_scalars + self._tile_scalars - 1) // self._tile_scalars
         row_count = slot_count * self._num_planes
         with torch.cuda.device(self._device):
             # The fixed writer is intentionally isolated from the exported
             # staging allocation. Its scratch is preallocated for the largest
-            # launch, which ``pack_into`` already enforces.
+            # launch, which ``launch_pack`` already enforces.
             scratch_slot_stride = self._fixed_scratch_slot_stride
             scratch_plane_record_bytes = self._fixed_scratch_plane_record_bytes
             if (
@@ -582,9 +710,9 @@ class FusedOnlineKVPacker:
                 raise RuntimeError("single-read fixed scratch geometry is invalid")
             scratch = self._fixed_scratch[: slot_count * scratch_slot_stride]
 
-            host_ids = self._host_block_ids[:slot_count]
+            host_ids = host.block_ids[:slot_count]
             host_ids.copy_(torch.as_tensor(block_ids, dtype=torch.int32))
-            host_logical_slots = self._host_logical_slots[:slot_count]
+            host_logical_slots = host.logical_slots[:slot_count]
             host_logical_slots.copy_(torch.as_tensor(logical_slots, dtype=torch.int64))
             device_ids = self._device_block_ids[:slot_count]
             device_logical_slots = self._device_logical_slots[:slot_count]
@@ -635,14 +763,10 @@ class FusedOnlineKVPacker:
                     scratch_plane_record_bytes,
                     scratch_slot_stride,
                 )
-                self._host_totals[:row_count].copy_(device_totals, non_blocking=True)
-                self._host_raw_totals[:row_count].copy_(
-                    device_raw_totals, non_blocking=True
-                )
-                self._host_overflow[:slot_count].copy_(
-                    device_overflow, non_blocking=True
-                )
-                self._host_symbol_bits[:slot_count].copy_(
+                host.totals[:row_count].copy_(device_totals, non_blocking=True)
+                host.raw_totals[:row_count].copy_(device_raw_totals, non_blocking=True)
+                host.overflow[:slot_count].copy_(device_overflow, non_blocking=True)
+                host.symbol_bits[:slot_count].copy_(
                     device_symbol_bits, non_blocking=True
                 )
                 self._tilelang_store.compact(
@@ -666,70 +790,77 @@ class FusedOnlineKVPacker:
                     slot_stride,
                 )
 
-            # Totals and fallback flags are the only metadata needed by the
-            # host to return source spans.  The device has already laid out,
-            # compacted, and serialized all compressed headers by this point.
-            stream.synchronize()
-            overflow_host = self._host_overflow[:slot_count].numpy().copy()
-            totals_host = self._host_totals[:row_count].numpy()
-            raw_totals_host = self._host_raw_totals[:row_count].numpy()
-            symbol_bits_host = self._host_symbol_bits[:slot_count].numpy().copy()
-            compressed = overflow_host == 0
-            if not np.isin(symbol_bits_host[compressed], (3, 4, 5)).all():
-                raise RuntimeError("device returned invalid compressed symbol width")
-            # Rebuild the device layout in bulk from the completed pinned
-            # metadata. A Python loop over every slot/plane holds the GIL
-            # after each pack launch; array arithmetic leaves only the small
-            # per-slot IPC object construction in Python. Widen before any
-            # multiplication or reduction, since wire counts are uint32 but
-            # batch lengths and offsets are byte-addressed int64 values.
-            plane_totals = totals_host.reshape(slot_count, self._num_planes).astype(
-                np.int64
+    def _plan_spans(self, pending: PendingPack) -> list[OnlinePackedSlot]:
+        """Return the record spans of a completed pack from its metadata."""
+        # Totals and fallback flags are the only metadata needed by the host
+        # to return source spans. The device has already laid out, compacted,
+        # and serialized all compressed headers once the pack's event passed.
+        host = pending.host
+        logical_slots = pending.logical_slots
+        slot_stride = pending.slot_stride
+        slot_count = len(logical_slots)
+        row_count = slot_count * self._num_planes
+        max_tiles = (self._plane_scalars + self._tile_scalars - 1) // self._tile_scalars
+        overflow_host = host.overflow[:slot_count].numpy().copy()
+        totals_host = host.totals[:row_count].numpy()
+        raw_totals_host = host.raw_totals[:row_count].numpy()
+        symbol_bits_host = host.symbol_bits[:slot_count].numpy().copy()
+        compressed = overflow_host == 0
+        if not np.isin(symbol_bits_host[compressed], (3, 4, 5)).all():
+            raise RuntimeError("device returned invalid compressed symbol width")
+        # Rebuild the device layout in bulk from the completed pinned
+        # metadata. A Python loop over every slot/plane holds the GIL
+        # after each pack launch; array arithmetic leaves only the small
+        # per-slot IPC object construction in Python. Widen before any
+        # multiplication or reduction, since wire counts are uint32 but
+        # batch lengths and offsets are byte-addressed int64 values.
+        plane_totals = totals_host.reshape(slot_count, self._num_planes).astype(
+            np.int64
+        )
+        plane_raw_totals = raw_totals_host.reshape(slot_count, self._num_planes).astype(
+            np.int64
+        )
+        main_bits = np.where(symbol_bits_host == 4, 4, 3)
+        secondary_bits = np.where(symbol_bits_host == 5, 3, 4)
+        symbol_lengths = (self._plane_scalars * main_bits + 7) // 8
+        prefix_entries = prefix_table_bytes(max_tiles) // 8
+        prefix_lengths = np.where(symbol_bits_host == 4, 4, 8) * prefix_entries
+        escape_lengths = np.where(
+            symbol_bits_host[:, None] == 4,
+            plane_raw_totals,
+            (plane_totals * secondary_bits[:, None] + 7) // 8 + plane_raw_totals,
+        )
+        lengths = (
+            slot_header_bytes(self._num_planes)
+            + self._num_planes
+            * (
+                low_stream_bytes(self._plane_scalars, self._geometry.dtype_bytes)
+                + symbol_lengths
+                + prefix_lengths
             )
-            plane_raw_totals = raw_totals_host.reshape(
-                slot_count, self._num_planes
-            ).astype(np.int64)
-            main_bits = np.where(symbol_bits_host == 4, 4, 3)
-            secondary_bits = np.where(symbol_bits_host == 5, 3, 4)
-            symbol_lengths = (self._plane_scalars * main_bits + 7) // 8
-            prefix_entries = prefix_table_bytes(max_tiles) // 8
-            prefix_lengths = np.where(symbol_bits_host == 4, 4, 8) * prefix_entries
-            escape_lengths = np.where(
-                symbol_bits_host[:, None] == 4,
-                plane_raw_totals,
-                (plane_totals * secondary_bits[:, None] + 7) // 8 + plane_raw_totals,
-            )
-            lengths = (
-                slot_header_bytes(self._num_planes)
-                + self._num_planes
-                * (
-                    low_stream_bytes(self._plane_scalars, self._geometry.dtype_bytes)
-                    + symbol_lengths
-                    + prefix_lengths
-                )
-                + escape_lengths.sum(axis=1)
-            )
-            lengths = (lengths + IO_ALIGNMENT - 1) // IO_ALIGNMENT * IO_ALIGNMENT
-            # Overflow rows have no compressed selector contract and must
-            # retain their complete raw stride regardless of count contents.
-            lengths = np.where(compressed, lengths, slot_stride)
-            if np.any(lengths > slot_stride):
-                raise RuntimeError("device and host fixed layout planners disagree")
-            plans = [
-                (SlotMode.COMPRESSED if is_compressed else SlotMode.RAW, int(length))
-                for is_compressed, length in zip(compressed, lengths, strict=True)
-            ]
+            + escape_lengths.sum(axis=1)
+        )
+        lengths = (lengths + IO_ALIGNMENT - 1) // IO_ALIGNMENT * IO_ALIGNMENT
+        # Overflow rows have no compressed selector contract and must
+        # retain their complete raw stride regardless of count contents.
+        lengths = np.where(compressed, lengths, slot_stride)
+        if np.any(lengths > slot_stride):
+            raise RuntimeError("device and host fixed layout planners disagree")
+        plans = [
+            (SlotMode.COMPRESSED if is_compressed else SlotMode.RAW, int(length))
+            for is_compressed, length in zip(compressed, lengths, strict=True)
+        ]
 
-            # Recompute the compact slot bases for the returned IPC spans. The
-            # device planner uses the same slot-major scan; checking capacity
-            # here keeps malformed geometry from exposing an out-of-bounds
-            # mapping even though payload compaction has already completed.
-            slot_bases: NDArray[np.int64] = np.empty(slot_count, dtype=np.int64)
-            slot_bases[0] = 0
-            np.cumsum(lengths[:-1], out=slot_bases[1:])
-            staging_cursor = int(lengths.sum())
-            if staging_cursor > slot_count * slot_stride:
-                raise RuntimeError("online packed staging layout exceeds capacity")
+        # Recompute the compact slot bases for the returned IPC spans. The
+        # device planner uses the same slot-major scan; checking capacity
+        # here keeps malformed geometry from exposing an out-of-bounds
+        # mapping even though payload compaction has already completed.
+        slot_bases: NDArray[np.int64] = np.empty(slot_count, dtype=np.int64)
+        slot_bases[0] = 0
+        np.cumsum(lengths[:-1], out=slot_bases[1:])
+        staging_cursor = int(lengths.sum())
+        if staging_cursor > slot_count * slot_stride:
+            raise RuntimeError("online packed staging layout exceeds capacity")
         compressed_count = sum(mode is SlotMode.COMPRESSED for mode, _ in plans)
         packed_bytes = sum(
             length for mode, length in plans if mode is SlotMode.COMPRESSED

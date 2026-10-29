@@ -9,14 +9,16 @@ A record's length is known only after encoding, and reading it back
 synchronizes the GPU. Every store and retrieve of one GPU runs on one handler
 thread, so encoding there would make each retrieve wait behind the host
 synchronizations of earlier stores. ``RecordStoreWorker`` moves that work to
-its own thread and CUDA stream: the handler only gathers the chunks into the
-worker's buffer pool and returns; the worker encodes, reserves one L1 object
-per record, copies it to host and commits it; FragPack block blobs
-(``fragpack_blob_transfer``) are stored by the same worker. Retrieves copy
-each record into the codec's record buffers, decode with launch metadata
-uploaded once per batch shape, and scatter the raw chunks into the paged KV
-cache straight from the decoder's output, all on the context stream without
-host synchronization.
+its own thread and CUDA stream: the handler only enqueues, then returns. When
+each engine block holds one chunk, it packs a batch's records straight from
+the blocks into one buffer of the worker's pool; otherwise it gathers the
+chunks into pool buffers and the worker encodes them. The worker reads the
+record lengths, reserves one L1 object per record, copies it to host and
+commits it; FragPack block blobs (``fragpack_blob_transfer``) are stored by
+the same worker. Retrieves copy each record into the codec's record buffers
+and decode with launch metadata uploaded once per batch shape, straight into
+the engine blocks where possible and otherwise into scratch scattered into
+the paged KV cache, all on the context stream without host synchronization.
 """
 
 # Standard
@@ -472,14 +474,17 @@ class LosslessKVTransfer:
         self._storage = storage_manager
         self._codec = create_chunk_codec(cache_context, config)
         self._width = config.batch_size
-        device = cache_context.device
+        self._engine_direct = self._attach_engine_cache()
+        # Packing from engine blocks writes a batch's records back to back,
+        # so each pool slot then holds one whole batch.
+        self._engine_store = self._engine_direct and self._codec.engine_store
+        pool_chunks = max(self._width, config.store_pool_chunks)
         self._store_worker = RecordStoreWorker(
             storage_manager,
-            device,
-            max(self._width, config.store_pool_chunks),
-            self._codec.raw_bytes,
+            cache_context.device,
+            pool_chunks // self._width if self._engine_store else pool_chunks,
+            self._codec.raw_bytes * (self._width if self._engine_store else 1),
         )
-        self._engine_direct = self._attach_engine_cache()
 
     def layout_desc(self, num_tokens: int) -> MemoryLayoutDesc:
         """Return the registered object layout: a bound on stored records.
@@ -499,21 +504,26 @@ class LosslessKVTransfer:
     def submit_store(
         self,
         block_ids_gpu: list[torch.Tensor],
+        block_ids_host: list[list[int]],
         obj_keys: list[ObjectKey],
         skip_mask: Sequence[bool],
         tally: StoreTally,
     ) -> list[bool]:
-        """Gather chunks into the store worker's pool and queue them.
+        """Encode or gather chunks into the store worker's pool and queue them.
 
         Keys already resident in L1 are skipped up front, as ``reserve_write``
         would refuse them, so they cost no gather or encode. The remaining
-        chunks are gathered a batch at a time; each batch is handed to the
-        worker with an event recorded after its gather, so the caller's
-        completion event (recorded later on the same stream) already lets the
-        engine reuse the blocks.
+        chunks go a batch at a time: when the engine's blocks each hold one
+        chunk, the batch's records are packed straight from those blocks into
+        one pool slot; otherwise the chunks are gathered into pool slots for
+        the worker to encode. Each batch is handed to the worker with an
+        event recorded after its pack or gather, so the caller's completion
+        event (recorded later on the same stream) already lets the engine
+        reuse the blocks.
 
         Args:
             block_ids_gpu (list[torch.Tensor]): Staged GPU block IDs.
+            block_ids_host (list[list[int]]): The same block IDs on the host.
             obj_keys (list[ObjectKey]): Keys of the chunks, in token order.
             skip_mask (Sequence[bool]): Chunks carrying no valid KV.
             tally (StoreTally): Accounts each submitted batch.
@@ -529,9 +539,22 @@ class LosslessKVTransfer:
         in_l1 = self._storage.l1_contains(obj_keys)
         todo = [i for i in range(len(obj_keys)) if not (skip_mask[i] or in_l1[i])]
         queued = [False] * len(obj_keys)
-        width = min(self._width, worker.num_slots)
+        width = (
+            self._width if self._engine_store else min(self._width, worker.num_slots)
+        )
         for window_start in range(0, len(todo), width):
             window = todo[window_start : window_start + width]
+            if self._engine_store:
+                job = self._pack_engine_window(
+                    [block_ids_host[0][i] for i in window],
+                    [obj_keys[i] for i in window],
+                    tally,
+                )
+                tally.add_batch()
+                worker.submit(job)
+                for i in window:
+                    queued[i] = True
+                continue
             slots = worker.acquire(len(window))
             try:
                 # Gather each contiguous run of chunks with one copy.
@@ -671,6 +694,34 @@ class LosslessKVTransfer:
         self._codec.attach_engine_cache(view)
         logger.info("Lossless KV retrieve decodes straight into engine blocks")
         return True
+
+    def _pack_engine_window(
+        self, blocks: list[int], keys: list[ObjectKey], tally: StoreTally
+    ) -> RecordStoreJob:
+        """Pack one batch from engine blocks into a pool slot; return its job."""
+        worker = self._store_worker
+        stream = self._cache_context.stream
+        (slot,) = worker.acquire(1)
+        try:
+            staging = worker.buffer(slot)
+            pending = self._codec.encode_engine_blocks(blocks, staging, stream)
+            ready = torch.cuda.Event()
+            ready.record(stream)
+        except BaseException:
+            worker.release([slot])
+            raise
+
+        def records(buffers: list[torch.Tensor]) -> list[torch.Tensor | None]:
+            stream = torch.cuda.current_stream()
+            return list(self._codec.engine_records(pending, buffers[0], stream))
+
+        return RecordStoreJob(
+            keys=keys,
+            slots=[slot],
+            ready=ready,
+            records=records,
+            on_done=tally.batch_done,
+        )
 
     def _encode(self, chunks: list[torch.Tensor]) -> list[torch.Tensor | None]:
         """Encode chunks in place on the current stream; return the records."""

@@ -868,14 +868,18 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                     obj_keys = obj_keys_per_obj_group[obj_group_id]
                     skip_mask = skipped_chunks[obj_group_id]
                     if lossless_kv is not None and tally is not None:
-                        codec_queued = lossless_kv.submit_store(
-                            block_ids_per_group_gpu
-                            if isinstance(lossless_kv, LosslessKVTransfer)
-                            else gpu_block_ids,
-                            obj_keys,
-                            skip_mask,
-                            tally,
-                        )
+                        if isinstance(lossless_kv, LosslessKVTransfer):
+                            codec_queued = lossless_kv.submit_store(
+                                block_ids_per_group_gpu,
+                                gpu_block_ids,
+                                obj_keys,
+                                skip_mask,
+                                tally,
+                            )
+                        else:
+                            codec_queued = lossless_kv.submit_store(
+                                gpu_block_ids, obj_keys, skip_mask, tally
+                            )
                         continue
                     keys_to_reserve = [
                         k for i, k in enumerate(obj_keys) if not skip_mask[i]
