@@ -214,9 +214,14 @@ class LosslessKVConfig:
     """Chunks encoded or decoded per codec call. Encoding reads record
     lengths back once per batch, so wider batches mean fewer host syncs."""
 
-    store_pool_chunks: int | None = None
-    """Raw chunk buffers gathered ahead of the encoder; None means two
-    batches, so one batch is gathered while the previous one encodes."""
+    store_pool_chunks: int = 128
+    """Raw chunk buffers gathered ahead of the encoder (at least one batch).
+
+    A batch is encoded only once the engine step that produced its KV has
+    finished on the GPU, and the GPU handler thread waits for a free buffer
+    when the pool is full, delaying every store and retrieve queued behind
+    it. The default holds two steps of vLLM's default 8192-token budget in
+    128-token chunks, so a step's stores never wait for the previous step."""
 
     def __post_init__(self) -> None:
         """Validate the codec options.
@@ -227,7 +232,7 @@ class LosslessKVConfig:
         """
         if self.batch_size < 1:
             raise ValueError(f"lossless KV batch must be >= 1; got {self.batch_size}")
-        if self.store_pool_chunks is not None and self.store_pool_chunks < 1:
+        if self.store_pool_chunks < 1:
             raise ValueError(
                 "lossless KV store pool must be >= 1 chunk; "
                 f"got {self.store_pool_chunks}"
@@ -668,8 +673,8 @@ def add_mp_server_args(
     lossless_group.add_argument(
         "--lossless-kv-store-pool",
         type=int,
-        default=None,
-        help="Raw chunk buffers gathered ahead of the encoder. Default is two batches.",
+        default=LosslessKVConfig.store_pool_chunks,
+        help="Raw chunk buffers gathered ahead of the encoder (default: %(default)s).",
     )
     return parser
 

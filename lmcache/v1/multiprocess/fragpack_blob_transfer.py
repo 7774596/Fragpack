@@ -149,7 +149,7 @@ class FragPackBlobTransfer:
         self._store_worker = RecordStoreWorker(
             storage_manager,
             device,
-            max(self._width, config.store_pool_chunks or 2 * self._width),
+            max(self._width, config.store_pool_chunks),
             self._slot_bytes,
         )
         with torch.cuda.device(device):
