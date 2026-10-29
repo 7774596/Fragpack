@@ -46,11 +46,12 @@ FP8 E4M3 records (:data:`FP8`) use the same kernel order with one byte per
 scalar. The coded symbol is the byte's sign and exponent, ``byte & 0xF8``, so
 table entries keep their low three bits clear and a decoded symbol ORs with the
 mantissa. The 3-bit mantissas replace the low bytes: a 6 KiB stream packed
-exactly like the symbol words (nibble ``j`` of word ``k`` holds the mantissa
-of scalar ``8 k + j``, top bits the fourth scalar), so the dense part is 12
-KiB. The variable region is unchanged and capped at ``FP8.var_cap``; a raw
-FP8 record is 16 KiB with thread ``t``'s 8-byte word ``st`` at ``8 (256 st +
-t)``.
+like the symbol words with each 8-scalar run interleaved (nibble ``2 e`` of
+the run's word holds scalar ``e``'s mantissa and nibble ``2 e + 1`` scalar
+``4 + e``'s, so each half's four mantissas mask out as bytes), so the dense
+part is 12 KiB. The variable region is unchanged and capped at
+``FP8.var_cap``; a raw FP8 record is 16 KiB with thread ``t``'s 8-byte word
+``st`` at ``8 (256 st + t)``.
 
 FP8 symbols are coded per channel: a scalar in head dim ``d`` codes the symbol
 of its byte with the exponent field lowered by ``offset[d]`` mod 16
@@ -176,6 +177,10 @@ def _kernel_order(kv: int) -> NDArray[np.int64]:
 
 
 _ORDER = (_kernel_order(0), _kernel_order(1))
+# FP8 mantissa interleave within each 8-scalar run: the scalar held by nibble
+# ``n`` and the nibble holding scalar ``e``.
+_MANTISSA_SCALARS = np.array([0, 4, 1, 5, 2, 6, 3, 7])
+_MANTISSA_NIBBLES = np.argsort(_MANTISSA_SCALARS)
 
 
 def calibrate_table(
@@ -344,7 +349,7 @@ def encode_record(
     values = values[_ORDER[kv]]
     if fmt.fp8:
         high = exponent_shift(values, _channel_offsets(offset, kv)) & FP8_SYMBOL_MASK
-        low = _pack_codes(values & 7)
+        low = _pack_codes((values & 7).reshape(-1, 8)[:, _MANTISSA_SCALARS])
     else:
         high = (values >> 8).astype(np.uint8)
         low = (values & 0xFF).astype(np.uint8)
@@ -421,7 +426,7 @@ def decode_record(
     if fp8:
         low = _unpack_codes(
             _thread_major(record[: fmt.low_bytes], "<u4", SYMBOL_CHUNKS)
-        )
+        ).reshape(-1, 8)[:, _MANTISSA_NIBBLES].reshape(-1)
     else:
         low = _thread_major(record[: fmt.low_bytes], np.uint8, LOW_CHUNKS).astype(
             np.uint16

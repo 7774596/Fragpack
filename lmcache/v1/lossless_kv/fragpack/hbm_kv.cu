@@ -456,7 +456,9 @@ __global__ void __launch_bounds__(kThreads) encode_kernel(Store s, int layer, in
       const uint32_t val = word_scalar<F8>(wd[st], e);
       const int r = rank_s[scalar_symbol<F8>(val, offset(st, e))];
       pack(sym, sc, r < kPrimaryDirect ? r : kPrimaryDirect);
-      if constexpr (F8) pack(man, sc, val & 7u);
+      // Mantissa of scalar e sits at nibble 2 e (e < 4) or 2 (e - 4) + 1, so
+      // decode reads each half's four mantissas with one mask.
+      if constexpr (F8) pack(man, (sc & ~7) | (e < 4 ? 2 * e : 2 * e - 7), val & 7u);
       if (r >= kPrimaryDirect) emask |= 1ull << sc;
       if (r >= kTableEntries) rmask |= 1ull << sc;
     }

@@ -87,18 +87,25 @@ __device__ __forceinline__ uint32_t ext_lookup(const uint4& sl, uint32_t n4) {
   return __byte_perm(va, vb, ((n4 >> 1) & 0x4444u) | 0x3210u);
 }
 
-// Four FP8 E4M3 bytes (scalars 0..3) to two f16x2 words, exactly.
+// Four FP8 E4M3 bytes (scalars 0..3) to two f16x2 words, exactly. The halves
+// go to cvt as 16-bit register halves, so no shift extracts the high pair.
 __device__ __forceinline__ void fp8x4_to_f16(uint32_t v, uint32_t* out) {
-  const __half2_raw lo = __nv_cvt_fp8x2_to_halfraw2((__nv_fp8x2_storage_t)(v & 0xffffu), __NV_E4M3);
-  const __half2_raw hi = __nv_cvt_fp8x2_to_halfraw2((__nv_fp8x2_storage_t)(v >> 16), __NV_E4M3);
-  out[0] = (uint32_t)lo.x | ((uint32_t)lo.y << 16);
-  out[1] = (uint32_t)hi.x | ((uint32_t)hi.y << 16);
+  asm("{\n.reg .b16 lo, hi;\n"
+      "mov.b32 {lo, hi}, %2;\n"
+      "cvt.rn.f16x2.e4m3x2 %0, lo;\n"
+      "cvt.rn.f16x2.e4m3x2 %1, hi;\n}"
+      : "=r"(out[0]), "=r"(out[1]) : "r"(v));
 }
 
-// Raises the exponent fields of four FP8 symbols by ``o`` (per byte, the
-// offset << 3). Bytes cannot carry: 0x78 + 0x78 < 0x100.
-__device__ __forceinline__ uint32_t raise_exp(uint32_t x, uint32_t o) {
-  return (x & 0x80808080u) | (((x & 0x78787878u) + o) & 0x78787878u);
+// Raises the exponent fields of four FP8 symbols ``x`` by ``o`` (per byte, the
+// offset << 3) mod 16 and adds the mantissas ``m`` (per byte, 0..7). The sum
+// stays inside its byte (0x78 + 0x78 + 7 < 0x100); its bit 7 (the exponent
+// carry) is replaced by the symbol's sign.
+__device__ __forceinline__ uint32_t raise_exp(uint32_t x, uint32_t o, uint32_t m) {
+  const uint32_t sum = (x & 0x78787878u) + o + m;
+  uint32_t r;  // bit select: x where 0x80808080, else sum
+  asm("lop3.b32 %0, %1, %2, %3, 0xe4;" : "=r"(r) : "r"(x), "r"(sum), "n"(0x80808080u));
+  return r;
 }
 
 // Pre-shifted FP8 exponent offsets of one thread's scalars (attn_page kernel
@@ -258,12 +265,10 @@ __device__ __forceinline__ void decode_rec(const uint8_t* rec, int vlen, uint32_
       hb = prmt(hb, prmt(v0, v1, rank >> 16), (e >> 17) + 0x3210u);
       uint32_t bf[4];
       if constexpr (F8) {
-        ha = raise_exp(ha, kv == 0 ? xo.k[4 * gi + k] : xo.va);
-        hb = raise_exp(hb, kv == 0 ? xo.k[4 * gi + k] : xo.vb);
-        // Mantissa nibble j becomes byte j via the identity table.
-        const uint32_t mk = m[k] & 0x77777777u;
-        fp8x4_to_f16(ha | prmt(0x03020100u, 0x07060504u, mk), bf);
-        fp8x4_to_f16(hb | prmt(0x03020100u, 0x07060504u, mk >> 16), bf + 2);
+        // Even nibbles hold scalars 0..3's mantissas, odd nibbles 4..7's.
+        fp8x4_to_f16(raise_exp(ha, kv == 0 ? xo.k[4 * gi + k] : xo.va, m[k] & 0x07070707u), bf);
+        fp8x4_to_f16(raise_exp(hb, kv == 0 ? xo.k[4 * gi + k] : xo.vb,
+                               (m[k] >> 4) & 0x07070707u), bf + 2);
       } else {
         const uint32_t la = u4get(lo[2 * gi + (k >> 1)], (2 * k) & 3);
         const uint32_t lb = u4get(lo[2 * gi + (k >> 1)], (2 * k + 1) & 3);
