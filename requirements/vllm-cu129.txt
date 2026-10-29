@@ -1,0 +1,11 @@
+# Reference serving environment: CPython 3.10, Linux x86_64, CUDA Toolkit 12.9.
+# Install this file before installing FragPack. The codec reference tests do
+# not require the serving stack. CUDA wheels are selected explicitly.
+--extra-index-url https://download.pytorch.org/whl/cu129
+vllm @ https://github.com/vllm-project/vllm/releases/download/v0.30.0/vllm-0.30.0%2Bcu129-cp38-abi3-manylinux_2_28_x86_64.whl
+torch==2.13.0+cu129
+triton==3.7.1
+flashinfer-python==0.6.18.post1
+transformers==5.19.0
+numpy==2.2.6
+ninja==1.13.2

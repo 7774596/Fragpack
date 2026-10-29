@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fragpack"
+version = "0.1.0"
+description = "Lossless compressed KV storage and fused decode attention"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = ["numpy>=1.24,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "ruff==0.15.10", "build>=1.2"]
+
+[project.entry-points."vllm.general_plugins"]
+fragpack = "fragpack.integrations.vllm.plugin:register"
+
+[tool.setuptools.packages.find]
+include = ["fragpack*"]
+
+[tool.setuptools.package-data]
+"fragpack.ops" = ["*.cu", "*.cuh", "*.cpp"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "SLF", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fragpack"]
+force-sort-within-sections = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "gpu: explicitly selected CUDA tests requiring an exclusively allocated SM90 GPU",
+    "integration: explicitly selected real vLLM or CUDA integration tests",
+    "slow: extended correctness or performance checks",
+]
