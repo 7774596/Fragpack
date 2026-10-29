@@ -1191,13 +1191,17 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                     # None-pad the skipped prefix so block-id slicing is unchanged.
                     memory_objs: list[MemoryObj | None] = [None] * skip + window_objs
                     if lossless_kv is not None:
-                        lossless_kv.retrieve(
-                            block_ids_per_group_gpu
-                            if isinstance(lossless_kv, LosslessKVTransfer)
-                            else gpu_block_ids,
-                            memory_objs,
-                            skip_first_n_tokens,
-                        )
+                        if isinstance(lossless_kv, LosslessKVTransfer):
+                            lossless_kv.retrieve(
+                                block_ids_per_group_gpu,
+                                gpu_block_ids,
+                                memory_objs,
+                                skip_first_n_tokens,
+                            )
+                        else:
+                            lossless_kv.retrieve(
+                                gpu_block_ids, memory_objs, skip_first_n_tokens
+                            )
                         prefetched_keys.extend(in_window_keys)
                         continue
                     transfer_kv_per_object_group(

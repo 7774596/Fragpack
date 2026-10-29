@@ -26,7 +26,7 @@ from lmcache.v1.lossless_kv.format import (
     prefix_table_bytes,
     slot_header_bytes,
 )
-from lmcache.v1.lossless_kv.kv_layout import physical_kv_view
+from lmcache.v1.lossless_kv.kv_layout import kernel_kv_view, kv_is_layer_major
 
 logger = init_logger(__name__)
 
@@ -62,11 +62,15 @@ def kv_dtype_bytes(kv_cache: torch.Tensor) -> int:
 
 
 def _kv_bits(kv_cache: torch.Tensor) -> torch.Tensor:
-    """Return KV bits as the physical ``[blocks, layers, rows, 2, dim]``."""
-    physical = physical_kv_view(kv_cache)
-    num_blocks, num_layers, tokens, heads, _, head_dim = physical.shape
+    """Return KV bits in the kernels' physical shape.
+
+    That is ``[blocks, layers, rows, 2, dim]`` for a block-major cache and
+    ``[layers, blocks, rows, 2, dim]`` for a layer-major one.
+    """
+    physical = kernel_kv_view(kv_cache)
+    outer, inner, tokens, heads, _, head_dim = physical.shape
     bits = torch.uint8 if kv_dtype_bytes(kv_cache) == 1 else torch.uint16
-    return physical.view(bits).view(num_blocks, num_layers, tokens * heads, 2, head_dim)
+    return physical.view(bits).view(outer, inner, tokens * heads, 2, head_dim)
 
 
 def _fixed_envelope_geometry(
@@ -178,6 +182,7 @@ def _warm_tilelang_codec(
         head_dim=head_dim,
         tile_scalars=tile_scalars,
         fp8=fp8,
+        layer_major=kv_is_layer_major(kv_cache),
     )
     loads = tuple(
         compile_load_kernel(
@@ -189,6 +194,7 @@ def _warm_tilelang_codec(
             staging_bytes=int(kv_cache[0].nbytes),
             fanout=fanout,
             fp8=fp8,
+            layer_major=kv_is_layer_major(kv_cache),
         )
         for fanout in (False, True)
     )
@@ -365,6 +371,7 @@ class FusedOnlineKVPacker:
             head_dim=self._geometry.head_dim,
             tile_scalars=self._tile_scalars,
             fp8=dtype_bytes == 1,
+            layer_major=kv_is_layer_major(kv_cache),
         )
         # Store uses the TileLang bundle exclusively. Raw fallback records are
         # emitted by the compact stage when a packed record overflows.
@@ -765,11 +772,13 @@ class KVRestorePlan:
         kernel: Already warmed singleton or fanout TileLang kernel.
         staging: CUDA byte tensor holding the records at launch time.
         offsets: Device offsets of the deduplicated source records.
-        blocks: Device destination block IDs, in source-major CSR order.
+        blocks: Device int32 destination block IDs, in source-major CSR
+            order; None for a plan whose blocks are given to each ``submit``.
         destination_offsets: Absolute CSR indices into ``blocks``.
         modes: Device raw/packed tags, one per source.
         codebooks: Fixed device codebooks.
         destination: Registered KV tensor in the kernel's bitwise view.
+        num_planes: K and V planes of one block (twice the layers).
 
     Async/thread-safety:
         All metadata is uploaded once when the plan is built and never
@@ -785,11 +794,12 @@ class KVRestorePlan:
         kernel: Any,
         staging: torch.Tensor,
         offsets: torch.Tensor,
-        blocks: torch.Tensor,
+        blocks: torch.Tensor | None,
         destination_offsets: torch.Tensor,
         modes: torch.Tensor,
         codebooks: torch.Tensor,
         destination: torch.Tensor,
+        num_planes: int,
     ) -> None:
         self._kernel = kernel
         self._staging = staging
@@ -800,27 +810,61 @@ class KVRestorePlan:
         self._modes = modes
         self._codebooks = codebooks
         self._destination = destination
-        # Destination bits are [blocks, layers, rows, K/V, dim].
-        self._num_planes = 2 * int(destination.shape[1])
+        self._num_planes = num_planes
+        self._destination_count = int(destination_offsets.numel()) - 1
 
     @property
     def destination_count(self) -> int:
         """Return the destination blocks this plan restores."""
-        return self._blocks.numel()
+        return self._destination_count
 
-    def submit(self, stream: torch.cuda.Stream) -> None:
+    def without_blocks(self) -> "KVRestorePlan":
+        """Return this launch with destination blocks given per ``submit``."""
+        return KVRestorePlan(
+            kernel=self._kernel,
+            staging=self._staging,
+            offsets=self._offsets,
+            blocks=None,
+            destination_offsets=self._destination_offsets,
+            modes=self._modes,
+            codebooks=self._codebooks,
+            destination=self._destination,
+            num_planes=self._num_planes,
+        )
+
+    def submit(
+        self, stream: torch.cuda.Stream, blocks: torch.Tensor | None = None
+    ) -> None:
         """Enqueue the decode of every source record on ``stream``.
 
         Args:
             stream (torch.cuda.Stream): Stream ordered after the staging
                 writes; does not wait for the GPU.
+            blocks (torch.Tensor | None): Contiguous device int32 destination
+                block IDs, ``destination_count`` of them in CSR order; must
+                be given exactly when the plan was built without blocks.
+                Ready on ``stream`` and kept alive until the launch runs.
+
+        Raises:
+            ValueError: If ``blocks`` is missing, unexpected or malformed.
         """
+        if (blocks is None) != (self._blocks is not None):
+            raise ValueError("restore plan blocks must be given exactly once")
+        if blocks is None:
+            blocks = self._blocks
+        elif (
+            blocks.dtype is not torch.int32
+            or blocks.device != self._staging.device
+            or blocks.numel() != self._destination_count
+            or not blocks.is_contiguous()
+        ):
+            raise ValueError("restore plan blocks do not match the plan")
         with torch.cuda.stream(stream):
             self._kernel(
                 self._staging,
                 self._staging_words,
                 self._offsets,
-                self._blocks,
+                blocks,
                 self._destination_offsets,
                 self._modes,
                 self._codebooks,
@@ -886,6 +930,7 @@ class FusedCompressedKVDecoder:
                 staging_bytes=self._staging_bytes,
                 fanout=fanout,
                 fp8=fp8,
+                layer_major=kv_is_layer_major(kv_cache),
             )
             for fanout in (False, True)
         )
@@ -988,4 +1033,43 @@ class FusedCompressedKVDecoder:
             modes=source_mode_tensor,
             codebooks=self._codebooks,
             destination=self._kv_bits,
+            num_planes=self._num_planes,
         )
+
+    def plan_dynamic(
+        self,
+        *,
+        staging: torch.Tensor,
+        staging_offsets: list[int],
+        modes: list[int],
+    ) -> KVRestorePlan:
+        """Build a reusable restore whose destination blocks vary per launch.
+
+        Each staged record is decoded into one block, named by the
+        ``blocks`` tensor given to every :meth:`KVRestorePlan.submit`.
+
+        Args:
+            staging: CUDA byte tensor of exactly the compiled staging size.
+            staging_offsets: Distinct start of each record in ``staging``.
+            modes: Matching zero/raw or one/packed record modes.
+
+        Returns:
+            KVRestorePlan: The immutable launch, without blocks.
+
+        Raises:
+            ValueError: On invalid lengths, staging, offsets or modes.
+
+        Async/thread-safety:
+            Synchronizes a private upload stream (not the caller's), so build
+            plans off the hot path and reuse them.
+        """
+        if len(set(staging_offsets)) != len(staging_offsets):
+            raise ValueError("dynamic restore records must be distinct")
+        # Validate as a fixed plan with placeholder blocks, then drop them.
+        fixed = self.plan(
+            staging=staging,
+            staging_offsets=staging_offsets,
+            block_ids=list(range(len(staging_offsets))),
+            modes=modes,
+        )
+        return fixed.without_blocks()

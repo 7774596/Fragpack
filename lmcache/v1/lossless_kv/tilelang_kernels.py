@@ -12,10 +12,12 @@ single kernel because its record offsets and lengths are already known when
 the server returns a read plan.
 
 Records are plane-major: plane ``2 * layer + kv`` holds one layer's K or V
-scalars in ``[tokens, heads, head_dim]`` order. The kernels address vLLM's
-block-outermost cache, whose physical block shape is
-``[layers, tokens * heads, 2, head_dim]``, so K and V of one head are adjacent
-in memory while the record keeps them in separate planes.
+scalars in ``[tokens, heads, head_dim]`` order. The kernels address a KV
+cache whose block holds ``[layers, tokens * heads, 2, head_dim]``, so K and V
+of one head are adjacent in memory while the record keeps them in separate
+planes. The cache is either block-outermost (vLLM's cross-layer layout and
+the codec's own scratch) or layer-outermost (vLLM's per-layer tensors laid
+back to back in one allocation), chosen when a kernel is compiled.
 """
 
 # Do not enable ``from __future__ import annotations``. TileLang inspects the
@@ -81,15 +83,39 @@ class TileLangStoreKernels:
     compact: Any
 
 
-_STORE_CACHE: dict[tuple[int, int, int, int, int, int, bool], TileLangStoreKernels] = {}
-_LOAD_CACHE: dict[tuple[int, int, int, int, int, bool, bool], Any] = {}
+_STORE_CACHE: dict[
+    tuple[int, int, int, int, int, int, bool, bool], TileLangStoreKernels
+] = {}
+_LOAD_CACHE: dict[tuple[int, int, int, int, int, bool, bool, bool], Any] = {}
 
 
 def _vllm_kv_shape(
-    num_blocks: int, num_planes: int, plane_scalars: int, head_dim: int
+    num_blocks: int,
+    num_planes: int,
+    plane_scalars: int,
+    head_dim: int,
+    layer_major: bool,
 ) -> tuple[int, int, int, int, int]:
-    """Return the physical ``[blocks, layers, rows, 2, head_dim]`` KV shape."""
-    return (num_blocks, num_planes // 2, plane_scalars // head_dim, 2, head_dim)
+    """Return the physical KV shape the kernels address.
+
+    Block-major caches (vLLM's cross-layer layout) are ``[blocks, layers,
+    rows, 2, head_dim]``; layer-major caches (one ``[blocks, rows, 2,
+    head_dim]`` tensor per layer, all layers in one allocation) are
+    ``[layers, blocks, rows, 2, head_dim]``.
+    """
+    rows = plane_scalars // head_dim
+    if layer_major:
+        return (num_planes // 2, num_blocks, rows, 2, head_dim)
+    return (num_blocks, num_planes // 2, rows, 2, head_dim)
+
+
+def _kv_scalar_index(
+    block_id: Any, layer: Any, row: Any, kv: Any, dim: Any, layer_major: bool
+) -> tuple[Any, Any, Any, Any, Any]:
+    """Return the index of one scalar in the ``_vllm_kv_shape`` tensor."""
+    if layer_major:
+        return (layer, block_id, row, kv, dim)
+    return (block_id, layer, row, kv, dim)
 
 
 def _kv_dtype(fp8: bool) -> str:
@@ -252,18 +278,35 @@ def _record_word(words: Any, word_base: Any, lead: Any, offset: Any, last: Any) 
     )
 
 
+def _kv_block_layer(
+    block_id: Any, layer: Any, num_blocks: int, num_planes: int, layer_major: bool
+) -> Any:
+    """Return the int64 index of one block's layer in units of a plane pair."""
+    if layer_major:
+        return T.cast(layer, T.int64) * num_blocks + T.cast(block_id, T.int64)
+    return T.cast(block_id, T.int64) * (num_planes // 2) + layer
+
+
 def _kv_vector_index(
-    block_id: Any, plane: Any, scalar: Any, num_planes: int, rows: int, head_dim: int
+    block_id: Any,
+    plane: Any,
+    scalar: Any,
+    num_blocks: int,
+    num_planes: int,
+    rows: int,
+    head_dim: int,
+    layer_major: bool,
 ) -> Any:
     """Return the ``uint32x4`` index of eight plane scalars in the KV cache.
 
-    The cache is ``[block, layer, row, K/V, head_dim]``; ``scalar`` must be a
-    multiple of eight, so the eight scalars never straddle a head as
-    ``head_dim % 8 == 0``.
+    The cache is ``_vllm_kv_shape``; ``scalar`` must be a multiple of eight,
+    so the eight scalars never straddle a head as ``head_dim % 8 == 0``.
     """
     kv_row = (
-        T.cast(block_id, T.int64) * (num_planes // 2) + plane // 2
-    ) * rows + scalar // head_dim
+        _kv_block_layer(block_id, plane // 2, num_blocks, num_planes, layer_major)
+        * rows
+        + scalar // head_dim
+    )
     return (kv_row * 2 + plane % 2) * (head_dim // 8) + (scalar % head_dim) // 8
 
 
@@ -282,6 +325,8 @@ def _load_lane(
     rows: int,
     head_dim: int,
     fp8: bool,
+    num_blocks: int,
+    layer_major: bool,
 ) -> None:
     """Load plane scalars ``[start, start + 8)`` into ``words[4 * part:][:4]``.
 
@@ -299,12 +344,30 @@ def _load_lane(
             if fp8:
                 lane_pair = T.view(words, (int(words.shape[0]) // 2,), "uint32x2")
                 lane_pair[part * 2] = kv_vec[
-                    _kv_vector_index(block_id, plane, start, num_planes, rows, head_dim)
+                    _kv_vector_index(
+                        block_id,
+                        plane,
+                        start,
+                        num_blocks,
+                        num_planes,
+                        rows,
+                        head_dim,
+                        layer_major,
+                    )
                 ]
             else:
                 lane_vec = T.view(words, (int(words.shape[0]) // 4,), "uint32x4")
                 lane_vec[part] = kv_vec[
-                    _kv_vector_index(block_id, plane, start, num_planes, rows, head_dim)
+                    _kv_vector_index(
+                        block_id,
+                        plane,
+                        start,
+                        num_blocks,
+                        num_planes,
+                        rows,
+                        head_dim,
+                        layer_major,
+                    )
                 ]
     elif fp8:
         for i in T.unroll(8):
@@ -312,11 +375,14 @@ def _load_lane(
                 words[part * 4 + i // 4] = words[part * 4 + i // 4] | (
                     T.cast(
                         kv_bits[
-                            block_id,
-                            plane // 2,
-                            (start + i) // head_dim,
-                            plane % 2,
-                            (start + i) % head_dim,
+                            _kv_scalar_index(
+                                block_id,
+                                plane // 2,
+                                (start + i) // head_dim,
+                                plane % 2,
+                                (start + i) % head_dim,
+                                layer_major,
+                            )
                         ],
                         T.uint32,
                     )
@@ -328,11 +394,14 @@ def _load_lane(
                 words[part * 4 + i // 2] = words[part * 4 + i // 2] | (
                     T.cast(
                         kv_bits[
-                            block_id,
-                            plane // 2,
-                            (start + i) // head_dim,
-                            plane % 2,
-                            (start + i) % head_dim,
+                            _kv_scalar_index(
+                                block_id,
+                                plane // 2,
+                                (start + i) // head_dim,
+                                plane % 2,
+                                (start + i) % head_dim,
+                                layer_major,
+                            )
                         ],
                         T.uint32,
                     )
@@ -387,6 +456,7 @@ def compile_store_kernels(
     head_dim: int,
     tile_scalars: int,
     fp8: bool = False,
+    layer_major: bool = False,
 ) -> TileLangStoreKernels:
     """Compile the online TileLang store stages for one KV geometry.
 
@@ -398,6 +468,8 @@ def compile_store_kernels(
         tile_scalars: Scalar quantum used by the packed record; must be
             ``ONLINE_TILE_SCALARS``.
         fp8: Encode an FP8 E4M3 cache (one byte per scalar) instead of BF16.
+        layer_major: Read a layer-major cache (see ``_vllm_kv_shape``)
+            instead of vLLM's block-major cross-layer layout.
 
     Returns:
         Cached fused encode, layout, and compact kernels.
@@ -428,6 +500,7 @@ def compile_store_kernels(
         tile_scalars,
         tiles_per_plane,
         fp8,
+        layer_major,
     )
     cached = _STORE_CACHE.get(key)
     if cached is not None:
@@ -442,6 +515,7 @@ def compile_store_kernels(
                 tile_scalars=tile_scalars,
                 tiles_per_plane=tiles_per_plane,
                 fp8=fp8,
+                layer_major=layer_major,
             ),
             target="cuda",
             execution_backend="cython",
@@ -465,6 +539,7 @@ def compile_store_kernels(
                 tile_scalars=tile_scalars,
                 max_tiles=tiles_per_plane,
                 fp8=fp8,
+                layer_major=layer_major,
             ),
             target="cuda",
             execution_backend="cython",
@@ -516,6 +591,7 @@ def compile_load_kernel(
     staging_bytes: int,
     fanout: bool = False,
     fp8: bool = False,
+    layer_major: bool = False,
 ) -> Any:
     """Compile the single-launch TileLang fused compressed load kernel.
 
@@ -534,6 +610,8 @@ def compile_load_kernel(
         fanout: Whether sources may have multiple destination blocks. Both
             variants are compiled at startup; fanout counts remain dynamic.
         fp8: Decode into an FP8 E4M3 cache (one byte per scalar).
+        layer_major: Write a layer-major cache (see ``_vllm_kv_shape``)
+            instead of vLLM's block-major cross-layer layout.
 
     Returns:
         Cached TileLang JIT kernel. Slot count and staging extent remain runtime
@@ -558,7 +636,16 @@ def compile_load_kernel(
     # The staging extent is a runtime tensor dimension. Keep the argument in
     # the public API for callers that document their pool capacity, but do not
     # specialize the JIT cache on that capacity.
-    key = (num_blocks, num_planes, plane_scalars, head_dim, tile_scalars, fanout, fp8)
+    key = (
+        num_blocks,
+        num_planes,
+        plane_scalars,
+        head_dim,
+        tile_scalars,
+        fanout,
+        fp8,
+        layer_major,
+    )
     cached = _LOAD_CACHE.get(key)
     if cached is not None:
         return cached
@@ -573,6 +660,7 @@ def compile_load_kernel(
             staging_bytes=staging_bytes,
             fanout=fanout,
             fp8=fp8,
+            layer_major=layer_major,
         ),
         target="cuda",
         execution_backend="cython",
@@ -591,6 +679,7 @@ def _build_store_count_prefix(
     tile_scalars: int,
     tiles_per_plane: int,
     fp8: bool,
+    layer_major: bool,
 ) -> Any:
     """Count escapes and emit their plane prefixes within one CTA.
 
@@ -611,7 +700,10 @@ def _build_store_count_prefix(
     @T.prim_func
     def main(
         kv_bits: T.Tensor(
-            _vllm_kv_shape(num_blocks, num_planes, plane_scalars, head_dim), kv_dtype
+            _vllm_kv_shape(
+                num_blocks, num_planes, plane_scalars, head_dim, layer_major
+            ),
+            kv_dtype,
         ),
         block_ids: T.Tensor((n_slots,), "int32"),
         lookup: T.Tensor((num_planes * 256,), "uint8"),
@@ -670,6 +762,8 @@ def _build_store_count_prefix(
                         rows,
                         head_dim,
                         fp8,
+                        num_blocks,
+                        layer_major,
                     )
                     high_lo = _lane_symbols(
                         words[0], words[1], words[2], words[3], 0, fp8
@@ -908,6 +1002,7 @@ def _build_store_compact(
     tile_scalars: int,
     max_tiles: int,
     fp8: bool,
+    layer_major: bool,
 ) -> Any:
     """Emit packed records, headers, and raw-overflow slots in one launch.
 
@@ -954,7 +1049,10 @@ def _build_store_compact(
     @T.prim_func
     def main(
         kv_bits: T.Tensor(
-            _vllm_kv_shape(num_blocks, num_planes, plane_scalars, head_dim), kv_dtype
+            _vllm_kv_shape(
+                num_blocks, num_planes, plane_scalars, head_dim, layer_major
+            ),
+            kv_dtype,
         ),
         block_ids: T.Tensor((slot_items,), "int32"),
         logical_slots: T.Tensor((slot_items,), "int64"),
@@ -1018,9 +1116,11 @@ def _build_store_compact(
                                         block_id,
                                         plane,
                                         word * 8,
+                                        num_blocks,
                                         num_planes,
                                         rows,
                                         head_dim,
+                                        layer_major,
                                     )
                                 ]
                     else:
@@ -1030,11 +1130,14 @@ def _build_store_compact(
                             scalar = chunk * _COMPACT_THREADS + tx
                             if scalar < plane_scalars:
                                 value = kv_bits[
-                                    block_id,
-                                    plane // 2,
-                                    scalar // head_dim,
-                                    plane % 2,
-                                    scalar % head_dim,
+                                    _kv_scalar_index(
+                                        block_id,
+                                        plane // 2,
+                                        scalar // head_dim,
+                                        plane % 2,
+                                        scalar % head_dim,
+                                        layer_major,
+                                    )
                                 ]
                                 if fp8:
                                     destination[raw_base + scalar] = value
@@ -1245,6 +1348,8 @@ def _build_store_compact(
                                     rows,
                                     head_dim,
                                     fp8,
+                                    num_blocks,
+                                    layer_major,
                                 )
                             for u in T.unroll(_GROUP_SUB):
                                 tile = group_tile + u * _COMPACT_WARPS + warp
@@ -1474,6 +1579,7 @@ def _build_load(
     staging_bytes: int,
     fanout: bool,
     fp8: bool,
+    layer_major: bool,
 ) -> Any:
     """Decode online 256-scalar tiles with lane-local eight-scalar words.
 
@@ -1532,7 +1638,9 @@ def _build_load(
     # word view. W is the only staging extent variable (bytes are 4 * W); a
     # second unbound extent would become a stray kernel argument.
     word_count = T.dynamic("W", "int64")
-    kv_shape = _vllm_kv_shape(num_blocks, num_planes, plane_scalars, head_dim)
+    kv_shape = _vllm_kv_shape(
+        num_blocks, num_planes, plane_scalars, head_dim, layer_major
+    )
     rows = kv_shape[2]
     kv_words = num_blocks * num_planes * plane_scalars // 8
     kv_dtype = _kv_dtype(fp8)
@@ -1884,9 +1992,12 @@ def _build_load(
                     packed = T.view(values, (1,), lane_dtype)
                     for target in range(destination_begin, destination_end):
                         if scalar_start < plane_scalars:
-                            row = (
-                                T.cast(block_ids[target], T.int64) * (num_planes // 2)
-                                + global_plane // 2
+                            row = _kv_block_layer(
+                                block_ids[target],
+                                global_plane // 2,
+                                num_blocks,
+                                num_planes,
+                                layer_major,
                             ) * rows + (word // head_words)
                             flat[
                                 (row * 2 + global_plane % 2) * head_words
@@ -1897,11 +2008,14 @@ def _build_load(
                         for i in T.unroll(8):
                             if i < valid:
                                 dst[
-                                    block_ids[target],
-                                    global_plane // 2,
-                                    (scalar_start + i) // head_dim,
-                                    global_plane % 2,
-                                    (scalar_start + i) % head_dim,
+                                    _kv_scalar_index(
+                                        block_ids[target],
+                                        global_plane // 2,
+                                        (scalar_start + i) // head_dim,
+                                        global_plane % 2,
+                                        (scalar_start + i) % head_dim,
+                                        layer_major,
+                                    )
                                 ] = values[i]
 
     return main

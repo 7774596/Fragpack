@@ -38,6 +38,7 @@ from lmcache.v1.gpu_connector.gpu_ops import (
     lmcache_memcpy_async_h2d,
 )
 from lmcache.v1.lossless_kv.chunk_codec import KVMajorChunkCodec
+from lmcache.v1.lossless_kv.kv_layout import layer_major_kv_view
 from lmcache.v1.memory_management import MemoryObj
 from lmcache.v1.multiprocess.object_group_transfer import recalculate_blocks_to_skip
 from lmcache.v1.platform.base.cache_context import BaseCacheContext
@@ -478,6 +479,7 @@ class LosslessKVTransfer:
             max(self._width, config.store_pool_chunks),
             self._codec.raw_bytes,
         )
+        self._engine_direct = self._attach_engine_cache()
 
     def layout_desc(self, num_tokens: int) -> MemoryLayoutDesc:
         """Return the registered object layout: a bound on stored records.
@@ -567,13 +569,20 @@ class LosslessKVTransfer:
     def retrieve(
         self,
         block_ids_gpu: list[torch.Tensor],
+        block_ids_host: list[list[int]],
         memory_objs: Sequence[MemoryObj | None],
         skip_first_n_tokens: int,
     ) -> None:
-        """Decode stored records and scatter them into the paged KV cache.
+        """Decode stored records into the paged KV cache.
+
+        When the engine's blocks each hold one chunk in a layout the decoder
+        addresses, compressed records decode straight into them; otherwise
+        (and for batches with a raw record or a partly skipped chunk) they
+        decode into codec scratch and are scattered.
 
         Args:
             block_ids_gpu (list[torch.Tensor]): Staged GPU block IDs.
+            block_ids_host (list[list[int]]): The same block IDs on the host.
             memory_objs (Sequence[MemoryObj | None]): One stored record per
                 chunk in token order; None for leading chunks not retrieved.
             skip_first_n_tokens (int): Leading tokens not written to the
@@ -594,6 +603,14 @@ class LosslessKVTransfer:
         )
         # Chunks wholly inside the skipped prefix need no copy or decode.
         first = max(first, skip_first_n_tokens // chunk_tokens)
+        engine_blocks = None
+        if self._engine_direct and first < len(memory_objs):
+            # One block per chunk; the pinned copy stays alive until it runs.
+            ids = block_ids_host[0][first : len(memory_objs)]
+            with torch.cuda.stream(stream):
+                engine_blocks = torch.tensor(
+                    ids, dtype=torch.int32, pin_memory=True
+                ).to(self._cache_context.device, non_blocking=True)
         for start in range(first, len(memory_objs), self._width):
             batch = memory_objs[start : start + self._width]
             if any(obj is None for obj in batch):
@@ -602,13 +619,24 @@ class LosslessKVTransfer:
             buffers = self._codec.record_buffers(len(batch), stream)
             for buf, obj, size in zip(buffers, batch, sizes, strict=True):
                 lmcache_memcpy_async_h2d(obj, buf[:size])
+            skip_tokens = max(0, skip_first_n_tokens - start * chunk_tokens)
+            if (
+                engine_blocks is not None
+                and skip_tokens == 0
+                and self._codec.decode_records_to_engine(
+                    sizes,
+                    engine_blocks[start - first : start - first + len(batch)],
+                    stream,
+                )
+            ):
+                continue
             chunks = self._codec.decode_records(sizes, stream)
             launch_paged_kv_copy(
                 self._cache_context,
                 block_ids_gpu,
                 start,
                 chunks,
-                max(0, skip_first_n_tokens - start * chunk_tokens),
+                skip_tokens,
                 lmcache_native.TransferDirection.H2D,
             )
 
@@ -619,6 +647,30 @@ class LosslessKVTransfer:
         stored before the context goes away.
         """
         self._store_worker.close()
+
+    def _attach_engine_cache(self) -> bool:
+        """Let the codec decode into the engine blocks; return whether it can.
+
+        Requires one engine block per chunk and per-layer fused K/V tensors
+        laid back to back in one allocation.
+        """
+        context = self._cache_context
+        chunk_tokens = context.lmcache_tokens_per_chunk
+        group = context.kv_layer_groups_manager.kernel_groups[0]
+        sd = group.shape_desc
+        view = None
+        if sd.kv_size == 1 and context.calculate_num_blocks(chunk_tokens, 0) == 1:
+            view = layer_major_kv_view(
+                [context.kv_caches_[i] for i in group.layer_indices],
+                sd.nh,
+                sd.hs // 2,
+            )
+        if view is None:
+            logger.info("Lossless KV retrieve decodes via codec scratch")
+            return False
+        self._codec.attach_engine_cache(view)
+        logger.info("Lossless KV retrieve decodes straight into engine blocks")
+        return True
 
     def _encode(self, chunks: list[torch.Tensor]) -> list[torch.Tensor | None]:
         """Encode chunks in place on the current stream; return the records."""

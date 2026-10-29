@@ -12,6 +12,7 @@ from lmcache.v1.lossless_kv.chunk_codec import (
     kv_major_to_physical,
 )
 from lmcache.v1.lossless_kv.format import IO_ALIGNMENT
+from lmcache.v1.lossless_kv.kv_layout import layer_major_kv_view
 
 _LAYERS, _TOKENS, _HEADS, _HEAD_DIM = 4, 64, 4, 128
 
@@ -233,3 +234,90 @@ def test_fp8_chunk_codec_round_trips_variable_records(
     stream.synchronize()
     for target, original in zip(restored, originals, strict=True):
         assert torch.equal(target, original)
+
+
+def _layer_major_engine(
+    num_blocks: int, dtype: torch.dtype
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """Return vLLM-style per-layer fused K/V tensors in one allocation."""
+    alloc = torch.full(
+        (_LAYERS, num_blocks, _TOKENS, _HEADS, 2 * _HEAD_DIM),
+        0xA5,
+        dtype=torch.uint8 if dtype is not torch.bfloat16 else torch.int16,
+        device="cuda",
+    ).view(dtype)
+    return alloc, [alloc[layer] for layer in range(_LAYERS)]
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.parametrize("kv_dtype", [torch.bfloat16, torch.float8_e4m3fn])
+def test_chunk_codec_decodes_records_into_layer_major_engine_blocks(
+    kv_dtype: torch.dtype,
+) -> None:
+    codec = _codec(max_chunks=3, capacity_ratio=None, fused_kv=True, kv_dtype=kv_dtype)
+    alloc, layers = _layer_major_engine(9, kv_dtype)
+    before = alloc.view(torch.uint8).clone()
+    view = layer_major_kv_view(layers, _HEADS, _HEAD_DIM)
+    assert view is not None
+    codec.attach_engine_cache(view)
+    stream = torch.cuda.Stream()
+    make = (
+        (lambda seed: _chunk(codec, seed, compressible=True))
+        if kv_dtype is torch.bfloat16
+        else (lambda seed: _fp8_chunk(codec, seed))
+    )
+    originals = [make(seed) for seed in (11, 12, 13)]
+    chunks = [chunk.clone() for chunk in originals]
+    lengths = codec.encode(chunks, stream)
+    assert all(length < codec.raw_bytes for length in lengths)
+    targets = [5, 2, 7]
+    blocks = torch.tensor(targets, dtype=torch.int32, device="cuda")
+    buffers = codec.record_buffers(3, stream)
+    with torch.cuda.stream(stream):
+        for buf, chunk, length in zip(buffers, chunks, lengths, strict=True):
+            buf[:length].copy_(chunk[:length])
+    assert codec.decode_records_to_engine(lengths, blocks, stream)
+    stream.synchronize()
+    after = alloc.view(torch.uint8)
+    for block, original in zip(targets, originals, strict=True):
+        # The fused chunk is [layers, tokens, heads, 2 * head_dim].
+        expected = original.view(_LAYERS, -1)
+        assert torch.equal(after[:, block].reshape(_LAYERS, -1), expected)
+    untouched = [b for b in range(9) if b not in targets]
+    assert torch.equal(after[:, untouched], before[:, untouched])
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_chunk_codec_engine_decode_leaves_raw_batches_to_scratch() -> None:
+    codec = _codec(max_chunks=2, capacity_ratio=None, fused_kv=True)
+    alloc, layers = _layer_major_engine(4, torch.bfloat16)
+    before = alloc.clone()
+    codec.attach_engine_cache(layer_major_kv_view(layers, _HEADS, _HEAD_DIM))
+    stream = torch.cuda.Stream()
+    chunks = [
+        _chunk(codec, 21, compressible=True),
+        _chunk(codec, 22, compressible=False),
+    ]
+    lengths = codec.encode(chunks, stream)
+    assert lengths[1] == codec.raw_bytes
+    codec.record_buffers(2, stream)
+    blocks = torch.tensor([0, 1], dtype=torch.int32, device="cuda")
+    assert not codec.decode_records_to_engine(lengths, blocks, stream)
+    stream.synchronize()
+    assert torch.equal(alloc, before)
+
+
+def test_layer_major_kv_view_rejects_scattered_layers() -> None:
+    alloc = torch.zeros(3, 2, 4, 2, 8)
+    adjacent = [alloc[i] for i in range(3)]
+    view = layer_major_kv_view(adjacent, 2, 4)
+    assert view is not None
+    assert tuple(view.shape) == (2, 3, 2, 4, 2, 4)
+    # Logical [block, layer, kv, token, head, dim] aliases the layers.
+    assert view[1, 2, 1, 3, 0, 2].data_ptr() == adjacent[2][1, 3, 0, 4 + 2].data_ptr()
+    assert layer_major_kv_view([adjacent[0], adjacent[2]], 2, 4) is None
+    assert (
+        layer_major_kv_view([torch.zeros(2, 4, 2, 8) for _ in range(2)], 2, 4) is None
+    )

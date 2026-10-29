@@ -42,6 +42,7 @@ from lmcache.v1.lossless_kv.compressed_kv import (
     FusedCompressedKVDecoder,
     FusedOnlineKVPacker,
     KVRestorePlan,
+    kv_dtype_bytes,
     warm_fused_online_kv_packer,
 )
 from lmcache.v1.lossless_kv.format import (
@@ -208,7 +209,7 @@ class KVMajorChunkCodec:
             if fused_kv
             else (2, num_layers, chunk_tokens, num_kv_heads, head_dim)
         )
-        codebooks = (
+        self._codebooks = (
             default_online_codebooks(self._geometry)
             if codebook_dir is None
             else load_calibrated_codebooks(codebook_dir, self._geometry)
@@ -240,19 +241,22 @@ class KVMajorChunkCodec:
             )
             self._packer = FusedOnlineKVPacker(
                 kv_cache=self._encode_scratch,
-                codebooks=codebooks,
+                codebooks=self._codebooks,
                 tile_scalars=ONLINE_TILE_SCALARS,
                 max_slots_per_buffer=max_chunks,
             )
             self._decoder = FusedCompressedKVDecoder(
                 kv_cache=self._decode_scratch,
-                codebooks=codebooks,
+                codebooks=self._codebooks,
                 tile_scalars=ONLINE_TILE_SCALARS,
                 max_slots_per_buffer=max_chunks,
             )
         # Restore plans by the batch indices holding compressed records; each
         # uploads its metadata once, so decoding never touches the host.
         self._restore_plans: dict[tuple[int, ...], KVRestorePlan] = {}
+        # Decoder into the engine's own KV blocks, and its plans by batch size.
+        self._engine_decoder: FusedCompressedKVDecoder | None = None
+        self._engine_plans: dict[int, KVRestorePlan] = {}
         # Scratch and staging are shared by calls that may use other streams.
         self._encode_done: torch.cuda.Event | None = None
         self._decode_stream: torch.cuda.Stream | None = None
@@ -442,6 +446,85 @@ class KVMajorChunkCodec:
                 self._physical_view(out).copy_(physical[index])
             outputs[index] = out
         return outputs
+
+    def attach_engine_cache(self, kv_cache: torch.Tensor) -> None:
+        """Compile a decoder that restores records straight into engine blocks.
+
+        Args:
+            kv_cache (torch.Tensor): Logical ``[blocks, layers, 2, tokens,
+                heads, head_dim]`` view of the engine's paged KV cache, in a
+                layout ``kernel_kv_view`` accepts, whose blocks each hold one
+                chunk.
+
+        Raises:
+            ValueError: If the codec is not fused, or a block does not match
+                the chunk geometry.
+
+        Async/thread-safety:
+            Compiles kernels; call once before serving traffic.
+        """
+        if not self._fused_kv:
+            raise ValueError("engine-direct decode requires fused K/V chunks")
+        if (
+            tuple(kv_cache.shape[1:]) != tuple(self._decode_scratch.shape[1:])
+            or kv_cache.device != self._decode_scratch.device
+            or kv_dtype_bytes(kv_cache) != self._geometry.dtype_bytes
+        ):
+            raise ValueError("engine KV blocks do not match the codec chunks")
+        with torch.cuda.device(kv_cache.device), torch.inference_mode(False):
+            self._engine_decoder = FusedCompressedKVDecoder(
+                kv_cache=kv_cache,
+                codebooks=self._codebooks,
+                tile_scalars=ONLINE_TILE_SCALARS,
+                max_slots_per_buffer=self._max_chunks,
+            )
+        self._engine_plans.clear()
+
+    def decode_records_to_engine(
+        self, lengths: list[int], blocks: torch.Tensor, stream: torch.cuda.Stream
+    ) -> bool:
+        """Decode the batch staged in :meth:`record_buffers` into engine blocks.
+
+        Args:
+            lengths (list[int]): Stored length of each staged chunk, as
+                returned by ``encode``.
+            blocks (torch.Tensor): Contiguous device int32 engine block ID of
+                each chunk, ready on ``stream``.
+            stream (torch.cuda.Stream): The stream given to
+                ``record_buffers``.
+
+        Returns:
+            bool: Whether the batch was enqueued. False, with nothing
+            enqueued, if a chunk is stored raw; decode it with
+            :meth:`decode_records` instead.
+
+        Raises:
+            ValueError: If no engine cache is attached, a length is out of
+                range, ``blocks`` does not match, or ``stream`` is not the
+                staging stream.
+
+        Async/thread-safety:
+            As :meth:`decode_records`; ``blocks`` must stay alive until the
+            launch runs.
+        """
+        if self._engine_decoder is None:
+            raise ValueError("no engine KV cache is attached")
+        if stream != self._decode_stream:
+            raise ValueError("decode_records must use the record_buffers stream")
+        self._validate_lengths(lengths)
+        raw = self._geometry.slot_size
+        if not self._fixed_capacity and any(length >= raw for length in lengths):
+            return False
+        plan = self._engine_plans.get(len(lengths))
+        if plan is None:
+            plan = self._engine_decoder.plan_dynamic(
+                staging=self._decode_staging,
+                staging_offsets=[index * raw for index in range(len(lengths))],
+                modes=[int(SlotMode.COMPRESSED)] * len(lengths),
+            )
+            self._engine_plans[len(lengths)] = plan
+        plan.submit(stream, blocks)
+        return True
 
     def decode(
         self,
