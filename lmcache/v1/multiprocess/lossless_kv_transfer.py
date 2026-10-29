@@ -474,6 +474,9 @@ class LosslessKVTransfer:
         self._storage = storage_manager
         self._codec = create_chunk_codec(cache_context, config)
         self._width = config.batch_size
+        # Retrieved records are copied in on their own stream, so the copies
+        # of later batches run ahead of the decodes on the context stream.
+        self._fill_stream = torch.cuda.Stream(device=cache_context.device)
         self._engine_direct = self._attach_engine_cache()
         # Packing from engine blocks writes a batch's records back to back,
         # so each pool slot then holds one whole batch.
@@ -616,7 +619,9 @@ class LosslessKVTransfer:
                 is invalid for the codec.
 
         Note:
-            Enqueues on ``cache_context.stream`` without synchronizing it.
+            Copies records in on a private stream and decodes on
+            ``cache_context.stream``, which is ordered after the copies;
+            never synchronizes.
         """
         chunk_tokens = self._cache_context.lmcache_tokens_per_chunk
         stream = self._cache_context.stream
@@ -639,9 +644,10 @@ class LosslessKVTransfer:
             if any(obj is None for obj in batch):
                 raise ValueError("lossless KV retrieve has a missing record")
             sizes = [obj.get_size() for obj in batch]
-            buffers = self._codec.record_buffers(len(batch), stream)
-            for buf, obj, size in zip(buffers, batch, sizes, strict=True):
-                lmcache_memcpy_async_h2d(obj, buf[:size])
+            buffers = self._codec.record_buffers(len(batch), self._fill_stream)
+            with torch.cuda.stream(self._fill_stream):
+                for buf, obj, size in zip(buffers, batch, sizes, strict=True):
+                    lmcache_memcpy_async_h2d(obj, buf[:size])
             skip_tokens = max(0, skip_first_n_tokens - start * chunk_tokens)
             if (
                 engine_blocks is not None

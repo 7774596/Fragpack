@@ -144,6 +144,38 @@ def test_chunk_codec_decode_reuses_rings_across_batches() -> None:
 
 @pytest.mark.integration
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_chunk_codec_decodes_batches_filled_on_another_stream() -> None:
+    codec = _codec(max_chunks=2, capacity_ratio=None)
+    stream = torch.cuda.Stream()
+    originals = [_chunk(codec, seed, compressible=seed != 3) for seed in range(1, 7)]
+    records = [chunk.clone() for chunk in originals]
+    lengths: list[int] = []
+    for start in range(0, 6, 2):
+        lengths += codec.encode(records[start : start + 2], stream)
+    assert lengths[2] == codec.raw_bytes
+    stream.synchronize()
+    # Batches rotate through the record sets: each fill runs ahead on its own
+    # stream and each decode, read here on the decode stream, waits for it.
+    fill = torch.cuda.Stream()
+    outputs: list[torch.Tensor] = []
+    for start in range(0, 6, 2):
+        batch = lengths[start : start + 2]
+        buffers = codec.record_buffers(2, fill)
+        with torch.cuda.stream(fill):
+            for buf, record, length in zip(
+                buffers, records[start : start + 2], batch, strict=True
+            ):
+                buf[:length].copy_(record[:length])
+        decoded = codec.decode_records(batch, stream)
+        with torch.cuda.stream(stream):
+            outputs += [chunk.clone() for chunk in decoded]
+    stream.synchronize()
+    for output, original in zip(outputs, originals, strict=True):
+        assert torch.equal(output, original)
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 def test_chunk_codec_fails_closed_when_record_exceeds_capacity() -> None:
     codec = _codec(max_chunks=2)
     stream = torch.cuda.Stream()

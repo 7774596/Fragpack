@@ -143,6 +143,9 @@ class KVMajorChunkCodec:
         fused_kv (bool): Chunks hold K and V side by side in each head,
             ``[layers, tokens, heads, 2, head_dim]``, instead of kv-major.
             This is the codec's physical block order, so no permute is needed.
+        decode_sets (int): Record buffer sets that decode batches rotate
+            through, so the next batches' stored bytes can be copied in while
+            an earlier batch decodes.
 
     Raises:
         ValueError: If the device is not CUDA, the dtype or geometry is
@@ -154,7 +157,8 @@ class KVMajorChunkCodec:
         different threads; concurrent ``encode`` or ``decode`` calls serialize
         on an internal lock, while ``record_buffers`` / ``decode_records``
         must come from one thread at a time. Every call enqueues on the
-        caller's stream. ``encode`` synchronizes that stream because record
+        caller's stream; a decode batch may be filled on another stream than
+        it decodes on. ``encode`` synchronizes that stream because record
         lengths are read back to the host; decoding never synchronizes.
     """
 
@@ -171,10 +175,11 @@ class KVMajorChunkCodec:
         capacity_ratio: float | None = None,
         codebook_dir: str | Path | None = None,
         fused_kv: bool = False,
+        decode_sets: int = 4,
     ) -> None:
         if device.type != "cuda":
             raise ValueError("kv-major chunk codec requires a CUDA device")
-        if max_chunks <= 0:
+        if max_chunks <= 0 or decode_sets <= 0:
             raise ValueError("kv-major chunk codec batch must be positive")
         dtype_bytes = _KV_DTYPE_BYTES.get(kv_dtype)
         if dtype_bytes is None:
@@ -204,6 +209,7 @@ class KVMajorChunkCodec:
             else self._geometry.slot_size
         )
         self._max_chunks = max_chunks
+        self._decode_sets = decode_sets
         self._fused_kv = fused_kv
         self._chunk_shape = (
             (num_layers, chunk_tokens, num_kv_heads, 2, head_dim)
@@ -221,9 +227,12 @@ class KVMajorChunkCodec:
             self._pack_staging = torch.empty(
                 max_chunks * self._geometry.slot_size, dtype=torch.uint8, device=device
             )
-            # One raw-sized record buffer per chunk, so any stored length fits.
+            # Per set, one raw-sized record buffer per chunk, so any stored
+            # length fits.
             self._decode_staging = torch.empty(
-                max_chunks * self._geometry.slot_size, dtype=torch.uint8, device=device
+                decode_sets * max_chunks * self._geometry.slot_size,
+                dtype=torch.uint8,
+                device=device,
             )
             # Kv-major chunks need their own output; fused chunks are the
             # decoder's physical blocks.
@@ -252,16 +261,23 @@ class KVMajorChunkCodec:
                 tile_scalars=ONLINE_TILE_SCALARS,
                 max_slots_per_buffer=max_chunks,
             )
-        # Restore plans by the batch indices holding compressed records; each
-        # uploads its metadata once, so decoding never touches the host.
-        self._restore_plans: dict[tuple[int, ...], KVRestorePlan] = {}
-        # Decoder into the engine's own KV blocks, and its plans by batch size.
+        # Restore plans by record set and the batch indices holding
+        # compressed records; each uploads its metadata once, so decoding
+        # never touches the host.
+        self._restore_plans: dict[tuple[int, tuple[int, ...]], KVRestorePlan] = {}
+        # Decoder into the engine's own KV blocks, and its plans by record
+        # set and batch size.
         self._engine_decoder: FusedCompressedKVDecoder | None = None
         # Packer reading the engine's own KV blocks (variable records only).
         self._engine_packer: FusedOnlineKVPacker | None = None
-        self._engine_plans: dict[int, KVRestorePlan] = {}
+        self._engine_plans: dict[tuple[int, int], KVRestorePlan] = {}
         # Scratch and staging are shared by calls that may use other streams.
         self._encode_done: torch.cuda.Event | None = None
+        # The record set of the current decode batch, the stream filling it,
+        # and per set the point after which its buffers may be refilled.
+        self._decode_set = decode_sets - 1
+        self._set_free: list[torch.cuda.Event | None] = [None] * decode_sets
+        self._fill_stream: torch.cuda.Stream | None = None
         self._decode_stream: torch.cuda.Stream | None = None
         self._encode_lock = threading.Lock()
         self._decode_lock = threading.Lock()
@@ -359,11 +375,13 @@ class KVMajorChunkCodec:
         """Return the codec's buffers for the stored bytes of a decode batch.
 
         Fill ``buffer[i][:length]`` with chunk ``i``'s stored bytes on
-        ``stream``, then call :meth:`decode_records`.
+        ``stream``, then call :meth:`decode_records`. Batches rotate through
+        ``decode_sets`` buffer sets, so with a fill stream other than the
+        decode stream the next batches fill while earlier ones decode.
 
         Args:
             count (int): Chunks in the batch, at most ``max_chunks``.
-            stream (torch.cuda.Stream): Stream of the fills and the decode.
+            stream (torch.cuda.Stream): Stream of the fills.
 
         Returns:
             list[torch.Tensor]: ``count`` uint8 device buffers of
@@ -373,20 +391,24 @@ class KVMajorChunkCodec:
             ValueError: If ``count`` is out of range.
 
         Async/thread-safety:
-            Orders ``stream`` after all work an earlier batch enqueued on
-            another stream, including reads of its outputs; never
-            synchronizes. One thread at a time.
+            Orders ``stream`` after the decode stream's work up to the last
+            batch that used this set, including reads of its outputs
+            enqueued before this call; never synchronizes. One thread at a
+            time.
         """
         if not 0 < count <= self._max_chunks:
             raise ValueError("kv-major chunk batch size is out of range")
-        previous = self._decode_stream
-        if previous is not None and previous != stream:
+        if self._decode_stream is not None:
+            # The batch staged last is done once its readers so far are.
             done = torch.cuda.Event()
-            done.record(previous)
-            stream.wait_event(done)
-        self._decode_stream = stream
-        raw = self._geometry.slot_size
-        return [self._decode_staging[i * raw : (i + 1) * raw] for i in range(count)]
+            done.record(self._decode_stream)
+            self._set_free[self._decode_set] = done
+        self._decode_set = (self._decode_set + 1) % self._decode_sets
+        free = self._set_free[self._decode_set]
+        if free is not None:
+            stream.wait_event(free)
+        self._fill_stream = stream
+        return self._staged(count)
 
     def decode_records(
         self, lengths: list[int], stream: torch.cuda.Stream
@@ -396,8 +418,8 @@ class KVMajorChunkCodec:
         Args:
             lengths (list[int]): Stored length of each staged chunk, as
                 returned by ``encode``; ``raw_bytes`` marks a raw chunk.
-            stream (torch.cuda.Stream): The stream given to
-                ``record_buffers``.
+            stream (torch.cuda.Stream): Stream of the decode and of every
+                reader of its outputs; it is ordered after the fills.
 
         Returns:
             list[torch.Tensor]: Each chunk's raw bytes in the codec's chunk
@@ -405,37 +427,34 @@ class KVMajorChunkCodec:
             ``record_buffers`` call.
 
         Raises:
-            ValueError: If a length is out of range, or ``stream`` is not the
-                staging stream.
+            ValueError: If a length is out of range, or no batch is staged.
 
         Async/thread-safety:
             Enqueues on ``stream`` without host work beyond the launches; the
             first batch of each new mix of raw and compressed chunks builds
             its restore plan, which synchronizes a private stream once.
         """
-        if stream != self._decode_stream:
-            raise ValueError("decode_records must use the record_buffers stream")
         self._validate_lengths(lengths)
+        self._order_decode(stream)
         raw = self._geometry.slot_size
         compressed = tuple(
             index
             for index, length in enumerate(lengths)
             if length < raw or self._fixed_capacity
         )
-        staged = [
-            self._decode_staging[i * raw : (i + 1) * raw] for i in range(len(lengths))
-        ]
+        staged = self._staged(len(lengths))
         if not compressed:
             return staged
-        plan = self._restore_plans.get(compressed)
+        key = (self._decode_set, compressed)
+        plan = self._restore_plans.get(key)
         if plan is None:
             plan = self._decoder.plan(
-                staging=self._decode_staging,
+                staging=self._set_staging(),
                 staging_offsets=[index * raw for index in compressed],
                 block_ids=list(compressed),
                 modes=[int(SlotMode.COMPRESSED)] * len(compressed),
             )
-            self._restore_plans[compressed] = plan
+            self._restore_plans[key] = plan
         plan.submit(stream)
         physical = physical_kv_view(self._decode_scratch)
         outputs = staged
@@ -584,8 +603,8 @@ class KVMajorChunkCodec:
                 returned by ``encode``.
             blocks (torch.Tensor): Contiguous device int32 engine block ID of
                 each chunk, ready on ``stream``.
-            stream (torch.cuda.Stream): The stream given to
-                ``record_buffers``.
+            stream (torch.cuda.Stream): Stream of the decode; it is ordered
+                after the fills.
 
         Returns:
             bool: Whether the batch was enqueued. False, with nothing
@@ -594,8 +613,7 @@ class KVMajorChunkCodec:
 
         Raises:
             ValueError: If no engine cache is attached, a length is out of
-                range, ``blocks`` does not match, or ``stream`` is not the
-                staging stream.
+                range, ``blocks`` does not match, or no batch is staged.
 
         Async/thread-safety:
             As :meth:`decode_records`; ``blocks`` must stay alive until the
@@ -603,20 +621,20 @@ class KVMajorChunkCodec:
         """
         if self._engine_decoder is None:
             raise ValueError("no engine KV cache is attached")
-        if stream != self._decode_stream:
-            raise ValueError("decode_records must use the record_buffers stream")
         self._validate_lengths(lengths)
         raw = self._geometry.slot_size
         if not self._fixed_capacity and any(length >= raw for length in lengths):
             return False
-        plan = self._engine_plans.get(len(lengths))
+        self._order_decode(stream)
+        key = (self._decode_set, len(lengths))
+        plan = self._engine_plans.get(key)
         if plan is None:
             plan = self._engine_decoder.plan_dynamic(
-                staging=self._decode_staging,
+                staging=self._set_staging(),
                 staging_offsets=[index * raw for index in range(len(lengths))],
                 modes=[int(SlotMode.COMPRESSED)] * len(lengths),
             )
-            self._engine_plans[len(lengths)] = plan
+            self._engine_plans[key] = plan
         plan.submit(stream, blocks)
         return True
 
@@ -673,6 +691,34 @@ class KVMajorChunkCodec:
         """Make ``stream`` wait for the previous call's use of shared scratch."""
         if previous is not None:
             stream.wait_event(previous)
+
+    def _set_staging(self) -> torch.Tensor:
+        """Return the current record set's staging, as the decoders expect."""
+        size = self._max_chunks * self._geometry.slot_size
+        base = self._decode_set * size
+        return self._decode_staging[base : base + size]
+
+    def _staged(self, count: int) -> list[torch.Tensor]:
+        """Return the current set's first ``count`` record buffers."""
+        raw = self._geometry.slot_size
+        staging = self._set_staging()
+        return [staging[i * raw : (i + 1) * raw] for i in range(count)]
+
+    def _order_decode(self, stream: torch.cuda.Stream) -> None:
+        """Order a decode on ``stream`` after its fills and the last decode."""
+        if self._fill_stream is None:
+            raise ValueError("no decode batch is staged in record_buffers")
+        if self._fill_stream != stream:
+            filled = torch.cuda.Event()
+            filled.record(self._fill_stream)
+            stream.wait_event(filled)
+        # Decodes share scratch, so one on a new stream waits for the last.
+        previous = self._decode_stream
+        if previous is not None and previous != stream:
+            done = torch.cuda.Event()
+            done.record(previous)
+            stream.wait_event(done)
+        self._decode_stream = stream
 
     def _scratch_cache(self, device: torch.device) -> torch.Tensor:
         """Allocate one private logical ``BLNHC`` cache of ``max_chunks`` blocks."""
