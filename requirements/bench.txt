@@ -1,0 +1,9 @@
+openai
+requests
+tqdm
+transformers
+numpy<=2.2.6
+pandas
+matplotlib
+seaborn
+pyarrow

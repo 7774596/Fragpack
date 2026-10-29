@@ -1,0 +1,240 @@
+# SPDX-License-Identifier: Apache-2.0
+"""
+Eviction module to determine what to evict from L1 and L2 caches.
+"""
+
+# Standard
+from abc import abstractmethod
+from collections.abc import Callable, Mapping
+
+# First Party
+from lmcache.v1.distributed.api import ObjectKey
+from lmcache.v1.distributed.internal_api import (
+    EvictionAction,
+    EvictionDestination,
+    L1ManagerListener,
+    L2AdapterListener,
+)
+from lmcache.v1.mp_coordinator.persistence.durable_component import PersistenceType
+
+
+class EvictionPolicy:
+    """
+    Pure abstract base class for eviction policies.
+
+    Subclasses implement the LRU (or other) tracking logic via the
+    on_keys_* methods and expose eviction decisions via get_eviction_actions.
+    The binding to a specific cache tier (L1 or L2) is provided by
+    L1EvictionPolicy and L2EvictionPolicy respectively.
+    """
+
+    @property
+    def support_isolation(self) -> bool:
+        """Whether this policy supports isolation eviction (e.g., per user isolation).
+
+        When True, the eviction controller checks isolated usage (e.g., per user usage)
+        and passes ``cache_salt`` to ``get_eviction_actions()`` to scope
+        eviction to specific cache_salt. When False, the controller uses
+        aggregate usage only.
+
+        Default is False. Subclasses that support isolated eviction.
+        (e.g., ``IsolatedLRUEvictionPolicy``) should override to return True.
+        """
+        return False
+
+    @property
+    def persistence_type(self) -> PersistenceType:
+        """Default: a policy's durable state rides with the checkpoint."""
+        return PersistenceType.CHECKPOINT
+
+    @property
+    def name(self) -> str:
+        """Name of this policy's section in a durable checkpoint.
+
+        Per implementation, not per interface: a deployment that swaps
+        policies finds no section under the new name and starts from
+        whatever rebuilds the keys, rather than misreading the old one.
+        """
+        return "eviction_policy"
+
+    def capture(self) -> Mapping[str, object]:
+        """Return the state a checkpoint must carry for this policy.
+
+        Default is empty: a policy whose ordering is implied by the keys
+        it is given needs nothing beyond them. Subclasses whose ordering
+        *is* their state (e.g. an LRU, where recency is position rather
+        than a stored timestamp) override this and :meth:`restore`.
+
+        Returns:
+            JSON-compatible values, keyed however the policy likes.
+        """
+        return {}
+
+    def restore(self, state: Mapping[str, object]) -> None:
+        """Load a :meth:`capture` value.
+
+        Default is a no-op, matching the empty default capture.
+
+        Args:
+            state: The section a checkpoint held for this policy.
+        """
+
+    @abstractmethod
+    def register_eviction_destination(self, destination: EvictionDestination):
+        """
+        Register an eviction destination for the eviction policy to use.
+
+        Args:
+            destination (EvictionDestination): The eviction destination to
+                register.
+        """
+        pass
+
+    @abstractmethod
+    def on_keys_created(self, keys: list[ObjectKey]):
+        """
+        Notify the eviction policy that new keys have been created.
+
+        Args:
+            keys (list[ObjectKey]): The keys that have been created.
+        """
+        pass
+
+    def on_keys_reserved(self, keys: list[ObjectKey]) -> None:
+        """Notify the policy that keys have been reserved for creation.
+
+        The default behavior preserves policies that do not distinguish
+        reservation from admission.
+
+        Args:
+            keys: The keys reserved for creation.
+        """
+        self.on_keys_created(keys)
+
+    @abstractmethod
+    def on_keys_touched(self, keys: list[ObjectKey]):
+        """
+        Notify the eviction policy that keys have been accessed.
+
+        Args:
+            keys (list[ObjectKey]): The keys that have been accessed.
+        """
+        pass
+
+    @abstractmethod
+    def on_keys_removed(self, keys: list[ObjectKey]):
+        """
+        Notify the eviction policy that keys have been deleted.
+
+        Args:
+            keys (list[ObjectKey]): The keys that have been deleted.
+        """
+        pass
+
+    @abstractmethod
+    def get_eviction_actions(
+        self,
+        expected_ratio: float,
+        key_eligible_filter: Callable[[ObjectKey], bool] | None = None,
+        cache_salt: str | None = None,
+    ) -> list[EvictionAction]:
+        """
+        Get the eviction actions to evict objects from cache.
+
+        Args:
+            expected_ratio (float): A hint indicating approximately what
+                fraction of tracked keys should be evicted. Value should be
+                in range [0.0, 1.0]. For example, 0.1 means roughly 10% of
+                keys should be evicted. This is a hint and the policy may
+                return more or fewer keys.
+            key_eligible_filter: An optional callable that takes an ObjectKey
+                and returns True if the key is eligible for eviction. When
+                provided, keys for which the filter returns False will be
+                skipped. This is useful for skipping locked keys that
+                cannot be deleted.
+            cache_salt: When set, scope eviction to keys belonging to this
+                salt only (identified by ``ObjectKey.cache_salt``). When
+                None, evict globally across all salts. Only meaningful for
+                policies where ``support_isolation`` is True; other policies
+                ignore this parameter.
+
+        Returns:
+            list[EvictionAction]: The eviction actions to perform. Each
+                action contains the keys and one eviction destination.
+
+        Notes:
+            The eviction action may not be successfully executed, or it may
+            be executed asynchronously. Therefore, the eviction policy should
+            not assume that the objects are evicted immediately, but it should
+            use `on_keys_removed` to know when the objects are actually
+            deleted.
+        """
+        pass
+
+
+class L1EvictionPolicy(L1ManagerListener):
+    """
+    Bridges L1Manager lifecycle events to an EvictionPolicy instance.
+
+    The actual eviction policy is provided via the constructor, keeping
+    the policy logic decoupled from the listener interface.
+    """
+
+    def __init__(self, policy: EvictionPolicy):
+        self._policy = policy
+
+    @property
+    def policy(self) -> EvictionPolicy:
+        return self._policy
+
+    # L1ManagerListener implementations
+    def on_l1_keys_reserved_read(self, keys: list[ObjectKey]):
+        # No-op
+        pass
+
+    def on_l1_keys_read_finished(self, keys: list[ObjectKey]):
+        # No-op: releasing a read lock does not mean the key was useful.
+        # Recency comes from explicit touch_keys (on_l1_keys_accessed).
+        pass
+
+    def on_l1_keys_reserved_write(self, keys: list[ObjectKey]) -> None:
+        # Track keys from the moment they are reserved, so an abandoned
+        # reservation (expired write lock) is evicted like any unlocked key.
+        self._policy.on_keys_reserved(keys)
+
+    def on_l1_keys_write_finished(self, keys: list[ObjectKey]) -> None:
+        self._policy.on_keys_created(keys)
+
+    def on_l1_keys_deleted_by_manager(self, keys: list[ObjectKey]):
+        self._policy.on_keys_removed(keys)
+
+    def on_l1_keys_finish_write_and_reserve_read(self, keys: list[ObjectKey]):
+        self._policy.on_keys_created(keys)
+
+    def on_l1_keys_accessed(self, keys: list[ObjectKey]):
+        self._policy.on_keys_touched(keys)
+
+
+class L2EvictionPolicy(L2AdapterListener):
+    """
+    Bridges L2Adapter lifecycle events to an EvictionPolicy instance.
+
+    The actual eviction policy is provided via the constructor, keeping
+    the policy logic decoupled from the listener interface.
+    """
+
+    def __init__(self, policy: EvictionPolicy):
+        self._policy = policy
+
+    @property
+    def policy(self) -> EvictionPolicy:
+        return self._policy
+
+    def on_l2_keys_stored(self, keys: list[ObjectKey], sizes: list[int]):
+        self._policy.on_keys_created(keys)
+
+    def on_l2_keys_accessed(self, keys: list[ObjectKey]):
+        self._policy.on_keys_touched(keys)
+
+    def on_l2_keys_deleted(self, keys: list[ObjectKey]):
+        self._policy.on_keys_removed(keys)
