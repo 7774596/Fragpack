@@ -49,6 +49,11 @@ lmcache="lmcache.cli.main:main"
 lmcache_server="lmcache.v1.server.__main__:main"
 lmcache_controller="lmcache.v1.api_server.__main__:main"
 
+# FragPack lossless attention as vLLM's CUSTOM backend; inert unless vLLM runs
+# with --attention-backend CUSTOM.
+[project.entry-points."vllm.general_plugins"]
+lmcache_fragpack = "lmcache.v1.lossless_kv.fragpack.plugin:register"
+
 [project.urls]
 homepage = "https://docs.lmcache.ai"
 source = "https://github.com/LMCache/LMCache"
