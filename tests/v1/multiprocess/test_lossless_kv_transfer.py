@@ -31,8 +31,9 @@ _PAGE = 16
 _BLOCKS_PER_CHUNK = _CHUNK // _PAGE
 _LAYERS, _HEADS, _HEAD_SIZE = 4, 8, 128
 _NUM_PAGES = 2048
-# Small L1 so the eviction test pushes early chunks out to L2.
-_L1_BYTES = 48 * 1024 * 1024
+# L1 holds every L1 test below the eviction watermark; the eviction test
+# fills it several times over to push its early chunks out to L2.
+_L1_BYTES = 128 * 1024 * 1024
 _TIMEOUT = 600.0
 
 
@@ -233,16 +234,23 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Generator:
             process.join()
 
 
-def _compressible_kv(dtype: torch.dtype, seed: int) -> list[torch.Tensor]:
-    """KV layers ``[2, pages, page, heads, head]`` with a narrow exponent range."""
+def _compressible_kv(
+    dtype: torch.dtype, seed: int, fused: bool = False
+) -> list[torch.Tensor]:
+    """KV layers with a narrow exponent range.
+
+    Separate K/V layers are ``[2, pages, page, heads, head]``; fused ones are
+    vLLM's ``[pages, page, heads, 2 * head]``.
+    """
     generator = torch.Generator(device=torch_device_type).manual_seed(seed)
+    shape = (
+        (_NUM_PAGES, _PAGE, _HEADS, 2 * _HEAD_SIZE)
+        if fused
+        else (2, _NUM_PAGES, _PAGE, _HEADS, _HEAD_SIZE)
+    )
     layers = []
     for _ in range(_LAYERS):
-        values = torch.randn(
-            (2, _NUM_PAGES, _PAGE, _HEADS, _HEAD_SIZE),
-            generator=generator,
-            device=torch_device_type,
-        )
+        values = torch.randn(shape, generator=generator, device=torch_device_type)
         if dtype == torch.uint8:
             layers.append(values.to(torch.float8_e4m3fn).view(torch.uint8))
         else:
@@ -321,25 +329,36 @@ def _blocks(first_chunk: int, num_chunks: int) -> list[int]:
     return list(range(start, start + num_chunks * _BLOCKS_PER_CHUNK))
 
 
+def _pages(layer: torch.Tensor) -> torch.Tensor:
+    """View a layer with its page axis first (fused layers already are)."""
+    return layer if layer.dim() == 4 else layer.transpose(0, 1)
+
+
 def _assert_blocks_equal(
     layers: list[torch.Tensor], src: list[int], dst: list[int]
 ) -> None:
     src_ids = torch.tensor(src, device=layers[0].device)
     dst_ids = torch.tensor(dst, device=layers[0].device)
     for layer in layers:
-        assert torch.equal(layer[:, src_ids], layer[:, dst_ids])
+        assert torch.equal(_pages(layer)[src_ids], _pages(layer)[dst_ids])
 
 
 @gpu
 @pytest.mark.parametrize(
-    ("dtype", "instance_id"), [(torch.bfloat16, 7001), (torch.uint8, 7002)]
+    ("dtype", "fused", "instance_id"),
+    [
+        (torch.bfloat16, False, 7001),
+        (torch.uint8, False, 7002),
+        (torch.bfloat16, True, 7004),
+        (torch.uint8, True, 7005),
+    ],
 )
 def test_codec_round_trips_from_l1_bit_exact(
-    client, dtype: torch.dtype, instance_id: int
+    client, dtype: torch.dtype, fused: bool, instance_id: int
 ) -> None:
     """A multi-batch store comes back bit-exact, honoring skip_first_n_tokens."""
-    model = f"lossless-l1-{dtype}"
-    layers = _compressible_kv(dtype, seed=instance_id)
+    model = f"lossless-l1-{dtype}-{fused}"
+    layers = _compressible_kv(dtype, seed=instance_id, fused=fused)
     keepalive: list = []
     _register(client, instance_id, layers, model)
     try:
@@ -358,7 +377,7 @@ def test_codec_round_trips_from_l1_bit_exact(
 
         dst = _blocks(100, num_chunks)
         for layer in layers:
-            layer[:, dst] = 0
+            _pages(layer)[dst] = 0
         skip = _CHUNK // 2
         assert _retrieve(client, key, instance_id, dst, skip, keepalive)
         torch_dev.synchronize()
@@ -366,7 +385,7 @@ def test_codec_round_trips_from_l1_bit_exact(
         skipped = skip // _PAGE
         _assert_blocks_equal(layers, _blocks(0, num_chunks)[skipped:], dst[skipped:])
         for layer in layers:
-            assert not layer[:, dst[:skipped]].any()
+            assert not _pages(layer)[dst[:skipped]].any()
     finally:
         client.unregister_kv_cache(instance_id).result(timeout=_TIMEOUT)
 
@@ -390,21 +409,24 @@ def test_codec_round_trips_from_l2_after_l1_eviction(client) -> None:
             )
         torch_dev.synchronize()
         time.sleep(2.0)  # records commit and reach L2
-        # Fill L1 several times over so the early chunks are evicted.
-        filler_bytes = 0
+        # Fill L1 several times over so the early chunks are evicted. Stores
+        # into a full L1 are skipped, so each round of half an L1 waits for
+        # the once-a-second eviction loop before the next.
+        raw_chunk_bytes = _CHUNK * _LAYERS * 2 * _HEADS * _HEAD_SIZE * 2
+        per_round = _L1_BYTES // 2 // raw_chunk_bytes
         filler = 0
-        while filler_bytes < 4 * _L1_BYTES:
-            _store(
-                client,
-                _cache_key(model, 100 + filler, 1, f"fill-{filler}"),
-                instance_id,
-                _blocks(num_early, 1),
-                keepalive,
-            )
-            filler += 1
-            filler_bytes += _CHUNK * _LAYERS * 2 * _HEADS * _HEAD_SIZE * 2
-        torch_dev.synchronize()
-        time.sleep(2.0)
+        for _ in range(8):
+            for _ in range(per_round):
+                _store(
+                    client,
+                    _cache_key(model, 100 + filler, 1, f"fill-{filler}"),
+                    instance_id,
+                    _blocks(num_early, 1),
+                    keepalive,
+                )
+                filler += 1
+            torch_dev.synchronize()
+            time.sleep(1.5)
 
         dst_first = 100
         for i in range(num_early):
@@ -412,7 +434,7 @@ def test_codec_round_trips_from_l2_after_l1_eviction(client) -> None:
             assert _lookup(client, key) == 1
             dst = _blocks(dst_first + i, 1)
             for layer in layers:
-                layer[:, dst] = 0
+                _pages(layer)[dst] = 0
             assert _retrieve(client, key, instance_id, dst, 0, keepalive)
             torch_dev.synchronize()
             _assert_blocks_equal(layers, _blocks(i, 1), dst)
