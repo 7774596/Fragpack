@@ -8,12 +8,14 @@ of its raw bytes, so L1 and L2 hold more chunks and L2 moves fewer bytes.
 A record's length is known only after encoding, and reading it back
 synchronizes the GPU. Every store and retrieve of one GPU runs on one handler
 thread, so encoding there would make each retrieve wait behind the host
-synchronizations of earlier stores. ``CodecStoreWorker`` moves that work to its
-own thread and CUDA stream: the handler only gathers the chunks into the
+synchronizations of earlier stores. ``RecordStoreWorker`` moves that work to
+its own thread and CUDA stream: the handler only gathers the chunks into the
 worker's buffer pool and returns; the worker encodes, reserves one L1 object
-per record, copies it to host and commits it. Retrieves copy each record into
-a codec staging buffer, decode in place, and scatter the raw chunks into the
-paged KV cache, all on the context stream without host synchronization.
+per record, copies it to host and commits it; FragPack block blobs
+(``fragpack_blob_transfer``) are stored by the same worker. Retrieves copy
+each record into a codec staging buffer, decode in place, and scatter the raw
+chunks into the paged KV cache, all on the context stream without host
+synchronization.
 """
 
 # Standard
@@ -189,13 +191,16 @@ def launch_paged_kv_copy(
 
 
 @dataclass
-class CodecStoreJob:
-    """One batch of gathered chunks waiting to be encoded and stored.
+class RecordStoreJob:
+    """One batch of gathered chunks waiting to be stored as records.
 
     Args:
         keys (list[ObjectKey]): Object key of each chunk.
         slots (list[int]): Pool slot holding each chunk, from ``acquire``.
         ready (torch.cuda.Event): Recorded after the gather filling the slots.
+        records (Callable): Called on the worker thread, with the worker's
+            stream current, on the slots' buffers; returns each chunk's
+            record as a uint8 device view (None to skip the chunk).
         on_done (Callable): Called on the worker thread with the committed
             objects by key and whether the batch completed without raising.
     """
@@ -203,6 +208,7 @@ class CodecStoreJob:
     keys: list[ObjectKey]
     slots: list[int]
     ready: torch.cuda.Event
+    records: Callable[[list[torch.Tensor]], list[torch.Tensor | None]]
     on_done: Callable[[dict[ObjectKey, MemoryObj], bool], None]
 
 
@@ -281,15 +287,16 @@ class _Pool:
     cond: threading.Condition = field(default_factory=threading.Condition)
 
 
-class CodecStoreWorker:
-    """Encodes and stores gathered chunks on a dedicated thread and stream.
+class RecordStoreWorker:
+    """Stores variable-length records of gathered chunks on its own thread
+    and stream.
 
     Args:
-        codec (KVMajorChunkCodec): Codec of this cache context. Encode and
-            decode own separate scratch, so retrieves may decode concurrently.
         storage_manager (StorageManager): Reserves and commits L1 objects.
         device (torch.device): CUDA device of the cache context.
-        num_slots (int): Number of raw chunk buffers in the gather pool.
+        num_slots (int): Number of chunk buffers in the gather pool.
+        slot_bytes (int): Bytes per buffer, a 16-byte multiple; buffers are
+            consecutive in :attr:`pool`.
 
     Thread-safety:
         ``acquire``, ``buffer`` and ``submit`` are called by the GPU handler
@@ -301,24 +308,26 @@ class CodecStoreWorker:
 
     def __init__(
         self,
-        codec: KVMajorChunkCodec,
         storage_manager: "StorageManager",
         device: torch.device,
         num_slots: int,
+        slot_bytes: int,
     ) -> None:
         if num_slots <= 0:
-            raise ValueError("codec store pool needs at least one slot")
-        self._codec = codec
+            raise ValueError("record store pool needs at least one slot")
+        if slot_bytes <= 0 or slot_bytes % 16:
+            raise ValueError("record store slots must be 16-byte multiples")
         self._storage = storage_manager
         self._device = device
+        self._slot_bytes = slot_bytes
         with torch.cuda.device(device):
             self._stream = torch.cuda.Stream(device=device)
-            self._buffers = [
-                torch.empty(codec.raw_bytes, dtype=torch.uint8, device=device)
-                for _ in range(num_slots)
-            ]
+            self._pool_tensor = torch.empty(
+                num_slots * slot_bytes, dtype=torch.uint8, device=device
+            )
+        self._num_slots = num_slots
         self._pool = _Pool(free=list(range(num_slots)))
-        self._jobs: queue.Queue[CodecStoreJob | None] = queue.Queue()
+        self._jobs: queue.Queue[RecordStoreJob | None] = queue.Queue()
         self._thread = threading.Thread(
             target=self._run, name="lossless-kv-store", daemon=True
         )
@@ -327,7 +336,16 @@ class CodecStoreWorker:
     @property
     def num_slots(self) -> int:
         """Return the number of gather buffers in the pool."""
-        return len(self._buffers)
+        return self._num_slots
+
+    @property
+    def pool(self) -> torch.Tensor:
+        """Return the uint8 pool; slot ``i`` starts at :meth:`offset` ``(i)``."""
+        return self._pool_tensor
+
+    def offset(self, slot: int) -> int:
+        """Return the byte offset of ``slot``'s buffer in :attr:`pool`."""
+        return slot * self._slot_bytes
 
     def acquire(self, count: int) -> list[int]:
         """Take ``count`` free pool slots, waiting for the worker if needed.
@@ -351,8 +369,9 @@ class CodecStoreWorker:
         return slots
 
     def buffer(self, slot: int) -> torch.Tensor:
-        """Return the raw chunk buffer of ``slot`` (uint8, ``raw_bytes``)."""
-        return self._buffers[slot]
+        """Return the buffer of ``slot`` (uint8, ``slot_bytes``)."""
+        start = self.offset(slot)
+        return self._pool_tensor[start : start + self._slot_bytes]
 
     def release(self, slots: list[int]) -> None:
         """Return acquired slots to the pool.
@@ -365,7 +384,7 @@ class CodecStoreWorker:
             pool.free.extend(slots)
             pool.cond.notify_all()
 
-    def submit(self, job: CodecStoreJob) -> None:
+    def submit(self, job: RecordStoreJob) -> None:
         """Queue a gathered batch; the worker owns its slots from now on."""
         self._jobs.put(job)
 
@@ -383,19 +402,19 @@ class CodecStoreWorker:
                     return
                 self._store(job)
 
-    def _store(self, job: CodecStoreJob) -> None:
+    def _store(self, job: RecordStoreJob) -> None:
         """Encode one batch, copy each record into its own L1 object, commit."""
         st = time.perf_counter()
         stored: dict[ObjectKey, MemoryObj] = {}
         ok = True
         try:
             self._stream.wait_event(job.ready)
-            chunks = [self._buffers[slot] for slot in job.slots]
-            lengths = self._codec.encode(chunks, self._stream)
+            records = job.records([self.buffer(slot) for slot in job.slots])
             # Records of one length share a reservation.
             by_length: dict[int, list[int]] = {}
-            for index, length in enumerate(lengths):
-                by_length.setdefault(length, []).append(index)
+            for index, record in enumerate(records):
+                if record is not None:
+                    by_length.setdefault(record.numel(), []).append(index)
             reserved: dict[ObjectKey, MemoryObj] = {}
             for length, indices in by_length.items():
                 objs = self._storage.reserve_write(
@@ -404,7 +423,7 @@ class CodecStoreWorker:
                 for i in indices:
                     obj = objs.get(job.keys[i])
                     if obj is not None:
-                        lmcache_memcpy_async_d2h(chunks[i][:length], obj)
+                        lmcache_memcpy_async_d2h(records[i], obj)
                         reserved[job.keys[i]] = obj
             if reserved:
                 completion = self._storage.prepare_write_completion(reserved)
@@ -452,11 +471,11 @@ class LosslessKVTransfer:
         self._codec = create_chunk_codec(cache_context, config)
         self._width = config.batch_size
         device = cache_context.device
-        self._store_worker = CodecStoreWorker(
-            self._codec,
+        self._store_worker = RecordStoreWorker(
             storage_manager,
             device,
             max(self._width, config.store_pool_chunks or 2 * self._width),
+            self._codec.raw_bytes,
         )
         with torch.cuda.device(device):
             self._retrieve_staging = [
@@ -537,10 +556,11 @@ class LosslessKVTransfer:
                 raise
             tally.add_batch()
             worker.submit(
-                CodecStoreJob(
+                RecordStoreJob(
                     keys=[obj_keys[i] for i in window],
                     slots=slots,
                     ready=ready,
+                    records=self._encode,
                     on_done=tally.batch_done,
                 )
             )
@@ -603,3 +623,8 @@ class LosslessKVTransfer:
         stored before the context goes away.
         """
         self._store_worker.close()
+
+    def _encode(self, chunks: list[torch.Tensor]) -> list[torch.Tensor | None]:
+        """Encode chunks in place on the current stream; return the records."""
+        lengths = self._codec.encode(chunks, torch.cuda.current_stream())
+        return [chunk[:length] for chunk, length in zip(chunks, lengths, strict=True)]

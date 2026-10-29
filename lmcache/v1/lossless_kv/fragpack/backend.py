@@ -74,6 +74,9 @@ from lmcache.v1.lossless_kv.fragpack.hbm_kv import (
     HEAD_DIM,
     HbmKvStore,
     page_bytes,
+)
+from lmcache.v1.lossless_kv.fragpack.registry import (
+    record_geometry,
     register_store,
 )
 
@@ -713,10 +716,15 @@ class FragPackAttentionBackend(AttentionBackend):
         Returns:
             Spec with one head slot of ``page_bytes(H, fp8) / 128`` bytes per
             token, ``fp8`` for a one-byte (FP8) cache dtype.
+
+        Note:
+            Also records the page geometry for the KV connector
+            (:func:`.registry.record_geometry`).
         """
         if spec.state_content_bytes is not None:
             return spec
         fp8 = spec.dtype.itemsize == 1
+        record_geometry(spec.num_kv_heads, fp8)
         return replace(
             spec,
             num_head_slots=1,

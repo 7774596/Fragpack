@@ -1420,6 +1420,9 @@ class LMCacheMPWorkerAdapter:
         # Registered kv caches from vLLM
         self.kv_caches: dict[str, torch.Tensor] = {}
         self._layout_hints: "LayoutHints | None" = None
+        # FragPack attention store whose tables the server holds; cleared on
+        # every (re-)registration, which creates a new server-side transfer.
+        self._fragpack_store_sent: object | None = None
         self.engine_group_infos: list[EngineGroupInfo] = []
         # Transport context for transfer operations.
         self.transfer_ctx: TransferContext | None = None
@@ -1658,6 +1661,7 @@ class LMCacheMPWorkerAdapter:
         )
         layout_hints = self._layout_hints
         self.transfer_ctx = transfer_ctx
+        self._fragpack_store_sent = None
         try:
             # Register on the local, not self.transfer_ctx: a concurrent
             # shutdown() may null self.transfer_ctx between publish and this
@@ -1760,6 +1764,46 @@ class LMCacheMPWorkerAdapter:
 
         return True
 
+    def _share_fragpack_store(self) -> None:
+        """Send the FragPack attention store's tables to the server once.
+
+        FragPack attention creates its store on the first forward, after the
+        KV cache was registered; the server stores and retrieves FragPack
+        blocks through these tables. Sent again when attention rebuilds its
+        store or after a re-registration.
+
+        Raises:
+            ConnectionError: If the server does not respond within
+                mq_timeout.
+        """
+        if not (self._layout_hints or {}).get("kv_codec"):
+            return
+        # First Party
+        from lmcache.v1.lossless_kv.fragpack import registry as fragpack
+        from lmcache.v1.platform.kv_wrap import wrap_one_kv_cache
+
+        store = fragpack.active_store()
+        if store is None or store is self._fragpack_store_sent:
+            return
+        tables = store.blob_tables()
+        future = self.req_client.register_fragpack_store(
+            self.instance_id,
+            [wrap_one_kv_cache(t) for t in tables.tensors()],
+            tables.arena_stride,
+            tables.ovf_rec,
+            tables.arena_rec,
+            tables.digest,
+        )
+        try:
+            future.result(timeout=self._mq_timeout)
+        except TimeoutError:
+            raise ConnectionError(
+                "LMCache server did not respond to register_fragpack_store "
+                f"within {self._mq_timeout}s"
+            ) from None
+        self._fragpack_store_sent = store
+        logger.info("Shared FragPack store tables with the LMCache server")
+
     def create_recorded_event(self) -> _IpcEvent | None:
         """Create the ordering event required by the active transfer context.
 
@@ -1842,6 +1886,7 @@ class LMCacheMPWorkerAdapter:
                 "Transfer context is not initialized. "
                 "Call register_kv_caches() before submitting store requests."
             )
+        self._share_fragpack_store()
         future = self.transfer_ctx.submit_store(
             request_id,
             key,
@@ -1911,6 +1956,7 @@ class LMCacheMPWorkerAdapter:
                 "Transfer context is not initialized. "
                 "Call register_kv_caches() before submitting retrieve requests."
             )
+        self._share_fragpack_store()
         future = self.transfer_ctx.submit_retrieve(
             request_id,
             key,

@@ -61,6 +61,17 @@ class RequestClient(Protocol):
     def unregister_kv_cache(self, instance_id: int) -> MessagingFuture[None]: ...
 
     @rpc_method
+    def register_fragpack_store(
+        self,
+        instance_id: int,
+        tables: list[DeviceIPCWrapper],
+        arena_stride: list[int],
+        ovf_rec: int,
+        arena_rec: list[int],
+        digest: int,
+    ) -> MessagingFuture[None]: ...
+
+    @rpc_method
     def register_q_cache(
         self,
         instance_id: int,

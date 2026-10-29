@@ -42,17 +42,18 @@ void hbm_gather(torch::Tensor src_blocks, torch::Tensor rec_addr, torch::Tensor 
                 torch::Tensor plut, torch::Tensor slut, torch::Tensor xoff, torch::Tensor wk,
                 torch::Tensor wv, int64_t kv_heads, bool fp8);
 
-void hbm_export(torch::Tensor blocks, torch::Tensor rec_addr, torch::Tensor rec_len,
-                torch::Tensor out, int64_t stride, torch::Tensor lengths, int64_t digest, bool fp8);
-
-void hbm_import(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
-                torch::Tensor free_stack, torch::Tensor ovf_bits, torch::Tensor claim_list,
-                torch::Tensor close_list, torch::Tensor rec_addr, torch::Tensor rec_len,
-                torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
-                torch::Tensor fill,
-                torch::Tensor src, torch::Tensor offsets, torch::Tensor blocks,
-                torch::Tensor status, torch::Tensor arena_base, torch::Tensor arena_stride,
+void hbm_export(torch::Tensor rec_addr, torch::Tensor rec_len, torch::Tensor ovf_bits,
+                torch::Tensor fill, torch::Tensor overflow, int64_t ovf_rec,
+                torch::Tensor arena_rec, torch::Tensor arena_dev, torch::Tensor arena_stride,
+                torch::Tensor blocks, torch::Tensor out, torch::Tensor offsets,
+                int64_t slot_bytes, torch::Tensor lengths, torch::Tensor status,
                 int64_t digest);
+
+void hbm_import(torch::Tensor rec_addr, torch::Tensor rec_len, torch::Tensor ovf_bits,
+                torch::Tensor fill, torch::Tensor overflow, int64_t ovf_rec,
+                torch::Tensor arena_rec, torch::Tensor arena_dev, torch::Tensor arena_stride,
+                torch::Tensor src, torch::Tensor offsets, torch::Tensor blocks,
+                torch::Tensor status, int64_t digest);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("hbm_export", &hbm_export);

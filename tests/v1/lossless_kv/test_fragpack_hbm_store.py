@@ -12,7 +12,10 @@ FP8 KV has channels at different magnitudes, so the records exercise the
 per-channel exponent offsets.
 Block blobs exported from one store and imported into other blocks of a second
 store must pass the same checks, free the overflow slots they replace, and
-reject corrupt or foreign blobs without touching the destination. FP8 writes
+reject corrupt or foreign blobs without touching the destination. A port whose
+arenas and overflow pool sit at other addresses than the tables record (a
+cache server's CUDA IPC mappings) must move the same blobs, and exporting an
+open or never-written block must fail. FP8 writes
 must produce the bytes of vLLM's FP8 cache write. A request whose chunk closes
 its open block and opens a new tail must not need a second persistent slot.
 """
@@ -35,7 +38,10 @@ from lmcache.v1.lossless_kv.fragpack.fused_attn_decode import (
     workspace_elems,
 )
 from lmcache.v1.lossless_kv.fragpack.hbm_kv import (
+    BlobPort,
+    BlobTables,
     HbmKvStore,
+    blob_failures,
     page_bytes,
 )
 
@@ -411,29 +417,90 @@ def _prefill(h: _Harness) -> None:
     h.step([(a, 300, 84), (b, 256, 1), (c, 10, 1)], a + b + c)
 
 
+class _Port:
+    """A store's blob port, optionally through copies at other addresses.
+
+    The remote port works on copies of the arenas and the overflow pool
+    while the tables keep recording the store's own addresses, as a cache
+    server does over CUDA IPC mappings. The copies are refreshed from the
+    store before each call and written back after it.
+    """
+
+    def __init__(self, h: _Harness, remote: bool) -> None:
+        self.store = h.store
+        self.remote = remote
+        if not remote:
+            self.port = h.store.blob_port()
+            return
+        own = h.store.blob_tables()
+        self.arenas = [a.clone() for a in own.arenas]
+        self.overflow = own.overflow.clone()
+        self.port = BlobPort(
+            BlobTables(
+                rec_addr=own.rec_addr,
+                rec_len=own.rec_len,
+                ovf_bits=own.ovf_bits,
+                fill=own.fill,
+                overflow=self.overflow,
+                arenas=self.arenas,
+                arena_stride=own.arena_stride,
+                ovf_rec=own.ovf_rec,
+                arena_rec=own.arena_rec,
+                digest=own.digest,
+            )
+        )
+
+    def export(self, blocks: list[int]) -> tuple[torch.Tensor, list[int], list[int]]:
+        self._pull()
+        stride = self.port.blob_stride
+        out = torch.zeros(len(blocks) * stride, dtype=torch.uint8, device="cuda")
+        offsets = [i * stride for i in range(len(blocks))]
+        lengths, status = self.port.export_blocks(blocks, out, offsets)
+        return out, lengths.cpu().tolist(), status.cpu().tolist()
+
+    def import_(self, src: torch.Tensor, offsets: list[int], blocks: list[int]):
+        self._pull()
+        status = self.port.import_blocks(src, offsets, blocks).cpu().tolist()
+        if self.remote:
+            own = self.store.blob_tables()
+            for arena, copy in zip(own.arenas, self.arenas, strict=True):
+                arena.copy_(copy)
+            own.overflow.copy_(self.overflow)
+        return status
+
+    def _pull(self) -> None:
+        if self.remote:
+            own = self.store.blob_tables()
+            for arena, copy in zip(own.arenas, self.arenas, strict=True):
+                copy.copy_(arena)
+            self.overflow.copy_(own.overflow)
+
+
 def _export(h: _Harness, blocks: list[int]) -> tuple[torch.Tensor, list[int]]:
-    stride = h.store.blob_stride
-    out = torch.zeros(len(blocks) * stride, dtype=torch.uint8, device="cuda")
-    ids = torch.tensor(blocks, dtype=torch.int32, device="cuda")
-    lengths = h.store.export_blocks(ids, out, stride).cpu().tolist()
+    out, lengths, status = _Port(h, remote=False).export(blocks)
+    assert status == [0] * len(blocks)
     return out, lengths
 
 
 def _import(h: _Harness, src: torch.Tensor, offsets: list[int], blocks: list[int]):
-    off = torch.tensor(offsets, dtype=torch.int64, device="cuda")
-    ids = torch.tensor(blocks, dtype=torch.int32, device="cuda")
-    return h.store.import_blocks(src, off, ids).cpu().tolist()
+    return _Port(h, remote=False).import_(src, offsets, blocks)
 
 
+@pytest.mark.parametrize("remote", [False, True], ids=["local", "remote"])
 @pytest.mark.parametrize("fp8, tight", PAGES)
-def test_blob_round_trip_matches_reference(fp8: bool, tight: bool) -> None:
+def test_blob_round_trip_matches_reference(
+    fp8: bool, tight: bool, remote: bool
+) -> None:
     page = _page(fp8, tight)
     src = _Harness(np.random.default_rng(0), page, fp8=fp8)
     _prefill(src)
     torch.cuda.synchronize()
     src_spills = src.check_arena(SRC).spills
-    blobs, lengths = _export(src, SRC)
-    stride = src.store.blob_stride
+    blobs, lengths, status = _Port(src, remote).export(SRC)
+    assert status == [0] * len(SRC)
+    if remote:
+        assert torch.equal(blobs, _export(src, SRC)[0])
+    stride = src.store.blob_port().blob_stride
     assert stride == ap.blob_slot_bytes(L, H, fp8)
     head = ap.blob_head_bytes(L, H)
     dense = src.fmt.dense_bytes
@@ -449,7 +516,8 @@ def test_blob_round_trip_matches_reference(fp8: bool, tight: bool) -> None:
     for s_b, d_b in zip(SRC, DST, strict=True):
         dst.ref[:, :, d_b] = src.ref[:, :, s_b]
     offsets = [i * stride for i in range(len(SRC))]
-    assert _import(dst, blobs, offsets, DST) == [0] * len(DST)
+    port = _Port(dst, remote)
+    assert port.import_(blobs, offsets, DST) == [0] * len(DST)
     torch.cuda.synchronize()
     placed = dst.check_arena(DST)
     # Records keep their coding: the import neither codes nor spills.
@@ -457,7 +525,7 @@ def test_blob_round_trip_matches_reference(fp8: bool, tight: bool) -> None:
     used = _overflow_used(dst.store, dst.overflow_records)
     assert used == placed.overflow
     # Re-importing frees the overflow records it replaces.
-    assert _import(dst, blobs, offsets, DST) == [0] * len(DST)
+    assert port.import_(blobs, offsets, DST) == [0] * len(DST)
     assert _overflow_used(dst.store, dst.overflow_records) == used
     dst.check_gather({b: T for b in DST})
     dst.check_decode([[6, 7], [2], [3, 9]], [256, 128, 256])
@@ -467,7 +535,7 @@ def test_blob_import_rejects_without_side_effects() -> None:
     src = _Harness(np.random.default_rng(0), page_bytes(H))
     _prefill(src)
     blobs, _ = _export(src, [8, 9])
-    stride = src.store.blob_stride
+    stride = src.store.blob_port().blob_stride
     dst = _Harness(np.random.default_rng(0), page_bytes(H), overflow_records=1)
     before = dst.store.rec_addr.clone(), dst.store.rec_len.clone()
 
@@ -496,6 +564,16 @@ def test_blob_import_rejects_without_side_effects() -> None:
     torch.cuda.synchronize()
     wide_layer = WIDE[1]
     assert torch.equal(dst.store.rec_addr[wide_layer, 10], before[0][wide_layer, 10])
+
+
+@pytest.mark.parametrize("remote", [False, True], ids=["local", "remote"])
+def test_blob_export_flags_open_blocks(remote: bool) -> None:
+    h = _Harness(np.random.default_rng(0), page_bytes(H))
+    _prefill(h)
+    # 10 and 2 are open (in staging), 5 was never written, 8 is closed.
+    _, _, status = _Port(h, remote).export([10, 2, 5, 8])
+    assert [s != 0 for s in status] == [True, True, True, False]
+    assert blob_failures(status[0]) == "block not closed"
 
 
 @pytest.mark.parametrize(

@@ -41,13 +41,15 @@ closed blocks into their arena pages. :meth:`commit` (after the last layer)
 releases the closed blocks' staging. Every launch shape depends only on host
 values fixed per batch shape, so the per-layer ops are CUDA-graph safe.
 
-External tiers move closed blocks as block blobs (``attn_page.BLOB_MAGIC``):
-:meth:`HbmKvStore.export_blocks` copies a block's records out, and
-:meth:`HbmKvStore.import_blocks` installs them into another block on any
-stream. Overflow slots are a bitmap, so imports may allocate them while the
-model stream encodes. The serving engine's attention backend creates the
-store; :func:`register_store` / :func:`active_store` hand it to the KV
-connector without either importing the other.
+External tiers move closed blocks as block blobs (``attn_page.BLOB_MAGIC``)
+through a :class:`BlobPort`: :meth:`BlobPort.export_blocks` copies a block's
+records out, and :meth:`BlobPort.import_blocks` installs them into another
+block on any stream. Overflow slots are a bitmap, so imports may allocate them
+while the model stream encodes. A port addresses records as the store's owner
+does but copies through its own process's mappings (:class:`BlobTables`), so
+a cache server on the same GPU can run it over tables shared by CUDA IPC.
+:mod:`.registry` hands the store from the attention backend to the KV
+connector.
 """
 
 # Future
@@ -55,6 +57,7 @@ from __future__ import annotations
 
 # Standard
 from dataclasses import dataclass
+from typing import Sequence
 import hashlib
 
 # Third Party
@@ -90,10 +93,13 @@ _ENCODED = 7
 _SPILLS = 8
 _N_COUNTERS = 16
 _N_TAGS = 4
-# Import status bits, mirrored from hbm_kv.cu.
-_BLOB_FAILURES = {1: "bad header", 2: "bad lengths", 4: "overflow full"}
-
-_ACTIVE: HbmKvStore | None = None
+# Export / import status bits, mirrored from hbm_kv.cu.
+_BLOB_FAILURES = {
+    1: "bad header",
+    2: "bad lengths",
+    4: "overflow full",
+    8: "block not closed",
+}
 
 
 def page_bytes(kv_heads: int, fp8: bool = False) -> int:
@@ -111,6 +117,18 @@ def page_bytes(kv_heads: int, fp8: bool = False) -> int:
     """
     share = FP8_VAR_SHARE if fp8 else VAR_SHARE
     return 2 * kv_heads * (ap.record_format(fp8).dense_bytes + share)
+
+
+def _stage(
+    values: Sequence[int], dtype: torch.dtype, device: torch.device
+) -> torch.Tensor:
+    """Copy host ints to the device without blocking the host.
+
+    The pinned source comes from torch's caching host allocator, which reuses
+    it only after the copy completes.
+    """
+    host = torch.tensor(list(values), dtype=dtype).pin_memory()
+    return host.to(device, non_blocking=True)
 
 
 @dataclass(frozen=True)
@@ -138,47 +156,11 @@ class StoreError(RuntimeError):
     """Raised when the store dropped KV data (staging or overflow exhausted)."""
 
 
-def register_store(store: HbmKvStore) -> None:
-    """Publish the process's store to the KV connector.
-
-    Args:
-        store: The store attention now reads; replaces any earlier one.
-
-    Returns:
-        None.
-
-    Async/thread-safety:
-        Call from the forward thread when the store is (re)created.
-    """
-    global _ACTIVE
-    _ACTIVE = store
-
-
-def active_store() -> HbmKvStore:
-    """Return the store published by :func:`register_store`.
-
-    Returns:
-        The current store.
-
-    Raises:
-        RuntimeError: If attention has not created one yet (the FragPack backend
-            creates it on its first metadata build).
-
-    Async/thread-safety:
-        Lock-free read; the reference is replaced only on KV re-binding.
-    """
-    if _ACTIVE is None:
-        raise RuntimeError(
-            "no FragPack KV store: the FragPack attention backend is not active"
-        )
-    return _ACTIVE
-
-
 def blob_failures(status: int) -> str:
-    """Describe an import status word.
+    """Describe an export or import status word.
 
     Args:
-        status: Nonzero bit set returned for one block by an import.
+        status: Nonzero bit set returned for one block by an export or import.
 
     Returns:
         Comma-separated failure names.
@@ -187,6 +169,255 @@ def blob_failures(status: int) -> str:
         Pure function.
     """
     return ", ".join(name for bit, name in _BLOB_FAILURES.items() if status & bit)
+
+
+@dataclass(frozen=True)
+class BlobTables:
+    """A store's record tables and arenas as tensors of one process.
+
+    Attributes:
+        rec_addr: int64 ``[L, NB, 2, H]`` record addresses, in the store
+            owner's address space.
+        rec_len: int32 ``[L, NB, 2, H]`` variable lengths.
+        ovf_bits: int32 overflow slot bitmap.
+        fill: int32 ``[L, NB]`` arena page fill.
+        overflow: uint8 ``[O, raw]`` overflow pool; its row size selects the
+            record format.
+        arenas: Per layer, a tensor starting at the layer's first page.
+        arena_stride: Page bytes of each layer.
+        ovf_rec: ``overflow``'s address in the owner's address space.
+        arena_rec: Each arena's address in the owner's address space.
+        digest: Codec-table digest written into and checked against blobs.
+    """
+
+    rec_addr: torch.Tensor
+    rec_len: torch.Tensor
+    ovf_bits: torch.Tensor
+    fill: torch.Tensor
+    overflow: torch.Tensor
+    arenas: list[torch.Tensor]
+    arena_stride: list[int]
+    ovf_rec: int
+    arena_rec: list[int]
+    digest: int
+
+    def tensors(self) -> list[torch.Tensor]:
+        """Return the tables, then the arenas, in :meth:`from_tensors` order."""
+        return [
+            self.rec_addr,
+            self.rec_len,
+            self.ovf_bits,
+            self.fill,
+            self.overflow,
+            *self.arenas,
+        ]
+
+    @classmethod
+    def from_tensors(
+        cls,
+        tensors: list[torch.Tensor],
+        arena_stride: list[int],
+        ovf_rec: int,
+        arena_rec: list[int],
+        digest: int,
+    ) -> BlobTables:
+        """Rebuild tables from :meth:`tensors` mapped into this process.
+
+        Args:
+            tensors: The five tables, then one arena per layer.
+            arena_stride: Page bytes of each layer.
+            ovf_rec: The owner's overflow pool address.
+            arena_rec: The owner's arena addresses.
+            digest: Codec-table digest.
+
+        Returns:
+            The tables.
+
+        Raises:
+            ValueError: If fewer than six tensors are given.
+
+        Async/thread-safety:
+            Pure function.
+        """
+        if len(tensors) < 6:
+            raise ValueError("blob tables need five tables and one arena per layer")
+        rec_addr, rec_len, ovf_bits, fill, overflow, *arenas = tensors
+        return cls(
+            rec_addr=rec_addr,
+            rec_len=rec_len,
+            ovf_bits=ovf_bits,
+            fill=fill,
+            overflow=overflow,
+            arenas=arenas,
+            arena_stride=list(arena_stride),
+            ovf_rec=ovf_rec,
+            arena_rec=list(arena_rec),
+            digest=digest,
+        )
+
+
+class BlobPort:
+    """Moves closed blocks of a store in and out as block blobs.
+
+    Args:
+        tables: The store's tables as tensors of this process.
+
+    Raises:
+        ValueError: If the tables disagree in shape or an arena is smaller
+            than its pages.
+
+    Async/thread-safety:
+        Methods enqueue on the current CUDA stream. Exports and imports of
+        disjoint blocks may run concurrently with each other and with the
+        owner's forward over other blocks: overflow slots are claimed
+        atomically.
+    """
+
+    def __init__(self, tables: BlobTables) -> None:
+        rec = tables.rec_addr
+        if rec.dim() != 4 or rec.shape[2] != 2:
+            raise ValueError(f"rec_addr {tuple(rec.shape)} is not [L, NB, 2, H]")
+        self.num_layers, self.num_blocks, _, self.kv_heads = rec.shape
+        self.fp8 = tables.overflow.shape[1] == ap.FP8.raw_bytes
+        layers = self.num_layers
+        if not (
+            len(tables.arenas)
+            == len(tables.arena_stride)
+            == len(tables.arena_rec)
+            == layers
+        ):
+            raise ValueError(f"blob tables need {layers} arenas")
+        for arena, stride in zip(tables.arenas, tables.arena_stride, strict=True):
+            size = arena.numel() * arena.element_size()
+            if stride % 16 or size < self.num_blocks * stride:
+                raise ValueError(
+                    f"arena of {size} B cannot hold {self.num_blocks} pages of "
+                    f"{stride} B"
+                )
+        self._tables = tables
+        i64 = dict(dtype=torch.int64, device=rec.device)
+        self._arena_rec = torch.tensor(tables.arena_rec, **i64)
+        self._arena_dev = torch.tensor([a.data_ptr() for a in tables.arenas], **i64)
+        self._arena_stride = torch.tensor(tables.arena_stride, **i64)
+
+    @property
+    def blob_stride(self) -> int:
+        """Return the bytes reserved per block blob (all records raw)."""
+        return ap.blob_slot_bytes(self.num_layers, self.kv_heads, self.fp8)
+
+    def export_blocks(
+        self, blocks: Sequence[int], out: torch.Tensor, offsets: Sequence[int]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Copy closed blocks' records into block blobs.
+
+        Args:
+            blocks: Block ids, not reclaimed until the copy completes.
+            out: Contiguous 16-byte aligned uint8 device buffer.
+            offsets: Byte offset of each blob in ``out``; 16-byte aligned,
+                with :attr:`blob_stride` bytes free from each.
+
+        Returns:
+            ``(lengths, status)`` device tensors: int64 ``[n]`` blob lengths,
+            each rounded up to ``attn_page.BLOB_ALIGN``, and int32 ``[n]``
+            status, nonzero (see :func:`blob_failures`) for a block holding a
+            record outside its pages and the overflow pool, i.e. one still
+            open or never written. Such a blob is incomplete.
+
+        Raises:
+            ValueError: If an offset is misaligned or out of bounds.
+
+        Async/thread-safety:
+            Enqueues two pinned host-to-device copies and one kernel on the
+            current stream, which must be ordered after the forward that
+            closed the blocks.
+        """
+        n = len(blocks)
+        if len(offsets) != n:
+            raise ValueError("export needs one offset per block")
+        slot = self.blob_stride
+        if any(o < 0 or o % 16 or o + slot > out.numel() for o in offsets):
+            raise ValueError(f"export offsets must leave {slot} B per blob in out")
+        lengths = torch.zeros(n, dtype=torch.int64, device=out.device)
+        status = torch.zeros(n, dtype=torch.int32, device=out.device)
+        if n == 0:
+            return lengths, status
+        t = self._tables
+        extension().hbm_export(
+            t.rec_addr,
+            t.rec_len,
+            t.ovf_bits,
+            t.fill,
+            t.overflow,
+            t.ovf_rec,
+            self._arena_rec,
+            self._arena_dev,
+            self._arena_stride,
+            _stage(blocks, torch.int32, out.device),
+            out,
+            _stage(offsets, torch.int64, out.device),
+            slot,
+            lengths,
+            status,
+            t.digest,
+        )
+        return lengths, status
+
+    def import_blocks(
+        self, src: torch.Tensor, offsets: Sequence[int], blocks: Sequence[int]
+    ) -> torch.Tensor:
+        """Install block blobs into blocks of the store.
+
+        Records are packed into each block's arena pages; a raw record that
+        does not fit its page goes to an overflow slot. Records the blocks
+        held in overflow are freed only after that, so a failed layer keeps
+        tables that own their slots. A blob that fails validation (magic,
+        geometry, codec tables, lengths, bounds in ``src``) or finds the
+        overflow pool full sets its status and leaves the affected layers'
+        tables unchanged.
+
+        Args:
+            src: Contiguous 16-byte aligned uint8 device buffer of blobs.
+            offsets: Byte offset of each blob in ``src``.
+            blocks: Distinct destination blocks, none open or read by
+                attention until the import completes.
+
+        Returns:
+            int32 ``[n]`` device status, zero for an installed block (see
+            :func:`blob_failures`). A failed block must be recomputed.
+
+        Raises:
+            ValueError: If ``offsets`` and ``blocks`` differ in length.
+
+        Async/thread-safety:
+            Enqueues two pinned host-to-device copies and one kernel on the
+            current stream; may run on a stream other than the forward's,
+            since overflow slots are allocated atomically and the blocks are
+            disjoint from the forward's.
+        """
+        n = len(blocks)
+        if len(offsets) != n:
+            raise ValueError("import needs one offset per block")
+        status = torch.zeros(n, dtype=torch.int32, device=src.device)
+        if n == 0:
+            return status
+        t = self._tables
+        extension().hbm_import(
+            t.rec_addr,
+            t.rec_len,
+            t.ovf_bits,
+            t.fill,
+            t.overflow,
+            t.ovf_rec,
+            self._arena_rec,
+            self._arena_dev,
+            self._arena_stride,
+            src,
+            _stage(offsets, torch.int64, src.device),
+            _stage(blocks, torch.int32, src.device),
+            status,
+            t.digest,
+        )
+        return status
 
 
 class HbmKvStore:
@@ -224,6 +455,7 @@ class HbmKvStore:
         overflow_records: int,
     ) -> None:
         dev = kv_caches[0].device
+        self.kv_caches = list(kv_caches)
         self.num_layers = len(kv_caches)
         self.kv_heads = kv_heads
         self.num_blocks = kv_caches[0].shape[0]
@@ -300,9 +532,7 @@ class HbmKvStore:
         )
         self.fill = torch.zeros((L, NB), **i32)
         self.live = torch.zeros(NB, **i32)
-        i64 = dict(dtype=torch.int64, device=dev)
-        self.arena_base_dev = torch.tensor(self.arena_base, **i64)
-        self.arena_stride_dev = torch.tensor(self.arena_stride, **i64)
+        self._blob_port: BlobPort | None = None
         self._poll_host = torch.zeros(_N_COUNTERS, dtype=torch.int32, pin_memory=True)
         self._poll_event: torch.cuda.Event | None = None
         self._step = 0
@@ -475,84 +705,41 @@ class HbmKvStore:
             self.fp8,
         )
 
-    @property
-    def blob_stride(self) -> int:
-        """Return the bytes reserved per block blob (all records raw)."""
-        return ap.blob_slot_bytes(self.num_layers, self.kv_heads, self.fp8)
-
-    def export_blocks(
-        self, blocks: torch.Tensor, out: torch.Tensor, stride: int
-    ) -> torch.Tensor:
-        """Copy closed blocks' records into block blobs.
-
-        Args:
-            blocks: int32 ``[n]`` block ids, each closed (all 128 tokens
-                encoded) and not reclaimed until the copy completes.
-            out: Contiguous 16-byte aligned uint8 buffer; blob ``i`` is
-                written at ``i * stride``.
-            stride: Bytes between blobs, at least :attr:`blob_stride` and a
-                16-byte multiple.
+    def blob_tables(self) -> BlobTables:
+        """Return the tables a :class:`BlobPort` needs, as this process's.
 
         Returns:
-            int64 ``[n]`` device tensor of blob lengths, each rounded up to
-            ``attn_page.BLOB_ALIGN``.
+            Tables whose owner addresses are this process's.
 
         Async/thread-safety:
-            Enqueues one kernel on the current stream, which must be ordered
-            after the forward that closed the blocks.
+            Pure; the tensors are the store's own.
         """
-        lengths = torch.empty(blocks.numel(), dtype=torch.int64, device=out.device)
-        extension().hbm_export(
-            blocks,
-            self.rec_addr,
-            self.rec_len,
-            out,
-            stride,
-            lengths,
-            self.table_digest,
-            self.fp8,
+        return BlobTables(
+            rec_addr=self.rec_addr,
+            rec_len=self.rec_len,
+            ovf_bits=self.ovf_bits,
+            fill=self.fill,
+            overflow=self.overflow,
+            arenas=self.kv_caches,
+            arena_stride=self.arena_stride,
+            ovf_rec=self.overflow.data_ptr(),
+            arena_rec=self.arena_base,
+            digest=self.table_digest,
         )
-        return lengths
 
-    def import_blocks(
-        self, src: torch.Tensor, offsets: torch.Tensor, blocks: torch.Tensor
-    ) -> torch.Tensor:
-        """Install block blobs into blocks of this store.
-
-        Records are packed into each block's arena pages; a raw record that
-        does not fit its page goes to an overflow slot. Records the blocks
-        held in overflow are freed only after that, so a failed layer keeps
-        tables that own their slots. A blob that fails validation (magic,
-        geometry, codec tables, lengths) or finds the overflow pool full
-        sets its status and leaves the affected layers' tables unchanged.
-
-        Args:
-            src: Contiguous 16-byte aligned uint8 buffer holding the blobs.
-            offsets: int64 ``[n]`` byte offsets of the blobs in ``src``.
-            blocks: int32 ``[n]`` distinct destination blocks, none open or
-                read by attention until the import completes.
+    def blob_port(self) -> BlobPort:
+        """Return a port over this store, created on first use.
 
         Returns:
-            int32 ``[n]`` device status, zero for an installed block (see
-            :func:`blob_failures`). A failed block must be recomputed.
+            The store's :class:`BlobPort`.
 
         Async/thread-safety:
-            Enqueues one kernel on the current stream; may run on a stream
-            other than the forward's, since overflow slots are allocated
-            atomically and the blocks are disjoint from the forward's.
+            Call from one thread; the first call copies small tables to the
+            device synchronously.
         """
-        status = torch.zeros(blocks.numel(), dtype=torch.int32, device=src.device)
-        extension().hbm_import(
-            *self._state,
-            src,
-            offsets,
-            blocks,
-            status,
-            self.arena_base_dev,
-            self.arena_stride_dev,
-            self.table_digest,
-        )
-        return status
+        if self._blob_port is None:
+            self._blob_port = BlobPort(self.blob_tables())
+        return self._blob_port
 
     def poll(self) -> StoreStats | None:
         """Asynchronously snapshot the counters; raise if data was dropped.
@@ -613,14 +800,14 @@ class HbmKvStore:
 
 __all__ = [
     "BLOCK_TOKENS",
+    "BlobPort",
+    "BlobTables",
     "FP8_VAR_SHARE",
     "HEAD_DIM",
     "VAR_SHARE",
     "HbmKvStore",
     "StoreError",
     "StoreStats",
-    "active_store",
     "blob_failures",
     "page_bytes",
-    "register_store",
 ]

@@ -3,7 +3,7 @@
 
 # Standard
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence, Union
 import threading
 import time
 
@@ -25,6 +25,7 @@ from lmcache.v1.memory_management import MemoryObj
 from lmcache.v1.mp_observability.event import Event, EventType, next_transfer_key
 from lmcache.v1.multiprocess.config import LosslessKVConfig
 from lmcache.v1.multiprocess.custom_types import (
+    DeviceIPCWrapper,
     IPCCacheServerKey,
     KVCache,
 )
@@ -53,6 +54,14 @@ from lmcache.v1.platform.base.event_ipc import (
 )
 from lmcache.v1.platform.cache_context import create_cache_context
 import lmcache.lmcache_native as lmcache_native
+
+if TYPE_CHECKING:
+    # First Party
+    from lmcache.v1.multiprocess.fragpack_blob_transfer import (
+        FragPackBlobTransfer,
+    )
+
+    RecordTransfer = Union[LosslessKVTransfer, FragPackBlobTransfer]
 
 logger = init_logger(__name__)
 
@@ -188,7 +197,8 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         # Codec store/retrieve per registered cache context, keyed by the
         # context's id(); only populated when the codec is enabled. Entries
         # are removed before their context is released, so ids never alias.
-        self._lossless_transfers: dict[int, LosslessKVTransfer] = {}
+        # Record (codec or FragPack blob) transfers by id(cache_context).
+        self._lossless_transfers: dict[int, "RecordTransfer"] = {}
         # Guards all reads/writes of _cache_contexts. The reaper mutates it
         # off the MQ main loop, so register/unregister/store/retrieve and
         # report_status all serialize through this lock. Held only for dict
@@ -514,15 +524,9 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         num_object_groups = kv_groups_manager.num_object_groups
         event_backend = get_event_ipc_backend(cache_context.device)
         event_backend.check_event_support(cache_context.device)
-        lossless_kv = (
-            LosslessKVTransfer(
-                cache_context, self._ctx.storage_manager, self._lossless_kv
-            )
-            if self._lossless_kv.enabled
-            else None
-        )
+        lossless_kv = self._create_record_transfer(cache_context, layout_hints)
         if lossless_kv is not None:
-            # Codec objects are flat byte records; the layout bounds them.
+            # Records are flat byte objects; the layout bounds them.
             layout_desc = lossless_kv.layout_desc(self._ctx.chunk_size)
             group_layout_descs = {0: layout_desc}
         else:
@@ -587,6 +591,62 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
         # _release_entries' reclaim actually unmaps the IPC segments.
         self._release_entries(popped)
         logger.info("Unregistered KV cache for GPU ID %d", instance_id)
+
+    @request_handler()
+    def register_fragpack_store(
+        self,
+        instance_id: int,
+        tables: list[DeviceIPCWrapper],
+        arena_stride: list[int],
+        ovf_rec: int,
+        arena_rec: list[int],
+        digest: int,
+    ) -> None:
+        """Attach the FragPack attention store of a registered instance.
+
+        The worker creates its store on the first forward, after registering
+        its KV cache, and sends its tables before the first store or retrieve
+        (and again whenever it rebuilds the store). Until then the instance's
+        stores queue nothing and its retrieves fail.
+
+        Args:
+            instance_id: The GPU instance ID, registered with a ``kv_codec``
+                FragPack layout hint.
+            tables: ``BlobTables.tensors()`` of the store, wrapped for IPC.
+            arena_stride: Page bytes of each layer.
+            ovf_rec: The overflow pool's address in the worker.
+            arena_rec: Each layer arena's address in the worker.
+            digest: Codec-table digest of the store.
+
+        Raises:
+            ValueError: If the instance is not registered as a FragPack cache
+                or the tables disagree with its registration.
+        """
+        # First Party
+        from lmcache.v1.lossless_kv.fragpack.hbm_kv import BlobTables
+        from lmcache.v1.multiprocess.fragpack_blob_transfer import (
+            FragPackBlobTransfer,
+        )
+
+        entry = self.get_and_touch_context_entry(instance_id)
+        transfer = (
+            None if entry is None else self._lossless_transfer(entry.cache_context)
+        )
+        if not isinstance(transfer, FragPackBlobTransfer):
+            raise ValueError(
+                f"instance {instance_id} is not registered as a FragPack cache"
+            )
+        with torch_dev.device(entry.cache_context.device):
+            transfer.attach(
+                BlobTables.from_tensors(
+                    [wrapper.to_tensor() for wrapper in tables],
+                    arena_stride,
+                    ovf_rec,
+                    arena_rec,
+                    digest,
+                )
+            )
+        logger.info("Attached FragPack store of GPU ID %d", instance_id)
 
     @request_handler(
         HandlerType.BLOCKING,
@@ -809,7 +869,12 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                     skip_mask = skipped_chunks[obj_group_id]
                     if lossless_kv is not None and tally is not None:
                         codec_queued = lossless_kv.submit_store(
-                            block_ids_per_group_gpu, obj_keys, skip_mask, tally
+                            block_ids_per_group_gpu
+                            if isinstance(lossless_kv, LosslessKVTransfer)
+                            else gpu_block_ids,
+                            obj_keys,
+                            skip_mask,
+                            tally,
                         )
                         continue
                     keys_to_reserve = [
@@ -1127,7 +1192,11 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
                     memory_objs: list[MemoryObj | None] = [None] * skip + window_objs
                     if lossless_kv is not None:
                         lossless_kv.retrieve(
-                            block_ids_per_group_gpu, memory_objs, skip_first_n_tokens
+                            block_ids_per_group_gpu
+                            if isinstance(lossless_kv, LosslessKVTransfer)
+                            else gpu_block_ids,
+                            memory_objs,
+                            skip_first_n_tokens,
                         )
                         prefetched_keys.extend(in_window_keys)
                         continue
@@ -1192,17 +1261,55 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
 
     def _lossless_transfer(
         self, cache_context: BaseCacheContext
-    ) -> LosslessKVTransfer | None:
-        """Return the codec store/retrieve of a registered context, if any.
+    ) -> "RecordTransfer | None":
+        """Return the record store/retrieve of a registered context, if any.
 
         Args:
             cache_context: A registered cache context.
 
         Returns:
-            The context's ``LosslessKVTransfer``; None without the codec.
+            The context's codec or FragPack blob transfer; None for raw KV.
         """
         with self._lock:
             return self._lossless_transfers.get(id(cache_context))
+
+    def _create_record_transfer(
+        self, cache_context: BaseCacheContext, layout_hints: LayoutHints
+    ) -> "RecordTransfer | None":
+        """Build the record transfer a new registration needs, if any.
+
+        FragPack pages (the ``kv_codec`` hint) are already compressed, so
+        they are stored as block blobs whether or not the codec is enabled.
+
+        Args:
+            cache_context: The new cache context.
+            layout_hints: The registration's layout hints.
+
+        Returns:
+            A FragPack blob transfer, a codec transfer, or None for raw KV.
+        """
+        kv_codec = (layout_hints or {}).get("kv_codec")
+        if kv_codec is not None:
+            # First Party
+            from lmcache.v1.multiprocess.fragpack_blob_transfer import (
+                FragPackBlobTransfer,
+            )
+
+            num_kv_heads = layout_hints.get("num_kv_heads")
+            if num_kv_heads is None:
+                raise ValueError("FragPack registration needs num_kv_heads")
+            return FragPackBlobTransfer(
+                cache_context,
+                self._ctx.storage_manager,
+                self._lossless_kv,
+                kv_codec,
+                num_kv_heads,
+            )
+        if self._lossless_kv.enabled:
+            return LosslessKVTransfer(
+                cache_context, self._ctx.storage_manager, self._lossless_kv
+            )
+        return None
 
     def _codec_store_reporter(
         self,

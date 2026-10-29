@@ -55,6 +55,10 @@ class LayoutHints(TypedDict, total=False):
             rank distinguishes MLA ``[NB, BS, HS]`` from independent
             components ``[NB, BS, NH, HS]``.
         head_dim: Per-head dimension. Used by TRT-LLM (same).
+        kv_codec: Coding of the KV pages. ``"fragpack"`` / ``"fragpack-fp8"``
+            mark vLLM's FragPack attention backend (BF16 / FP8 records),
+            whose blocks LMCache moves as block blobs; ``num_kv_heads`` then
+            gives the KV heads per layer.
     """
 
     kv_layout: KVLayoutName
@@ -62,3 +66,4 @@ class LayoutHints(TypedDict, total=False):
     tokens_per_block: int
     kv_list_layout: Literal["k_v", "unified"]
     head_dim: int
+    kv_codec: Literal["fragpack", "fragpack-fp8"]

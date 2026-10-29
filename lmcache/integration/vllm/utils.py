@@ -41,8 +41,14 @@ def is_false(value: str) -> bool:
 
 
 def vllm_layout_hints(vllm_config: "VllmConfig | None" = None) -> "LayoutHints":
-    """Build layout_hints dict by querying vLLM at runtime."""
-    hints: dict[str, str] = {}
+    """Build layout_hints dict by querying vLLM at runtime.
+
+    Includes FragPack's page hints when its attention backend runs here.
+    """
+    # First Party
+    from lmcache.v1.lossless_kv.fragpack import registry as fragpack
+
+    hints: dict = dict(fragpack.layout_hints())
     kv_layout = try_get_vllm_kv_cache_layout(vllm_config)
     if kv_layout is not None:
         hints["kv_layout"] = kv_layout

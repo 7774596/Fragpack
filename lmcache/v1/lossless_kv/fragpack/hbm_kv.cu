@@ -43,6 +43,8 @@ struct Store {
   int64_t scratch;      // [S_t, 2, H, raw record] one layer's transient staging
   int64_t ovf_base;     // [O, raw record] raw records that fit no page
   int64_t ovf_end;
+  int64_t ovf_rec;      // overflow base as rec_addr holds it (another process's
+                        // address when a cache server works on the tables)
   int32_t* fill;        // [L, NB] arena bytes used in each block-layer page
   int L, H, NB, S_p, S_t, ovf_words, cap;
   bool fp8;             // record format, from the overflow record size
@@ -68,6 +70,7 @@ Store make_store(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
   s.scratch = reinterpret_cast<int64_t>(scratch.data_ptr());
   s.ovf_base = reinterpret_cast<int64_t>(overflow.data_ptr());
   s.ovf_end = s.ovf_base + overflow.numel();
+  s.ovf_rec = s.ovf_base;
   s.fill = fill.data_ptr<int32_t>();
   s.L = rec_addr.size(0);
   s.NB = rec_addr.size(1);
@@ -80,6 +83,54 @@ Store make_store(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
   s.S_t = scratch.numel() / (2LL * s.H * overflow.size(1));
   s.cap = claim_list.numel() / 2;
   return s;
+}
+
+// The tables a block blob export or import touches, in this process: the
+// engine's own store, or a cache server's CUDA IPC mappings of it, whose
+// overflow pool sits at ``ovf_rec`` in the engine. Staging is not mapped.
+Store make_blob_store(torch::Tensor rec_addr, torch::Tensor rec_len, torch::Tensor ovf_bits,
+                      torch::Tensor fill, torch::Tensor overflow, int64_t ovf_rec) {
+  TORCH_CHECK(rec_addr.dim() == 4 && rec_addr.scalar_type() == torch::kInt64 &&
+                  rec_addr.is_contiguous() && rec_len.sizes() == rec_addr.sizes() &&
+                  rec_len.scalar_type() == torch::kInt32 && rec_len.is_contiguous(),
+              "rec_addr / rec_len must be contiguous int64 / int32 [L, NB, 2, H]");
+  TORCH_CHECK(fill.scalar_type() == torch::kInt32 && fill.is_contiguous() &&
+                  fill.numel() == rec_addr.size(0) * rec_addr.size(1),
+              "fill must be contiguous int32 [L, NB]");
+  TORCH_CHECK(overflow.dim() == 2 && overflow.is_contiguous() &&
+                  (overflow.size(1) == Fmt<false>::kRawRecord ||
+                   overflow.size(1) == Fmt<true>::kRawRecord),
+              "overflow must be [O, raw record bytes] of BF16 or FP8 records");
+  Store s{};
+  s.rec_addr = rec_addr.data_ptr<int64_t>();
+  s.rec_len = rec_len.data_ptr<int32_t>();
+  s.ovf_bits = reinterpret_cast<uint32_t*>(ovf_bits.data_ptr<int32_t>());
+  s.ovf_words = ovf_bits.numel();
+  s.fill = fill.data_ptr<int32_t>();
+  s.ovf_base = reinterpret_cast<int64_t>(overflow.data_ptr());
+  s.ovf_end = s.ovf_base + overflow.numel();
+  s.ovf_rec = ovf_rec;
+  s.L = rec_addr.size(0);
+  s.NB = rec_addr.size(1);
+  s.H = rec_addr.size(3);
+  s.fp8 = overflow.size(1) == Fmt<true>::kRawRecord;
+  return s;
+}
+
+// Per-layer arena pages as rec_addr holds them (``rec``) and in this process
+// (``dev``), each ``stride`` bytes per block.
+struct Arenas {
+  const int64_t* rec;
+  const int64_t* dev;
+  const int64_t* stride;
+};
+
+Arenas make_arenas(const Store& s, torch::Tensor rec, torch::Tensor dev, torch::Tensor stride) {
+  for (const auto& t : {rec, dev, stride})
+    TORCH_CHECK(t.scalar_type() == torch::kInt64 && t.is_contiguous() && t.numel() == s.L &&
+                    t.is_cuda(),
+                "arena tables must be int64 CUDA tensors [L]");
+  return Arenas{rec.data_ptr<int64_t>(), dev.data_ptr<int64_t>(), stride.data_ptr<int64_t>()};
 }
 
 // Runs f(std::integral_constant<bool, F8>) for the store's record format.
@@ -116,11 +167,12 @@ __device__ int ovf_alloc(const Store& s, uint32_t hint) {
   return -1;
 }
 
-// Frees the overflow slot holding ``addr``; other addresses are ignored.
+// Frees the overflow slot of recorded address ``addr``; other addresses are
+// ignored.
 template <bool F8>
 __device__ __forceinline__ void ovf_free(const Store& s, int64_t addr) {
-  if (addr < s.ovf_base || addr >= s.ovf_end) return;
-  const int slot = (int)((addr - s.ovf_base) / Fmt<F8>::kRawRecord);
+  if (addr < s.ovf_rec || addr >= s.ovf_rec + (s.ovf_end - s.ovf_base)) return;
+  const int slot = (int)((addr - s.ovf_rec) / Fmt<F8>::kRawRecord);
   atomicAnd(&s.ovf_bits[slot >> 5], ~(1u << (slot & 31)));
 }
 
@@ -623,8 +675,8 @@ constexpr uint32_t kBlobVersion = 2;
 constexpr int kBlobFixed = 64;
 constexpr int64_t kBlobAlign = 4096;
 constexpr int kMaxHeads = 16;
-// Import status bits, per destination block.
-enum : int { kBlobBadHeader = 1, kBlobBadLengths = 2, kBlobNoOverflow = 4 };
+// Export / import status bits, per block.
+enum : int { kBlobBadHeader = 1, kBlobBadLengths = 2, kBlobNoOverflow = 4, kExportNotClosed = 8 };
 
 __host__ __device__ __forceinline__ int64_t blob_head_bytes(int L, int H) {
   return (kBlobFixed + 8LL * L * H + kBlobAlign - 1) / kBlobAlign * kBlobAlign;
@@ -642,35 +694,39 @@ __device__ long long block_sum(long long v, long long* red) {
 }
 
 // grid (n, L): CTA (i, l) copies layer l's records of blocks[i] into the blob
-// at out + i * stride; layer 0 also writes the head and lengths[i] (the blob
-// rounded up to kBlobAlign). Every CTA sums the block's lengths itself.
+// at out + offsets[i]; layer 0 also writes the head and lengths[i] (the blob
+// rounded up to kBlobAlign). Every CTA sums the block's lengths itself. A
+// record outside the block's arena page and the overflow pool (a block that
+// is still open or was never written) sets status[i] and is not copied.
 template <bool F8>
-__global__ void __launch_bounds__(kThreads) blob_export_kernel(const int32_t* blocks,
-                                                               const int64_t* rec_addr,
-                                                               const int32_t* rec_len, uint8_t* out,
-                                                               int64_t stride, int64_t* lengths,
-                                                               int L, int H, int NB, int64_t digest) {
+__global__ void __launch_bounds__(kThreads) blob_export_kernel(Store s, Arenas a,
+                                                               const int32_t* blocks, uint8_t* out,
+                                                               const int64_t* offsets,
+                                                               int64_t* lengths,
+                                                               int32_t* status, int64_t digest) {
   __shared__ long long red[kThreads / 32];
-  const int i = blockIdx.x, l = blockIdx.y, tid = threadIdx.x, per = 2 * H;
+  const int i = blockIdx.x, l = blockIdx.y, tid = threadIdx.x, per = 2 * s.H, L = s.L;
   const int b = blocks[i];
+  const int64_t* rec_addr = s.rec_addr;
+  const int32_t* rec_len = s.rec_len;
   long long before = 0, total = 0;
   for (int g = tid; g < L * per; g += kThreads) {
     const long long n =
-        Fmt<F8>::kDenseBytes + rec_len[((int64_t)(g / per) * NB + b) * per + g % per];
+        Fmt<F8>::kDenseBytes + rec_len[((int64_t)(g / per) * s.NB + b) * per + g % per];
     total += n;
     if (g / per < l) before += n;
   }
   before = block_sum(before, red);
   total = block_sum(total, red);
-  const int64_t head = blob_head_bytes(L, H);
-  uint8_t* dst = out + (int64_t)i * stride;
+  const int64_t head = blob_head_bytes(L, s.H);
+  uint8_t* dst = out + offsets[i];
   if (l == 0) {
     if (tid == 0) {
       uint32_t* h32 = reinterpret_cast<uint32_t*>(dst);
       h32[0] = kBlobMagic;
       h32[1] = kBlobVersion;
       h32[2] = L;
-      h32[3] = H;
+      h32[3] = s.H;
       int64_t* h64 = reinterpret_cast<int64_t*>(dst + 16);
       h64[0] = head + total;
       h64[1] = digest;
@@ -679,15 +735,30 @@ __global__ void __launch_bounds__(kThreads) blob_export_kernel(const int32_t* bl
     }
     int32_t* table = reinterpret_cast<int32_t*>(dst + kBlobFixed);
     for (int g = tid; g < L * per; g += kThreads)
-      table[g] = rec_len[((int64_t)(g / per) * NB + b) * per + g % per];
+      table[g] = rec_len[((int64_t)(g / per) * s.NB + b) * per + g % per];
   }
+  const int64_t page = a.stride[l];
+  const int64_t page_rec = a.rec[l] + (int64_t)b * page;
+  const int64_t ovf_bytes = s.ovf_end - s.ovf_base;
   int64_t off = head + before;
   for (int kvh = 0; kvh < per; ++kvh) {
-    const int64_t idx = ((int64_t)l * NB + b) * per + kvh;
+    const int64_t idx = ((int64_t)l * s.NB + b) * per + kvh;
     const int n = Fmt<F8>::kDenseBytes + rec_len[idx];
-    const uint4* src = reinterpret_cast<const uint4*>(rec_addr[idx]);
-    uint4* d = reinterpret_cast<uint4*>(dst + off);
-    for (int q = tid; q < n / 16; q += kThreads) d[q] = src[q];
+    const int64_t r = rec_addr[idx];
+    int64_t from;
+    if (r >= page_rec && r + n <= page_rec + page)
+      from = a.dev[l] + (int64_t)b * page + (r - page_rec);
+    else if (r >= s.ovf_rec && r + n <= s.ovf_rec + ovf_bytes)
+      from = s.ovf_base + (r - s.ovf_rec);
+    else
+      from = -1;
+    if (from < 0) {
+      if (tid == 0) atomicOr(&status[i], kExportNotClosed);
+    } else {
+      const uint4* src = reinterpret_cast<const uint4*>(from);
+      uint4* d = reinterpret_cast<uint4*>(dst + off);
+      for (int q = tid; q < n / 16; q += kThreads) d[q] = src[q];
+    }
     off += n;
   }
 }
@@ -695,19 +766,20 @@ __global__ void __launch_bounds__(kThreads) blob_export_kernel(const int32_t* bl
 // grid (n, L): CTA (i, l) validates the blob at src + offsets[i] and installs
 // its layer-l records for blocks[i], packed into the block's arena page in
 // order; records that no longer fit go to overflow slots.
-// The block's old overflow records are freed. Every CTA validates the whole
+// Records are written at the ``dev`` addresses and recorded at the ``rec``
+// ones. The block's old overflow records are freed. Every CTA validates the whole
 // head, so all layers agree; a failure sets status[i] and leaves the layer's
 // tables untouched (the caller must recompute the block).
 template <bool F8>
-__global__ void __launch_bounds__(kThreads) blob_import_kernel(Store s, const uint8_t* src,
+__global__ void __launch_bounds__(kThreads) blob_import_kernel(Store s, Arenas a,
+                                                               const uint8_t* src,
                                                                int64_t src_bytes,
                                                                const int64_t* offsets,
                                                                const int32_t* blocks, int32_t* status,
-                                                               const int64_t* arena_base,
-                                                               const int64_t* arena_stride,
                                                                int64_t digest) {
   __shared__ long long red[kThreads / 32];
-  __shared__ int64_t s_src[2 * kMaxHeads], s_dst[2 * kMaxHeads];
+  // Per record: blob offset, destination here, destination as recorded.
+  __shared__ int64_t s_src[2 * kMaxHeads], s_dst[2 * kMaxHeads], s_rec[2 * kMaxHeads];
   using F = Fmt<F8>;
   __shared__ int s_fail;
   const int i = blockIdx.x, l = blockIdx.y, tid = threadIdx.x, L = s.L, per = 2 * s.H;
@@ -747,28 +819,29 @@ __global__ void __launch_bounds__(kThreads) blob_import_kernel(Store s, const ui
   }
   const int* lens = table + l * per;
   if (tid == 0) {
-    const int64_t page = arena_stride[l];
-    const int64_t page_ptr = arena_base[l] + (int64_t)b * page;
+    const int64_t page = a.stride[l];
+    const int64_t page_dev = a.dev[l] + (int64_t)b * page;
+    const int64_t page_rec = a.rec[l] + (int64_t)b * page;
     int64_t from = head + before;
     int fill = 0, placed = 0;
     for (; placed < per; ++placed) {
       const int n = F::kDenseBytes + lens[placed];
-      int64_t d;
       if (fill + n <= page) {
-        d = page_ptr + fill;
+        s_dst[placed] = page_dev + fill;
+        s_rec[placed] = page_rec + fill;
         fill += n;
       } else {
         const int slot = ovf_alloc(s, (uint32_t)(b * per + placed));
         if (slot < 0) break;
-        d = s.ovf_base + (int64_t)slot * F::kRawRecord;
+        s_dst[placed] = s.ovf_base + (int64_t)slot * F::kRawRecord;
+        s_rec[placed] = s.ovf_rec + (int64_t)slot * F::kRawRecord;
       }
       s_src[placed] = from;
-      s_dst[placed] = d;
       from += n;
     }
     s_fail = placed < per;
     if (s_fail) {
-      for (int k = 0; k < placed; ++k) ovf_free<F8>(s, s_dst[k]);
+      for (int k = 0; k < placed; ++k) ovf_free<F8>(s, s_rec[k]);
       atomicOr(&status[i], kBlobNoOverflow);
     } else {
       s.fill[(int64_t)l * s.NB + b] = fill;
@@ -785,7 +858,7 @@ __global__ void __launch_bounds__(kThreads) blob_import_kernel(Store s, const ui
   if (tid < per) {
     const int64_t idx = ((int64_t)l * s.NB + b) * per + tid;
     ovf_free<F8>(s, s.rec_addr[idx]);
-    s.rec_addr[idx] = s_dst[tid];
+    s.rec_addr[idx] = s_rec[tid];
     s.rec_len[idx] = lens[tid];
   }
 }
@@ -898,43 +971,47 @@ void hbm_gather(torch::Tensor src_blocks, torch::Tensor rec_addr, torch::Tensor 
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
-void hbm_export(torch::Tensor blocks, torch::Tensor rec_addr, torch::Tensor rec_len,
-                torch::Tensor out, int64_t stride, torch::Tensor lengths, int64_t digest, bool fp8) {
+void hbm_export(torch::Tensor rec_addr, torch::Tensor rec_len, torch::Tensor ovf_bits,
+                torch::Tensor fill, torch::Tensor overflow, int64_t ovf_rec,
+                torch::Tensor arena_rec, torch::Tensor arena_dev, torch::Tensor arena_stride,
+                torch::Tensor blocks, torch::Tensor out, torch::Tensor offsets,
+                int64_t slot_bytes, torch::Tensor lengths, torch::Tensor status,
+                int64_t digest) {
   const int64_t n = blocks.numel();
   if (n == 0) return;
-  const int L = rec_addr.size(0), NB = rec_addr.size(1), H = rec_addr.size(3);
+  Store s = make_blob_store(rec_addr, rec_len, ovf_bits, fill, overflow, ovf_rec);
+  Arenas a = make_arenas(s, arena_rec, arena_dev, arena_stride);
   TORCH_CHECK(blocks.scalar_type() == torch::kInt32 && lengths.scalar_type() == torch::kInt64 &&
-                  lengths.numel() >= n,
-              "export blocks must be int32 and lengths int64 [>= n]");
+                  lengths.numel() >= n && status.scalar_type() == torch::kInt32 &&
+                  status.numel() >= n,
+              "export blocks / status must be int32 and lengths int64 [>= n]");
   TORCH_CHECK(out.scalar_type() == torch::kUInt8 && out.is_contiguous() &&
                   reinterpret_cast<uintptr_t>(out.data_ptr()) % 16 == 0,
               "export buffer must be contiguous 16-byte aligned uint8");
-  TORCH_CHECK(stride % 16 == 0 &&
-                  stride >= blob_head_bytes(L, H) + 2LL * L * H *
-                                (fp8 ? Fmt<true>::kRawRecord : Fmt<false>::kRawRecord) &&
-                  out.numel() >= n * stride,
-              "export stride or buffer too small");
-  dispatch(fp8, [&](auto f8) {
+  // The caller keeps every offset 16-byte aligned with slot_bytes before
+  // the end of ``out``.
+  TORCH_CHECK(offsets.scalar_type() == torch::kInt64 && offsets.numel() == n &&
+                  slot_bytes >= blob_head_bytes(s.L, s.H) + 2LL * s.L * s.H * overflow.size(1),
+              "export offsets must be int64 [n] and slots hold a raw blob");
+  dispatch(s.fp8, [&](auto f8) {
     blob_export_kernel<decltype(f8)::value>
-        <<<dim3(n, L), kThreads, 0, at::cuda::getCurrentCUDAStream()>>>(
-            blocks.data_ptr<int32_t>(), rec_addr.data_ptr<int64_t>(), rec_len.data_ptr<int32_t>(),
-            out.data_ptr<uint8_t>(), stride, lengths.data_ptr<int64_t>(), L, H, NB, digest);
+        <<<dim3(n, s.L), kThreads, 0, at::cuda::getCurrentCUDAStream()>>>(
+            s, a, blocks.data_ptr<int32_t>(), out.data_ptr<uint8_t>(),
+            offsets.data_ptr<int64_t>(), lengths.data_ptr<int64_t>(),
+            status.data_ptr<int32_t>(), digest);
   });
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
-void hbm_import(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
-                torch::Tensor free_stack, torch::Tensor ovf_bits, torch::Tensor claim_list,
-                torch::Tensor close_list, torch::Tensor rec_addr, torch::Tensor rec_len,
-                torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
-                torch::Tensor fill,
+void hbm_import(torch::Tensor rec_addr, torch::Tensor rec_len, torch::Tensor ovf_bits,
+                torch::Tensor fill, torch::Tensor overflow, int64_t ovf_rec,
+                torch::Tensor arena_rec, torch::Tensor arena_dev, torch::Tensor arena_stride,
                 torch::Tensor src, torch::Tensor offsets, torch::Tensor blocks,
-                torch::Tensor status, torch::Tensor arena_base, torch::Tensor arena_stride,
-                int64_t digest) {
+                torch::Tensor status, int64_t digest) {
   const int64_t n = blocks.numel();
   if (n == 0) return;
-  Store s = make_store(counters, wslot, tags, free_stack, ovf_bits, claim_list, close_list,
-                       rec_addr, rec_len, staging, scratch, overflow, fill);
+  Store s = make_blob_store(rec_addr, rec_len, ovf_bits, fill, overflow, ovf_rec);
+  Arenas a = make_arenas(s, arena_rec, arena_dev, arena_stride);
   TORCH_CHECK(s.H <= kMaxHeads, "too many KV heads");
   TORCH_CHECK(src.scalar_type() == torch::kUInt8 && src.is_contiguous() &&
                   reinterpret_cast<uintptr_t>(src.data_ptr()) % 16 == 0,
@@ -943,13 +1020,11 @@ void hbm_import(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                   blocks.scalar_type() == torch::kInt32 && status.scalar_type() == torch::kInt32 &&
                   status.numel() >= n,
               "import metadata must be int64 offsets, int32 blocks / status");
-  TORCH_CHECK(arena_base.numel() == s.L && arena_stride.numel() == s.L, "arena tables must hold every layer");
   dispatch(s.fp8, [&](auto f8) {
     blob_import_kernel<decltype(f8)::value>
         <<<dim3(n, s.L), kThreads, 0, at::cuda::getCurrentCUDAStream()>>>(
-            s, src.data_ptr<uint8_t>(), src.numel(), offsets.data_ptr<int64_t>(),
-            blocks.data_ptr<int32_t>(), status.data_ptr<int32_t>(),
-            arena_base.data_ptr<int64_t>(), arena_stride.data_ptr<int64_t>(), digest);
+            s, a, src.data_ptr<uint8_t>(), src.numel(), offsets.data_ptr<int64_t>(),
+            blocks.data_ptr<int32_t>(), status.data_ptr<int32_t>(), digest);
   });
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
