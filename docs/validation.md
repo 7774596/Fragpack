@@ -4,6 +4,20 @@ This document describes the checks needed for the standalone extraction.
 It does not certify that an unrun check passed. GPU execution requires separate
 authorization and an idle supported GPU.
 
+## LMCache 0.5.6 plugin status on 2026-10-30
+
+The optional integration passed 126 CPU tests, two targeted GPU transfer tests,
+and real stock-LMCache CPU L1/RPC and GPU-to-L1-to-GPU checks. Mixed compressed
+and raw records restored bit-exactly. The publication check reran the CPU suite
+and confirmed implementation hashes match the GPU-tested snapshot; it did not
+rerun GPU workloads. Configuration, artifacts and failure boundaries are in
+the [integration record](lmcache-plugin-056.md).
+
+This validates explicit block transfers through CPU L1, not vLLM external-cache
+scheduler integration, L2 recovery, TP>1 or a serving speedup. The current
+[system design](design/README.md) and [remaining work](design/lmcache-roadmap.md)
+separate these scopes.
+
 ## Prepare optimization and real-model status on 2026-10-30
 
 The [two-round prepare report](optimization-prepare-iterations-20261030.md)

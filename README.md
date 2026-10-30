@@ -107,7 +107,7 @@ Short-query batches can split history across CTAs and combine FP32 attention
 partials; their separately reported workspace is reused across layers.
 The default `FRAGPACK_PREFILL=gather` retains FlashAttention over a decoded
 workspace for comparison. Select the mode before starting the worker; runtime
-switching is not supported. See [architecture](docs/architecture.md) for the
+switching is not supported. See [HBM design](docs/design/hbm-resident-kv.md) for the
 ownership and causal-attention contracts.
 
 The independent opt-in `FRAGPACK_WRITE=direct` option works with
@@ -121,6 +121,17 @@ direct writes with experimental fused prefill is rejected at startup.
 
 ## Development
 
-Start with [development](docs/development.md), [architecture](docs/architecture.md),
+The [system design documentation](docs/design/README.md) records the current
+architecture, component ownership, complete data flows, HBM/attention paths and
+LMCache integration. It follows the original DaseR design-document structure;
+implemented behavior and the remaining integration roadmap are kept explicit.
+
+An optional [LMCache 0.5.6 plugin](docs/lmcache-plugin-056.md) transports existing
+compressed records through a bounded background worker into stock LMCache CPU
+L1. It includes explicit prefix lookup, store and restore APIs. It does not yet
+connect those APIs to the vLLM scheduler or enable disk-tier recovery; installing
+the plugin alone does not enable external prefix reuse in serving.
+
+Start with [development](docs/development.md), [system design](docs/design/README.md),
 and [contributing](CONTRIBUTING.md). The default test suite is CPU-only; GPU tests
 are selected explicitly. All source remains under [Apache-2.0](LICENSE).

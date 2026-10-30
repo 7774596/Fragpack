@@ -47,6 +47,12 @@ The subsequent [daser-codec reference review](lmcache-daser-codec-review-2026103
 identifies concrete variable-size prefetch and asynchronous-store mechanisms
 to adapt, together with their persistence and failure-cleanup limitations.
 
+Implementation follow-up: the [FragPack-owned plugin](lmcache-plugin-056.md)
+now exercises the unmodified 0.5.6 wheel through CPU L1 and bounded GPU record
+transfers. Its downloaded wheel hash matches the pin above. That report records
+the functional validation and the remaining L2/lease boundaries; the proposed
+full storage/serving path below remains broader than the implemented plugin.
+
 ## Intended behavior
 
 The proposed architecture is available as an [editable SVG](figures/fragpack-vllm-lmcache.svg)

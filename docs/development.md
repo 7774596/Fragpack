@@ -1,5 +1,11 @@
 # Development
 
+The [system design](design/README.md) is the current architecture reference.
+Read its overview and the affected component/flow or topic document before
+changing interfaces, KV lifecycle, ownership or record formats. Keep dated
+validation reports separate from the current design and preserve their original
+measurement scope.
+
 ## Environments
 
 The GPU migration target is Python 3.10.20, official vLLM 0.30.0 with its CUDA
@@ -39,6 +45,7 @@ and report the remaining tests as complete validation.
 | `fragpack/compression/` | CPU reference records and calibrated lookup tables |
 | `fragpack/ops/` | HBM store, native extension, fused decode and gather |
 | `fragpack/integrations/vllm/` | Backend, plugin registration, engine adaptation |
+| `fragpack/integrations/lmcache/` | Optional 0.5.6 plugin, prefix identity and bounded record transfer |
 | `tests/unit/` | CPU reference, state, and accounting contracts |
 | `tests/gpu/` | Explicit CUDA correctness and graph tests |
 | `benchmarks/` | Measured workloads and result collection |
@@ -48,6 +55,12 @@ The vLLM plugin entry point is `fragpack`, calling
 `fragpack.integrations.vllm.backend.FragPackAttentionBackend` as `CUSTOM`.
 Set `VLLM_PLUGINS=fragpack` to select this plugin explicitly, especially when an
 environment also contains another custom attention backend.
+
+The optional LMCache extension has its own hash-pinned requirement file and
+[integration guide](lmcache-plugin-056.md). It uses the stock server-module
+factory; it is not a replacement for vLLM's KV connector configuration. Keep its
+real-service and GPU tests opt-in so CPU core development does not require
+LMCache or start services.
 
 ## Checks
 
