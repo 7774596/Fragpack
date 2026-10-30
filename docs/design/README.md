@@ -18,6 +18,7 @@ FragPack 是面向 LLM 推理的无损 BF16 KV 表示、GPU 存储与 attention 
 | [HBM 常驻压缩 KV](hbm-resident-kv.md) | 记录格式、GPU 生命周期、内存区域、direct 写入、prepare 优化、gather/FA3 与 fused/split-KV attention |
 | [LMCache 压缩记录接入](lmcache-integration.md) | 固定 0.5.6 的 CPU L1 插件、前缀键、字节协议、有界传输、所有权与失败处理 |
 | [LMCache 后续接入与优化](lmcache-roadmap.md) | 待完成的 vLLM 调度接线、变长 L2 恢复、预留代次与回滚边界、替代方案和验证顺序 |
+| [原生 attention 与外部 KV 压缩](native-attention-external-codec.md) | 独立 native-page codec 往返已验证；原生服务与延迟迁出调度尚待接入 |
 
 ---
 

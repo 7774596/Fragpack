@@ -4,6 +4,65 @@ This document describes the checks needed for the standalone extraction.
 It does not certify that an unrun check passed. GPU execution requires separate
 authorization and an idle supported GPU.
 
+## Expanded native-codec/HBM comparison on 2026-10-31
+
+The [expanded comparison](comparison-expanded-codec-20261031.md) completes
+28 attention configurations and 12 codec roundtrip configurations in two
+independent processes on exclusively allocated GPU 2, an H800 PCIe. Coverage
+includes 512–32768 tokens per request, batches up to 16, ragged/shared prefixes,
+repeated reads, actual one-token fused decode, 16/128-token native pages and
+forced 25%/100% raw fallback. Larger inputs repeat captured BF16 KV content;
+they are not new long-context model captures.
+
+All 80 configuration instances passed, with 22,656 main timing samples and
+2,832 separate diagnostic samples. The CPU suite passes 159 tests. Selected
+KV and canaries are bit-exact; Raw/Native/Gather FA3 outputs match bitwise.
+Fused output passes the existing 0.02 absolute/relative tolerances, with maximum
+absolute error 0.03125. Two supplementary cold-path observations also passed
+and remain separate from the main matrix.
+
+Native FA3 reduces resident prefill time in all 22 cases in both processes;
+production fused decode beats Native in all six one-token cases. Cold-path
+ordering can reverse, and large D2H times vary substantially across processes.
+The report retains both observations, fallback regressions and full auxiliary
+allocation accounting. No production implementation changed. This measures
+48-layer read-only attention and serial PCIe roundtrips, not serving latency,
+capacity admission, a growing generation sequence or an offload policy.
+
+## Native codec versus gather/FA3 and fused prefill on 2026-10-31
+
+The [three-path comparison](comparison-native-codec-prefill-20261031.md) replays
+48 attention layers with captured BF16 KV and identical synthetic queries on
+GPU 2, an H800 PCIe. All six context/query cases passed in two independent
+processes with reversed arm order. Native-restored KV and old-store gathered KV
+are bit-exact; their FA3 outputs are also bit-exact. Fused output passes the
+existing 0.02 absolute/relative tolerances, with maximum absolute error 0.03125.
+
+Graph GPU time for native FA3 is 11.7–28.4% below gather plus FA3 in the primary
+run. Including actual host-to-GPU restoration and status checks reduces the
+advantage to 1.2–8.9%. Eager short-query ordering differs because host submission
+costs remain in that window. The report retains both modes and the repeat.
+No production source changed. These are read-only attention/restore measurements,
+not full-model serving, new-KV writes, capacity scaling or quality validation.
+
+## Independent native-page codec status on 2026-10-31
+
+The [native-codec report](optimization-native-codec-20261030.md) records 149 CPU
+tests and 23 targeted GPU tests passing on an exclusively allocated H800 PCIe.
+Native BF16 pages encode into FPKB v1 and restore bit-exactly after actual
+pinned-host D2H/H2D transfers. Tests cover 16/32/64/128-token physical pages,
+strides, raw fallback, malformed input, destination aliasing and operation order.
+
+Two measured iterations optimize page addressing and record-offset scans.
+The final 48-layer replay reduces transferred payload by about 29.5% and serial
+round-trip median by 7.0–19.5% against the corresponding raw control. Large-batch
+wall time does not consistently improve between the two iterations; the report
+retains the initial noisy run and separate held-out-position results.
+This prototype reserves more GPU workspace than raw transfer. It has not been
+connected to native vLLM serving, lazy offload or LMCache RPC, and establishes
+neither serving acceleration nor HBM capacity expansion. Existing HBM-store and
+attention implementations were not modified.
+
 ## LMCache 0.5.6 plugin status on 2026-10-30
 
 The optional integration passed 126 CPU tests, two targeted GPU transfer tests,

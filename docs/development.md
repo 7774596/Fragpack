@@ -43,7 +43,7 @@ and report the remaining tests as complete validation.
 | Path | Responsibility |
 | --- | --- |
 | `fragpack/compression/` | CPU reference records and calibrated lookup tables |
-| `fragpack/ops/` | HBM store, native extension, fused decode and gather |
+| `fragpack/ops/` | HBM store, native extensions, independent page codec, fused decode and gather |
 | `fragpack/integrations/vllm/` | Backend, plugin registration, engine adaptation |
 | `fragpack/integrations/lmcache/` | Optional 0.5.6 plugin, prefix identity and bounded record transfer |
 | `tests/unit/` | CPU reference, state, and accounting contracts |
@@ -82,6 +82,40 @@ and benchmark output. When using `--basetemp`, remember that pytest manages
 that directory: never point it at shared results or another active run.
 Keep requested evidence separately, stop owned services, and delete temporary
 stores and scratch when finished.
+
+The independent native-page codec uses `fragpack.ops.native_codec` and a separate
+JIT extension; it does not initialize the HBM store or an attention backend.
+Its [round-trip benchmark and report](optimization-native-codec-20261030.md)
+compare actual pinned-host transfers. Initialization and JIT belong outside the
+steady-state timing window. The [design contract](design/native-attention-external-codec.md)
+defines native-page ownership, operation ordering and the unimplemented serving boundary.
+
+The expanded read/restore comparison accepts a JSON list of cases. Each case
+specifies `name`, per-request `contexts` and `queries`, `shared_prefix` in tokens,
+and `reads` after one restore. It compares raw/native FA3, compressed/native FA3,
+gather/FA3, and the current fused reader. All-one-token batches use the production
+decode kernel. For example:
+
+```json
+[{"name":"shared","contexts":[8192,8192],"queries":[128,128],"shared_prefix":6144,"reads":1}]
+```
+
+```bash
+python -m benchmarks.native_codec_comparison_bench \
+    --dump /path/to/captured-kv.npy --cases /path/to/cases.json \
+    --out /path/to/results/comparison.json --rounds 24 --warmup 3 \
+    --input-description 'Describe the actual capture and its provenance'
+python -m benchmarks.native_codec_scale_bench \
+    --dump /path/to/captured-kv.npy --out /path/to/results/roundtrip.json \
+    --source-pattern capture-repeat --blocks 1,16,64,256 --page-tokens 128 \
+    --rounds 24 --warmup 3
+```
+
+These drivers repeat captured blocks for explicitly synthetic scale experiments.
+The first is a 48-layer read-only replay; the second includes encoding and actual
+pinned D2H/H2D. Neither measures full-model serving. `fallback25` and `fallback100`
+construct finite out-of-table records for the roundtrip cost of raw fallback.
+Use `--order reverse` in a separate process for the matching order control.
 
 The serving client calls an already running service and saves its requests,
 responses, and functional checks:
