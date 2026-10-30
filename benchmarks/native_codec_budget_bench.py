@@ -42,6 +42,12 @@ from benchmarks.native_codec_prefill_bench import (
 from benchmarks.native_codec_prefill_bench import (
     _source_identity as previous_source_identity,
 )
+from benchmarks.native_codec_raw_direct import (
+    native_archive_bits,
+    restore_native_raw,
+    validate_direct_rejection,
+    validate_direct_restore,
+)
 from fragpack.compression import attn_page as ap
 from fragpack.compression.attn_tables import calibrate, device_tables
 from fragpack.ops.fused_attn_decode import (
@@ -171,6 +177,8 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
             or case["receive_capacity"] not in ("format-max", "observed")
             or case["restore_dispatch"] not in ("eager", "eager-capacity", "graph")
             or case["restore_wait"] not in ("chunk", "request")
+            or case.get("raw_transfer", "packed-scatter")
+            not in ("packed-scatter", "native-direct")
         ):
             raise ValueError(f"invalid budget replay case: {case}")
         names.add(case["name"])
@@ -181,6 +189,9 @@ def _source_identity() -> dict[str, Any]:
     identity = previous_source_identity()
     identity["files_sha256"]["benchmarks/native_codec_budget_bench.py"] = _hash_file(
         Path(__file__)
+    )
+    identity["files_sha256"]["benchmarks/native_codec_raw_direct.py"] = _hash_file(
+        Path(__file__).with_name("native_codec_raw_direct.py")
     )
     identity["digest"] = hashlib.sha256(
         json.dumps(identity["files_sha256"], sort_keys=True).encode()
@@ -265,6 +276,7 @@ class Session:
     raw: torch.Tensor
     compressed: torch.Tensor
     offsets: np.ndarray
+    raw_layout: str = "packed-scatter"
 
     @property
     def blocks(self) -> int:
@@ -283,14 +295,22 @@ class RestoreStatusError(RuntimeError):
     """A completed restore contained a nonzero status; attention must not run."""
 
 
-def prepare_sessions(corpus: Corpus, contexts: list[int]) -> list[Session]:
+def prepare_sessions(
+    corpus: Corpus, contexts: list[int], raw_transfer: str = "packed-scatter"
+) -> list[Session]:
     """Materialize independent logical identities without content deduplication."""
+    if raw_transfer not in ("packed-scatter", "native-direct"):
+        raise ValueError("unknown raw transfer layout")
     sessions = []
     for identity, context in enumerate(contexts):
         count = (context + T - 1) // T
         indices = (identity * 7 + np.arange(count)) % len(corpus.content)
-        raw_bits = np.ascontiguousarray(
-            corpus.content[indices].transpose(0, 1, 2, 4, 3, 5)
+        raw_bits = (
+            native_archive_bits(corpus.content, indices)
+            if raw_transfer == "native-direct"
+            else np.ascontiguousarray(
+                corpus.content[indices].transpose(0, 1, 2, 4, 3, 5)
+            )
         )
         raw = torch.empty(raw_bits.nbytes, dtype=torch.uint8, pin_memory=True)
         raw.copy_(torch.from_numpy(raw_bits.view(np.uint8).reshape(-1)))
@@ -300,7 +320,9 @@ def prepare_sessions(corpus: Corpus, contexts: list[int]) -> list[Session]:
             compressed[int(offsets[index]) : int(offsets[index + 1])].copy_(
                 corpus.blobs[block]
             )
-        sessions.append(Session(context, indices, raw, compressed, offsets))
+        sessions.append(
+            Session(context, indices, raw, compressed, offsets, raw_transfer)
+        )
     return sessions
 
 
@@ -367,6 +389,9 @@ class Runtime:
         self.query_tokens = case["query_tokens"]
         self.restore_dispatch = case.get("restore_dispatch", "eager")
         self.restore_wait = case.get("restore_wait", "chunk")
+        self.raw_direct = (
+            arm == "raw_fa3" and case.get("raw_transfer") == "native-direct"
+        )
         self.fa3 = flash_attn_varlen_func
         self.stream = torch.cuda.current_stream()
         self.done, self.restored = torch.cuda.Event(), torch.cuda.Event()
@@ -387,9 +412,13 @@ class Runtime:
                 ]
             )
             workspace = "raw" if arm == "raw_fa3" else case["native_workspace"]
-            self.codec = NativeCodec(
-                corpus.table, max_blocks=self.chunk, device="cuda", workspace=workspace
-            )
+            if not self.raw_direct:
+                self.codec = NativeCodec(
+                    corpus.table,
+                    max_blocks=self.chunk,
+                    device="cuda",
+                    workspace=workspace,
+                )
         else:
             self.arenas = [
                 torch.zeros((blocks, page_bytes(H)), dtype=torch.uint8, device="cuda")
@@ -425,15 +454,24 @@ class Runtime:
             else max(blob.numel() for blob in corpus.blobs)
         )
         receive_bytes = self.chunk * (RAW_BLOCK_BYTES if arm == "raw_fa3" else max_blob)
-        self.receive = torch.empty(receive_bytes, dtype=torch.uint8, device="cuda")
-        self.offsets = torch.empty(self.chunk + 1, dtype=torch.int64, device="cuda")
-        self.mapping = torch.empty((self.chunk, 1), dtype=torch.int32, device="cuda")
-        self.status_host = torch.empty(self.chunk, dtype=torch.int32, pin_memory=True)
+        # Direct Raw never allocates a codec or dummy receive/restore buffers.
+        transfer_count = 0 if self.raw_direct else self.chunk
+        offset_count = 0 if self.raw_direct else self.chunk + 1
+        self.receive = torch.empty(
+            0 if self.raw_direct else receive_bytes, dtype=torch.uint8, device="cuda"
+        )
+        self.offsets = torch.empty(offset_count, dtype=torch.int64, device="cuda")
+        self.mapping = torch.empty(
+            (transfer_count, 1), dtype=torch.int32, device="cuda"
+        )
+        self.status_host = torch.empty(
+            transfer_count, dtype=torch.int32, pin_memory=True
+        )
         self.offsets_host = torch.empty(
-            self.chunk + 1, dtype=torch.int64, pin_memory=True
+            offset_count, dtype=torch.int64, pin_memory=True
         )
         self.mapping_host = torch.empty(
-            (self.chunk, 1), dtype=torch.int32, pin_memory=True
+            (transfer_count, 1), dtype=torch.int32, pin_memory=True
         )
         self.request_mapping_host: torch.Tensor | None = None
         self.request_offsets_host: torch.Tensor | None = None
@@ -442,7 +480,7 @@ class Runtime:
             session.blocks: request_restore_layout(session.blocks, self.chunk)
             for session in sessions
         }
-        if self.restore_wait == "request":
+        if self.restore_wait == "request" and not self.raw_direct:
             maximum = self.max_request_blocks
             chunks = (maximum + self.chunk - 1) // self.chunk
             self.request_mapping_host = torch.empty(
@@ -511,7 +549,7 @@ class Runtime:
         self.graph_allocation_delta = torch.cuda.memory_allocated() - before_graph
         self.restore_graphs: dict[int, RestoreGraph] = {}
         self.restore_graph_allocation_delta = 0
-        if self.restore_dispatch == "graph":
+        if self.restore_dispatch == "graph" and not self.raw_direct:
             self.capture_restore_graphs()
         self.memory = self.memory_usage()
         self.lru = SessionLRU(blocks)
@@ -546,6 +584,14 @@ class Runtime:
             "graph_allocation_delta": self.graph_allocation_delta,
             "restore_dispatch": self.restore_dispatch,
             "restore_wait": self.restore_wait,
+            "raw_transfer": self.case.get("raw_transfer", "packed-scatter"),
+            "effective_raw_restore": (
+                "eager contiguous copies, one request wait, CPU target validation"
+                if self.raw_direct
+                else "packed validated GPU scatter"
+                if self.arm == "raw_fa3"
+                else None
+            ),
             "request_restore_added_gpu_storage": 0,
             "pinned_request_metadata": sum(
                 _tensor_bytes(t)
@@ -774,7 +820,9 @@ class Runtime:
     def restore(
         self, session: Session, slots: tuple[int, ...], *, validate: bool
     ) -> dict[str, int]:
-        """Restore one session through bounded buffers, checking every chunk status."""
+        """Restore one session and validate completion before attention."""
+        if self.raw_direct:
+            return restore_native_raw(self, session, slots, validate=validate)
         if self.restore_wait == "request":
             return self.restore_request(session, slots, validate=validate)
         transferred = metadata = status_bytes = chunks = 0
@@ -991,6 +1039,8 @@ class Runtime:
 
     def validate_restore_dispatch(self) -> dict[str, Any]:
         """Probe changing source/map values for each real count before timed traces."""
+        if self.raw_direct:
+            return validate_direct_restore(self)
         probes = []
         for count in restore_chunk_counts(self.case["contexts"], self.chunk):
             choices: list[tuple[Session, int]] = []
@@ -1094,6 +1144,8 @@ class Runtime:
 
     def validate_request_status_retention(self) -> dict[str, Any]:
         """Check early error retention despite later success with request helpers."""
+        if self.raw_direct:
+            return validate_direct_rejection(self)
         if self.restore_wait != "request":
             return {
                 "status": "not_applicable",
@@ -1413,6 +1465,8 @@ def _run_trace(
             for row in rows
         ),
         "restore_chunks": sum(row["chunks"] for row in rows),
+        "raw_transfer_runs": sum(row.get("raw_transfer_runs", 0) for row in rows),
+        "raw_copy_calls": sum(row.get("raw_copy_calls", 0) for row in rows),
         "restore_host_waits": sum(row["restore_host_waits"] for row in rows),
         "status_d2h_bytes": sum(row["status_d2h_bytes"] for row in rows),
         "peak_resident_sessions": max(row["resident_sessions"] for row in rows),
@@ -1442,7 +1496,9 @@ def run_case(
     row: dict[str, Any],
     report: dict[str, Any],
 ) -> None:
-    sessions = prepare_sessions(corpus, case["contexts"])
+    sessions = prepare_sessions(
+        corpus, case["contexts"], case.get("raw_transfer", "packed-scatter")
+    )
     generator = torch.Generator().manual_seed(args.seed)
     queries = torch.randn(L, case["query_tokens"], HQ, D, generator=generator).to(
         torch.bfloat16
@@ -1457,6 +1513,8 @@ def run_case(
         "query_sha256": _hash_array(queries.view(torch.int16).numpy()),
         "archive_prep_remaining_torch_allocated_bytes": torch.cuda.memory_allocated(),
         "host_raw_history_bytes": sum(session.raw.numel() for session in sessions),
+        "raw_archive_layout": sessions[0].raw_layout,
+        "raw_archive_preparation_timed": False,
         "host_compressed_history_bytes": sum(
             session.compressed.numel() for session in sessions
         ),
@@ -1467,6 +1525,7 @@ def run_case(
                 "blocks": session.blocks,
                 "capture_pool_indices": session.indices.tolist(),
                 "raw_payload_bytes": session.raw.numel(),
+                "raw_layout": session.raw_layout,
                 "compressed_payload_bytes": session.compressed.numel(),
                 "raw_sha256": _hash_array(session.raw.numpy()),
                 "compressed_sha256": _hash_array(session.compressed.numpy()),
@@ -1655,8 +1714,17 @@ def main() -> None:
                 "evicts least-recent inactive sessions; one request active at a "
                 "time"
             ),
+            "raw_transfer": (
+                "packed-scatter default preserves bounded receive and validated GPU "
+                "scatter; native-direct stores layer/KV/block/token/head/dim raw "
+                "offline and uses contiguous public BF16 copies into native pages; "
+                "CPU map/layout validation and run/submission overhead are timed; "
+                "no restore metadata H2D or codec status D2H, one request event wait; "
+                "dispatch/wait options do not replace this direct-copy boundary"
+            ),
             "transfer": (
-                "actual pinned-host H2D in bounded chunks, fresh destination "
+                "except native-direct Raw: actual pinned-host H2D in bounded "
+                "chunks, fresh destination "
                 "metadata, public restore, status D2H/event wait/check "
                 "before dependent read"
             ),
@@ -1668,7 +1736,8 @@ def main() -> None:
                 "validation and metadata preparation stay inside request wall"
             ),
             "restore_dispatch": (
-                "case selects eager (default), eager-capacity or graph for all arms; "
+                "except native-direct Raw: case selects eager (default), "
+                "eager-capacity or graph; "
                 "graph versus eager-capacity isolates dispatch at matched extent; "
                 "eager versus eager-capacity controls the validation boundary; graph "
                 "captures the unchanged public restore by actual chunk count, "

@@ -12,6 +12,19 @@ from benchmarks import native_codec_pipeline as pipeline
 from fragpack.compression import attn_page
 
 
+def test_direct_raw_archive_rejected_before_runtime_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_init(*args: object, **kwargs: object) -> None:
+        pytest.fail("incompatible archive reached GPU runtime allocation")
+
+    monkeypatch.setattr(pipeline.budget.Runtime, "__init__", unexpected_init)
+    with pytest.raises(ValueError, match="packed-scatter raw archives"):
+        pipeline.PipelineRuntime(
+            "raw_fa3", 8, {"raw_transfer": "native-direct"}, None, [], None
+        )
+
+
 class Queue:
     def __init__(self) -> None:
         self.pending: list[Callable[[], bool]] = []

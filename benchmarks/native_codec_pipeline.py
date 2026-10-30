@@ -87,6 +87,8 @@ class PipelineRuntime(budget.Runtime):
         sessions: list[budget.Session],
         queries: torch.Tensor,
     ) -> None:
+        if case.get("raw_transfer", "packed-scatter") != "packed-scatter":
+            raise ValueError("pipeline diagnostic requires packed-scatter raw archives")
         if case.get("receive_capacity", "format-max") != "format-max":
             raise ValueError("pipeline diagnostic requires format-max receive capacity")
         # Build the inherited first slot without restore graphs; attention and
