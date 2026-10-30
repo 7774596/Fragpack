@@ -14,14 +14,60 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 import hashlib
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 import torch
 
 from fragpack.compression import attn_page as ap
-from fragpack.compression.attn_tables import device_tables
+from fragpack.compression.attn_tables import DeviceTables, device_tables
 from fragpack.ops.native_codec_ext import extension
+
+Workspace = Literal["all", "encode", "decode", "raw"]
+
+
+def native_codec_workspace_bytes(
+    num_layers: int,
+    kv_heads: int,
+    max_blocks: int,
+    *,
+    workspace: Workspace = "all",
+) -> dict[str, int]:
+    """Plan owned tensor bytes without allocating tensors or initializing CUDA.
+
+    ``max_blocks`` counts complete 128-token codec blocks, independently of the
+    engine's native page size. Keys match :meth:`NativeCodec.memory_usage`;
+    unavailable workspace components contribute zero. Native KV/descriptors,
+    caller-owned transfer pools, allocator reservation and CUDA context are
+    excluded. This pure CPU calculation is safe to call concurrently.
+    """
+    if workspace not in ("all", "encode", "decode", "raw"):
+        raise ValueError("workspace must be 'all', 'encode', 'decode', or 'raw'")
+    if not isinstance(num_layers, int) or num_layers < 1:
+        raise ValueError("num_layers must be a positive integer")
+    if not isinstance(kv_heads, int) or not 1 <= kv_heads <= 16:
+        raise ValueError("kv_heads must be an integer in 1..16")
+    if not isinstance(max_blocks, int) or max_blocks < 1:
+        raise ValueError("max_blocks must be a positive integer")
+    encode = workspace in ("all", "encode")
+    decode = workspace in ("all", "decode")
+    per_block = num_layers * 2 * kv_heads
+    records = max_blocks * per_block
+    return {
+        "record_scratch": records * ap.RAW_RECORD_BYTES if encode else 0,
+        "record_lengths": records * 4 if encode else 0,
+        "record_offsets": records * 8 if encode or decode else 0,
+        "blob_offsets": (max_blocks + 1) * 8 if encode else 0,
+        "blob_lengths": max_blocks * 8 if encode else 0,
+        "status": max_blocks * 4,
+        "blob_buffer": max_blocks * ap.blob_slot_bytes(num_layers, kv_heads)
+        if encode
+        else 0,
+        "rank_tables": per_block * 256 if encode else 0,
+        "primary_tables": per_block * 8 if decode else 0,
+        "secondary_tables": per_block * 16 if decode else 0,
+    }
 
 
 @dataclass(frozen=True)
@@ -143,6 +189,12 @@ class NativeCodec:
 
     ``table`` is the CPU uint8 [layers, 2, heads, 22] calibration table.
     ``max_blocks`` bounds the number of logical 128-token blocks per batch.
+    ``workspace`` fixes construction-time capabilities: ``all`` preserves the
+    full roundtrip API, ``encode`` retains only encoding allocations, ``decode``
+    retains only restore metadata/tables, and ``raw`` retains only status.
+    Raw gather/scatter is available in every mode with caller-owned buffers.
+    Missing capabilities fail before GPU submission; operations never allocate
+    missing workspace. Reconstruct the object to change mode or capacity.
     Output views belong to this workspace and are overwritten by the next batch.
     One instance cannot process concurrent batches, including on different
     streams. No operation synchronizes or checks GPU status on the host.
@@ -154,10 +206,13 @@ class NativeCodec:
         *,
         max_blocks: int,
         device: torch.device | str,
+        workspace: Workspace = "all",
     ) -> None:
         validate_tables(table)
-        if not isinstance(max_blocks, int) or max_blocks < 1:
-            raise ValueError("max_blocks must be a positive integer")
+        self.num_layers, _, self.kv_heads, _ = table.shape
+        allocation = native_codec_workspace_bytes(
+            self.num_layers, self.kv_heads, max_blocks, workspace=workspace
+        )
         device = torch.device(device)
         if device.type != "cuda":
             raise ValueError("native codec requires a CUDA device")
@@ -166,59 +221,101 @@ class NativeCodec:
             if (device.index is None)
             else device
         )
-        self.num_layers, _, self.kv_heads, _ = table.shape
         self.max_blocks = max_blocks
-        self.tables = device_tables(np.ascontiguousarray(table), self.device)
-        ranks = np.full((*table.shape[:3], 256), 255, dtype=np.uint8)
-        for index in np.ndindex(table.shape[:3]):
-            ranks[index][table[index]] = np.arange(ap.TABLE_ENTRIES, dtype=np.uint8)
+        self._workspace = workspace
+        # Derive tables with the existing representation code on CPU, then
+        # upload only enabled components. No unused GPU table is allocated,
+        # even transiently during restore-only or raw initialization.
+        host_tables = device_tables(np.ascontiguousarray(table), torch.device("cpu"))
         self.digest = int.from_bytes(
-            hashlib.blake2b(ranks.tobytes(), digest_size=8).digest(),
+            hashlib.blake2b(
+                host_tables.rank_of.numpy().tobytes(), digest_size=8
+            ).digest(),
             "little",
             signed=True,
         )
+
+        def upload(name: str, tensor: torch.Tensor) -> torch.Tensor:
+            return (
+                tensor.to(self.device)
+                if allocation[name]
+                else torch.empty(0, dtype=tensor.dtype, device=self.device)
+            )
+
+        self.tables = DeviceTables(
+            rank_of=upload("rank_tables", host_tables.rank_of),
+            plut=upload("primary_tables", host_tables.plut),
+            slut=upload("secondary_tables", host_tables.slut),
+        )
+
+        def allocate(
+            name: str, shape: tuple[int, ...], dtype: torch.dtype
+        ) -> torch.Tensor:
+            return torch.empty(
+                shape if allocation[name] else (0,), dtype=dtype, device=self.device
+            )
+
         shape = (max_blocks, self.num_layers, 2, self.kv_heads)
-        self._records = torch.empty(
-            (*shape, ap.RAW_RECORD_BYTES), dtype=torch.uint8, device=self.device
+        self._records = allocate(
+            "record_scratch", (*shape, ap.RAW_RECORD_BYTES), torch.uint8
         )
-        self._rec_lens = torch.empty(shape, dtype=torch.int32, device=self.device)
-        self._rec_offsets = torch.empty(shape, dtype=torch.int64, device=self.device)
-        self._offsets = torch.empty(
-            max_blocks + 1, dtype=torch.int64, device=self.device
-        )
-        self._lengths = torch.empty(max_blocks, dtype=torch.int64, device=self.device)
-        self._status = torch.empty(max_blocks, dtype=torch.int32, device=self.device)
-        self.buffer = torch.empty(
-            max_blocks * ap.blob_slot_bytes(self.num_layers, self.kv_heads),
-            dtype=torch.uint8,
-            device=self.device,
+        self._rec_lens = allocate("record_lengths", shape, torch.int32)
+        self._rec_offsets = allocate("record_offsets", shape, torch.int64)
+        self._offsets = allocate("blob_offsets", (max_blocks + 1,), torch.int64)
+        self._lengths = allocate("blob_lengths", (max_blocks,), torch.int64)
+        self._status = allocate("status", (max_blocks,), torch.int32)
+        self._buffer = allocate(
+            "blob_buffer", (allocation["blob_buffer"],), torch.uint8
         )
         self._count = 0
         self._stage = "idle"
 
     @property
+    def workspace(self) -> Workspace:
+        """Return the immutable construction-time allocation/capability mode."""
+        return self._workspace
+
+    def _require_encode(self) -> None:
+        if self._workspace not in ("all", "encode"):
+            raise RuntimeError(
+                f"workspace={self._workspace!r} has no encoding allocations"
+            )
+
+    @property
+    def buffer(self) -> torch.Tensor:
+        """Borrow the preallocated encode output; unavailable in decode/raw modes."""
+        self._require_encode()
+        return self._buffer
+
+    @property
     def records(self) -> torch.Tensor:
         """Borrow active fixed-size encoded-record scratch slots."""
+        self._require_encode()
         return self._records[: self._count]
 
     @property
     def rec_lens(self) -> torch.Tensor:
         """Borrow active int32 record lengths past the dense region."""
+        self._require_encode()
         return self._rec_lens[: self._count]
 
     @property
     def rec_offsets(self) -> torch.Tensor:
         """Borrow active int64 record offsets relative to each FPKB blob."""
+        if self._workspace == "raw":
+            raise RuntimeError("workspace='raw' has no compressed-record offsets")
         return self._rec_offsets[: self._count]
 
     @property
     def offsets(self) -> torch.Tensor:
         """Borrow batch offsets; the last device value is total transfer bytes."""
+        self._require_encode()
         return self._offsets[: self._count + 1]
 
     @property
     def lengths(self) -> torch.Tensor:
         """Borrow active aligned FPKB blob lengths."""
+        self._require_encode()
         return self._lengths[: self._count]
 
     @property
@@ -250,6 +347,7 @@ class NativeCodec:
 
     def encode_records(self, pages: NativeKVPages, page_map: torch.Tensor) -> None:
         """Read selected native pages into encoded scratch on the current stream."""
+        self._require_encode()
         self._bind(pages, page_map)
         extension().encode_records(
             pages.descriptors,
@@ -265,6 +363,7 @@ class NativeCodec:
 
     def plan(self) -> None:
         """Plan lengths/offsets after encoding on the same stream."""
+        self._require_encode()
         if self._stage not in ("records", "planned", "packed"):
             raise RuntimeError("encode_records must establish a batch before planning")
         extension().plan_blobs(
@@ -280,6 +379,7 @@ class NativeCodec:
 
     def pack(self) -> None:
         """Pack planned records into contiguous aligned FPKB blobs asynchronously."""
+        self._require_encode()
         if self._stage not in ("planned", "packed"):
             raise RuntimeError("encode_records and plan must precede packing")
         extension().pack_blobs(
@@ -315,9 +415,18 @@ class NativeCodec:
 
         ``src`` is the contiguous uint8 payload after actual H2D completion;
         ``offsets`` is contiguous int64 [N] or [N+1]. Defaults borrow the last
-        encoded batch for a GPU-only round trip. External-transfer callers must
-        supply their received buffers. Destination pages may not overlap.
+        encoded batch for a GPU-only round trip in ``workspace="all"``.
+        ``workspace="decode"`` requires both arguments explicitly. External-
+        transfer callers must supply their received buffers in every mode.
+        Destination pages may not overlap. The caller retains source, offsets
+        and target pages until completion; decode allocates no transfer storage.
         """
+        if self._workspace not in ("all", "decode"):
+            raise RuntimeError(
+                f"workspace={self._workspace!r} has no decoding allocations"
+            )
+        if self._workspace == "decode" and (src is None or offsets is None):
+            raise ValueError("decode workspace requires explicit src and offsets")
         self._bind(pages, page_map)
         source = self.buffer if src is None else src
         starts = self.offsets if offsets is None else offsets
@@ -394,7 +503,12 @@ class NativeCodec:
         return self.status
 
     def memory_usage(self) -> dict[str, int]:
-        """Return allocated workspace/table bytes, excluding native/transfer buffers."""
+        """Return owned tensor bytes, with zero for unallocated mode components.
+
+        Exclude native pages/descriptors, caller-owned GPU/pinned transfer pools,
+        allocator reservation and CUDA context. This inspects tensor metadata
+        only and does not synchronize, allocate CUDA storage or read device data.
+        """
         tensors = {
             "record_scratch": self._records,
             "record_lengths": self._rec_lens,
@@ -402,7 +516,7 @@ class NativeCodec:
             "blob_offsets": self._offsets,
             "blob_lengths": self._lengths,
             "status": self._status,
-            "blob_buffer": self.buffer,
+            "blob_buffer": self._buffer,
             "rank_tables": self.tables.rank_of,
             "primary_tables": self.tables.plut,
             "secondary_tables": self.tables.slut,
@@ -414,6 +528,7 @@ __all__ = [
     "NativeCodec",
     "NativeKVPages",
     "NativeTensorLayout",
+    "native_codec_workspace_bytes",
     "validate_native_tensor",
     "validate_tables",
 ]

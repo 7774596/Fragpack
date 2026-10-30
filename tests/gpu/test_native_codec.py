@@ -9,7 +9,11 @@ import pytest
 import torch
 
 from fragpack.compression import attn_page as ap
-from fragpack.ops.native_codec import NativeCodec, NativeKVPages
+from fragpack.ops.native_codec import (
+    NativeCodec,
+    NativeKVPages,
+    native_codec_workspace_bytes,
+)
 
 pytestmark = [
     pytest.mark.gpu,
@@ -380,3 +384,91 @@ def test_native_public_stages_reject_uninitialized_or_invalidated_plans() -> Non
     assert not bool(codec.encode(case.source, case.source_map).any())
     assert not bool(codec.raw_scatter(case.target, case.target_map, raw).any())
     reject_planning()
+
+
+def test_directional_workspaces_restore_external_blobs_across_streams_and_graph() -> (
+    None
+):
+    """Restore-only objects need no encoder allocation or implicit payload state."""
+    case = _case(tokens=16, strided=True)
+    encoder = NativeCodec(case.table, max_blocks=3, device="cuda", workspace="encode")
+    decoder = NativeCodec(case.table, max_blocks=3, device="cuda", workspace="decode")
+    assert encoder.digest == decoder.digest
+    assert not bool(encoder.encode(case.source, case.source_map).any())
+    offsets = encoder.offsets.cpu()
+    payload = encoder.buffer[: int(offsets[-1])].cpu()
+    received = payload.cuda()
+    received_offsets = offsets.cuda()
+    encoder.buffer.fill_(0xA5)
+    expected_usage = native_codec_workspace_bytes(3, 2, 3, workspace="decode")
+    assert decoder.memory_usage() == expected_usage
+    before_allocated = torch.cuda.memory_allocated()
+
+    restore_stream = torch.cuda.Stream()
+    restore_stream.wait_stream(torch.cuda.current_stream())
+    restored = torch.cuda.Event()
+    with torch.cuda.stream(restore_stream):
+        status = decoder.decode(
+            case.target, case.target_map, src=received, offsets=received_offsets
+        )
+        restored.record()
+    torch.cuda.current_stream().wait_event(restored)
+    assert not bool(status.any())
+    assert torch.cuda.memory_allocated() == before_allocated
+    _check_owners(case.target_owners, case.expected)
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        decoder.decode(
+            case.target, case.target_map, src=received, offsets=received_offsets
+        )
+    for owner in case.target_owners:
+        owner.fill_(POISON)
+    before_replay = torch.cuda.memory_allocated()
+    graph.replay()
+    assert not bool(decoder.status.any())
+    assert torch.cuda.memory_allocated() == before_replay
+    assert decoder.memory_usage() == expected_usage
+    _check_owners(case.target_owners, case.expected)
+
+    # Rejected capabilities/defaults must not clear status or enqueue writes.
+    decoder.status.fill_(17)
+    for kwargs in ({}, {"src": received}, {"offsets": received_offsets}):
+        with pytest.raises(ValueError, match="explicit src and offsets"):
+            decoder.decode(case.target, case.target_map, **kwargs)
+    with pytest.raises(RuntimeError, match="encoding allocations"):
+        decoder.encode_records(case.source, case.source_map)
+    with pytest.raises(RuntimeError, match="decoding allocations"):
+        encoder.decode(
+            case.target, case.target_map, src=received, offsets=received_offsets
+        )
+    assert bool(torch.all(decoder.status == 17))
+    _check_owners(case.target_owners, case.expected)
+
+
+@pytest.mark.parametrize("workspace", ["encode", "decode", "raw"])
+def test_directional_workspaces_keep_raw_transfer_and_reject_aliases(
+    workspace: str,
+) -> None:
+    """Raw transfers share only status and preserve validation in every mode."""
+    case = _case(tokens=32, blocks=2, layers=1, heads=1)
+    codec = NativeCodec(case.table, max_blocks=2, device="cuda", workspace=workspace)
+    raw = torch.empty(case.bits.nbytes, dtype=torch.uint8, device="cuda")
+    assert not bool(codec.raw_gather(case.source, case.source_map, raw).any())
+    assert not bool(codec.raw_scatter(case.target, case.target_map, raw).any())
+    _check_owners(case.target_owners, case.expected)
+    usage = codec.memory_usage()
+    assert usage == native_codec_workspace_bytes(1, 1, 2, workspace=workspace)
+    if workspace == "raw":
+        assert sum(usage.values()) == codec.status.numel() * codec.status.element_size()
+        with pytest.raises(RuntimeError, match="encoding allocations"):
+            codec.encode_records(case.source, case.source_map)
+        with pytest.raises(RuntimeError, match="decoding allocations"):
+            codec.decode(case.target, case.target_map, src=raw, offsets=None)
+
+    mapping = case.target_map.clone()
+    mapping[1, 1] = mapping[0, 0]
+    before = [owner.cpu().clone() for owner in case.target_owners]
+    status = codec.raw_scatter(case.target, mapping, raw).cpu().tolist()
+    assert all(value & 4 for value in status)
+    _check_owners(case.target_owners, before)

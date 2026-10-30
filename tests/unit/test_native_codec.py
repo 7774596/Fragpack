@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """CPU-only validation of independent native-page codec boundaries."""
 
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
@@ -8,6 +10,7 @@ import torch
 from fragpack.ops.native_codec import (
     NativeCodec,
     NativeKVPages,
+    native_codec_workspace_bytes,
     validate_native_tensor,
     validate_tables,
 )
@@ -117,7 +120,99 @@ def test_constructor_rejects_invalid_device_or_capacity_without_cuda() -> None:
         NativeCodec(table, max_blocks=0, device="cuda")
     with pytest.raises(ValueError, match="CUDA"):
         NativeCodec(table, max_blocks=1, device="cpu")
+    with pytest.raises(ValueError, match="workspace"):
+        NativeCodec(table, max_blocks=1, device="cuda:0", workspace="lazy")
     with pytest.raises(ValueError, match="CUDA"):
         NativeKVPages([torch.empty((2, 3, 32, 1, 128), dtype=torch.bfloat16)])
     with pytest.raises(ValueError, match="at least one"):
         NativeKVPages([])
+
+
+@pytest.fixture
+def host_codec_allocations(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the real constructor/accounting while redirecting CUDA storage."""
+    original_empty, original_to = torch.empty, torch.Tensor.to
+
+    def host_empty(*args: Any, **kwargs: Any) -> torch.Tensor:
+        kwargs["device"] = "cpu"
+        return original_empty(*args, **kwargs)
+
+    def host_to(tensor: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        if args and isinstance(args[0], (str, torch.device)):
+            if torch.device(args[0]).type == "cuda":
+                args = (torch.device("cpu"), *args[1:])
+        if "device" in kwargs and torch.device(kwargs["device"]).type == "cuda":
+            kwargs["device"] = torch.device("cpu")
+        return original_to(tensor, *args, **kwargs)
+
+    monkeypatch.setattr(torch, "empty", host_empty)
+    monkeypatch.setattr(torch.Tensor, "to", host_to)
+
+
+@pytest.mark.parametrize("workspace", ["all", "encode", "decode", "raw"])
+def test_workspace_budget_matches_real_constructor_allocations(
+    workspace: str, host_codec_allocations: None
+) -> None:
+    """No disabled buffers or tables survive in a direction-specific workspace."""
+    table = np.broadcast_to(np.arange(22, dtype=np.uint8), (3, 2, 2, 22)).copy()
+    codec = NativeCodec(table, max_blocks=5, device="cuda:0", workspace=workspace)
+    assert codec.memory_usage() == native_codec_workspace_bytes(
+        3, 2, 5, workspace=workspace
+    )
+    assert codec.workspace == workspace
+    with pytest.raises(AttributeError):
+        codec.workspace = "all"
+    if workspace in ("decode", "raw"):
+        for name in ("buffer", "records", "rec_lens", "offsets", "lengths"):
+            with pytest.raises(RuntimeError, match="encoding allocations"):
+                getattr(codec, name)
+        for operation in (codec.plan, codec.pack):
+            with pytest.raises(RuntimeError, match="encoding allocations"):
+                operation()
+        assert codec.tables.rank_of.numel() == 0
+    else:
+        assert codec.buffer.numel() > 0
+        assert codec.tables.rank_of.numel() > 0
+    if workspace in ("encode", "raw"):
+        assert codec.tables.plut.numel() == codec.tables.slut.numel() == 0
+    else:
+        assert codec.tables.plut.numel() > 0 and codec.tables.slut.numel() > 0
+    if workspace == "raw":
+        with pytest.raises(RuntimeError, match="compressed-record offsets"):
+            _ = codec.rec_offsets
+
+
+@pytest.mark.parametrize(
+    "layers,heads,blocks,workspace",
+    [(0, 1, 1, "all"), (1, 17, 1, "all"), (1, 1, 0, "all"), (1, 1, 1, "lazy")],
+)
+def test_workspace_budget_rejects_invalid_contract_without_allocation(
+    layers: int,
+    heads: int,
+    blocks: int,
+    workspace: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_allocation(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("budget calculation must not allocate tensors")
+
+    monkeypatch.setattr(torch, "empty", reject_allocation)
+    with pytest.raises(ValueError):
+        native_codec_workspace_bytes(layers, heads, blocks, workspace=workspace)
+
+
+def test_workspace_budget_remains_pure_and_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_cuda(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("budget calculation must not initialize CUDA")
+
+    monkeypatch.setattr(torch.cuda, "current_device", reject_cuda)
+    monkeypatch.setattr(torch, "empty", reject_cuda)
+    small = native_codec_workspace_bytes(48, 4, 1, workspace="decode")
+    large = native_codec_workspace_bytes(48, 4, 256, workspace="decode")
+    assert small["primary_tables"] == large["primary_tables"]
+    assert small["secondary_tables"] == large["secondary_tables"]
+    assert large["record_offsets"] == 256 * small["record_offsets"]
+    assert large["status"] == 256 * small["status"]
+    assert large["record_scratch"] == large["blob_buffer"] == 0

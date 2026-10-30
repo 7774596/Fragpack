@@ -165,6 +165,59 @@ core 接口均向当前 CUDA stream 提交工作，返回设备端状态，0 表
 D2H/H2D 的 raw 和压缩路径。校准/评估输入及历史捕获方式保留在结果 provenance 中。
 逐位正确性、GPU stream 分阶段时间、host 完整往返和辅助内存分别报告；不据此推断 TTFT。
 
+## 有界编码、恢复与 raw 工作区
+
+`NativeCodec(..., workspace="all")` 保持完整往返接口和现有默认行为。
+构造时还可选择 `encode`、`decode` 或 `raw`，随后不能切换模式或扩大容量；
+每个实例仍由 `max_blocks` 限定单批处理量。四种模式均允许使用显式外部缓冲的
+`raw_gather/raw_scatter`，除此以外只启用所选方向：
+
+| 模式 | GPU 自有数据 | 操作边界 |
+| --- | --- | --- |
+| `all` | 编码记录槽、长度/偏移、输出 blob、status、完整码表 | 保留现有 encode/decode 和 GPU 内往返默认值 |
+| `encode` | 编码记录槽、长度/偏移、输出 blob、status、编码 rank 表 | 支持 encode、plan、pack；不提供 decode |
+| `decode` | `int64 [N,L,2,H]` 记录偏移、`int32 [N]` status、解码码表 | decode 必须显式传入接收 payload 与 offsets，不分配编码槽或输出 blob |
+| `raw` | `int32 [N]` status | 只执行原始字节 gather/scatter，不分配码表或压缩格式工作区 |
+
+缺少的操作或输出视图在提交 GPU 工作前报错，不通过首次调用补分配。
+所有模式的 `memory_usage()` 保留相同项目，未分配项为 0；纯 CPU 函数
+`native_codec_workspace_bytes(num_layers, kv_heads, max_blocks, workspace=...)`
+给出同一口径的自有 tensor 字节，用于初始化前的预算规划。
+它不包含调用方的原生 KV 页及 descriptors、GPU/pinned 传输池、allocator 预留或 CUDA context。
+固定总预算比较须把这些分配分别加入，不能把 payload 变小视为接收池分配自动变小。
+
+迁出和恢复可以各持有一个有界工作区，按固定 chunk 大小处理更长的历史；这只复用工作区
+地址，不复用不同层的 KV 内容。编码记录槽读完后才能覆写，输出 blob 要等传输读取完成后
+才能覆写；恢复接收缓冲、页映射和目标页必须保持到解码及状态检查完成。
+工作区构造与使用的跨 stream 依赖仍由调用方建立。FPKB v1、记录校验、raw fallback 和
+错误块不得写目标页的约束保持不变。
+
+### 固定槽传输池
+
+`NativeCodecPool(table, max_blocks=K, slots=S, workspace=..., device=...)`
+在构造时固定批量与槽数，支持 `encode`、`decode`、`raw` 三种角色。
+每槽持有同角色的 codec 和一个预初始化 CUDA completion event。编码槽直接借出
+codec 自有的输出 blob 与有效 offsets，不再分配传输副本；恢复槽另有最大 `K` 个
+FPKB blob 的接收区及 `int64 [K+1]` offsets；raw 槽持有 `K` 个原始块的传输区。
+这里的接收容量按最坏情况预留，实际上传或下载仍只传有效字节。
+
+`acquire()` 在当前 CUDA stream 上等待该槽上一轮 completion event，随后返回独占
+lease；`release()` 必须在同一 stream 上记录下一轮 completion event。等待仅建立
+GPU 依赖，不在主机查询完成状态或同步。未释放的槽不能再次借出；全部槽已借出时立即
+报错。lease 记录所属 pool、槽与代次，拒绝跨池释放、重复释放或通过过期 lease 重新
+取得缓冲。构造、借还和属性访问由同一个主机线程完成，不实现跨线程队列或锁。
+
+调用方在 lease 的 stream 上完成传输、codec 调用及所有输出读取之后才能释放；若另一个
+stream 读取结果，须先让归还 stream 等待该读取结束。归还后不能再通过保留的 tensor
+引用使用槽。pool 自身须一直存活到所有 GPU 工作完成；原生 KV、页映射与 pinned-host
+输入/输出的生命周期仍归调用方，不能因归还 lease 就释放它们。CUDA Graph 只在已借出的
+槽上重放计算，借还管理发生在 capture/replay 外部。
+
+`native_codec_pool_bytes(...)` 与 `memory_usage()` 按相同项目列出全部槽的自有
+tensor 字节，不重复计算编码槽的输出别名。CUDA event/runtime、allocator 预留和外部
+KV/host 数据不属于这些 tensor 字节。单槽顺序分块的既有 benchmark 已满足同一容量
+上界；多槽池提供明确的复用与 stream 所有权，不自动实现传输流水线或历史淘汰策略。
+
 2026-10-31 的[扩大规模对照](../comparison-expanded-codec-20261031.md)进一步覆盖
 28 组48层读取配置与12组完整往返配置，各自完成两个独立进程。Native 的驻留 prefill
 读取更快，现有 fused decode 在单 token 读取中更快；冷恢复与重复复用需要分别判断。
