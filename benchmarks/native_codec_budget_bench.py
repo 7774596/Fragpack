@@ -106,6 +106,40 @@ class SessionLRU:
         return Admission(True, False, slots, tuple(evicted))
 
 
+def restore_chunk_counts(contexts: list[int], chunk_blocks: int) -> list[int]:
+    """Return only batch counts actually needed, including partial final chunks."""
+    if chunk_blocks < 1 or not contexts or min(contexts) < 1:
+        raise ValueError("positive chunk capacity and nonempty contexts required")
+    counts = set()
+    for context in contexts:
+        blocks = (context + T - 1) // T
+        counts.update(
+            min(chunk_blocks, blocks - begin)
+            for begin in range(0, blocks, chunk_blocks)
+        )
+    return sorted(counts)
+
+
+def request_restore_layout(blocks: int, chunk: int) -> tuple[tuple[int, int, int], ...]:
+    """Return (block begin, count, pinned offset begin) with disjoint segments."""
+    if blocks < 1 or chunk < 1:
+        raise ValueError("positive request and chunk sizes required")
+    return tuple(
+        (begin, min(chunk, blocks - begin), begin + index)
+        for index, begin in enumerate(range(0, blocks, chunk))
+    )
+
+
+def validate_request_slots(slots: tuple[int, ...], blocks: int, capacity: int) -> None:
+    """Reject cross-chunk aliases and invalid targets before enqueueing a request."""
+    if (
+        len(slots) != blocks
+        or any(slot < 0 or slot >= capacity for slot in slots)
+        or len(set(slots)) != blocks
+    ):
+        raise ValueError("request targets must be complete, in range and disjoint")
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
     """Read explicit per-session contexts and request IDs without random traces."""
     cases = json.loads(path.read_text(encoding="utf-8"))
@@ -117,6 +151,8 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
         case.setdefault("chunk_blocks", 4)
         case.setdefault("native_workspace", "decode")
         case.setdefault("receive_capacity", "format-max")
+        case.setdefault("restore_dispatch", "eager")
+        case.setdefault("restore_wait", "chunk")
         contexts, trace = case["contexts"], case["trace"]
         if (
             not isinstance(case["name"], str)
@@ -133,6 +169,8 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
             or case["budget_bytes"] < 1
             or case["native_workspace"] not in ("all", "decode")
             or case["receive_capacity"] not in ("format-max", "observed")
+            or case["restore_dispatch"] not in ("eager", "eager-capacity", "graph")
+            or case["restore_wait"] not in ("chunk", "request")
         ):
             raise ValueError(f"invalid budget replay case: {case}")
         names.add(case["name"])
@@ -233,6 +271,18 @@ class Session:
         return len(self.indices)
 
 
+@dataclass
+class RestoreGraph:
+    """Retain graph and its count-specific device status across replay."""
+
+    graph: torch.cuda.CUDAGraph
+    status: torch.Tensor
+
+
+class RestoreStatusError(RuntimeError):
+    """A completed restore contained a nonzero status; attention must not run."""
+
+
 def prepare_sessions(corpus: Corpus, contexts: list[int]) -> list[Session]:
     """Materialize independent logical identities without content deduplication."""
     sessions = []
@@ -315,6 +365,8 @@ class Runtime:
         self.chunk = case["chunk_blocks"]
         self.max_request_blocks = max(session.blocks for session in sessions)
         self.query_tokens = case["query_tokens"]
+        self.restore_dispatch = case.get("restore_dispatch", "eager")
+        self.restore_wait = case.get("restore_wait", "chunk")
         self.fa3 = flash_attn_varlen_func
         self.stream = torch.cuda.current_stream()
         self.done, self.restored = torch.cuda.Event(), torch.cuda.Event()
@@ -383,6 +435,25 @@ class Runtime:
         self.mapping_host = torch.empty(
             (self.chunk, 1), dtype=torch.int32, pin_memory=True
         )
+        self.request_mapping_host: torch.Tensor | None = None
+        self.request_offsets_host: torch.Tensor | None = None
+        self.request_status_host: torch.Tensor | None = None
+        self.request_layouts = {
+            session.blocks: request_restore_layout(session.blocks, self.chunk)
+            for session in sessions
+        }
+        if self.restore_wait == "request":
+            maximum = self.max_request_blocks
+            chunks = (maximum + self.chunk - 1) // self.chunk
+            self.request_mapping_host = torch.empty(
+                (maximum, 1), dtype=torch.int32, pin_memory=True
+            )
+            self.request_offsets_host = torch.empty(
+                maximum + chunks, dtype=torch.int64, pin_memory=True
+            )
+            self.request_status_host = torch.empty(
+                maximum, dtype=torch.int32, pin_memory=True
+            )
         self.read_ids_host = torch.empty(
             self.max_request_blocks, dtype=torch.int32, pin_memory=True
         )
@@ -438,6 +509,10 @@ class Runtime:
             graph.replay()
             self.stream.synchronize()
         self.graph_allocation_delta = torch.cuda.memory_allocated() - before_graph
+        self.restore_graphs: dict[int, RestoreGraph] = {}
+        self.restore_graph_allocation_delta = 0
+        if self.restore_dispatch == "graph":
+            self.capture_restore_graphs()
         self.memory = self.memory_usage()
         self.lru = SessionLRU(blocks)
 
@@ -469,6 +544,43 @@ class Runtime:
             "queries": _tensor_bytes(self.q),
             "output": _tensor_bytes(self.output),
             "graph_allocation_delta": self.graph_allocation_delta,
+            "restore_dispatch": self.restore_dispatch,
+            "restore_wait": self.restore_wait,
+            "request_restore_added_gpu_storage": 0,
+            "pinned_request_metadata": sum(
+                _tensor_bytes(t)
+                for t in (
+                    self.request_mapping_host,
+                    self.request_offsets_host,
+                    self.request_status_host,
+                )
+                if t is not None
+            ),
+            "request_restore_allocation_note": (
+                "request pinned metadata is included in pinned_transfer_metadata; "
+                "HBM eager imports retain the public per-call status allocation; "
+                "actual GPU peaks, including transient status, enforce the budget"
+            ),
+            "restore_payload_extent": (
+                "actual-payload"
+                if self.arm == "raw_fa3" or self.restore_dispatch == "eager"
+                else "receive-capacity"
+            ),
+            "restore_graph_counts": sorted(self.restore_graphs),
+            "restore_graph_allocation_delta": self.restore_graph_allocation_delta,
+            "restore_graph_status_logical_bytes": {
+                str(count): _tensor_bytes(item.status)
+                for count, item in self.restore_graphs.items()
+            },
+            "restore_graph_status_owned_bytes": (
+                sum(_tensor_bytes(item.status) for item in self.restore_graphs.values())
+                if self.store is not None
+                else 0
+            ),
+            "restore_graph_status_accounting": (
+                "HBM status is retained graph storage, included in the graph delta; "
+                "native status views alias already-counted codec storage"
+            ),
             "torch_allocated": torch.cuda.memory_allocated(),
             "torch_reserved": torch.cuda.memory_reserved(),
             "pinned_transfer_metadata": sum(
@@ -479,9 +591,75 @@ class Runtime:
                     self.mapping_host,
                     self.read_ids_host,
                     self.length_host,
+                    self.request_mapping_host,
+                    self.request_offsets_host,
+                    self.request_status_host,
                 )
+                if t is not None
             ),
         }
+
+    def invoke_restore(self, count: int, payload_bytes: int) -> torch.Tensor:
+        """Enqueue the complete public operation with fixed views; no policy change."""
+        if self.arm == "raw_fa3":
+            return self.codec.raw_scatter(
+                self.pages, self.mapping[:count], self.receive[:payload_bytes]
+            )
+        if self.arm == "native_fa3":
+            return self.codec.decode(
+                self.pages,
+                self.mapping[:count],
+                src=self.receive[:payload_bytes],
+                offsets=self.offsets[: count + 1],
+            )
+        return self.store.import_blocks(
+            self.receive[:payload_bytes], self.offsets[:count], self.mapping[:count, 0]
+        )
+
+    def capture_restore_graphs(self) -> None:
+        """Capture legal warmed public restores before admission/timing begins."""
+        counts = restore_chunk_counts(self.case["contexts"], self.chunk)
+        source = max(self.sessions, key=lambda session: session.blocks)
+        before = torch.cuda.memory_allocated()
+        for count in counts:
+            if count > self.blocks or count > source.blocks:
+                raise ValueError("restore capture count exceeds allocated native slots")
+            self.mapping_host.numpy()[:count, 0] = np.arange(count)
+            self.mapping[:count].copy_(self.mapping_host[:count], non_blocking=True)
+            if self.arm == "raw_fa3":
+                size = count * RAW_BLOCK_BYTES
+                payload = source.raw[:size]
+                extent = size
+            else:
+                size = int(source.offsets[count])
+                payload = source.compressed[:size]
+                self.offsets_host.numpy()[: count + 1] = source.offsets[: count + 1]
+                self.offsets[: count + 1].copy_(
+                    self.offsets_host[: count + 1], non_blocking=True
+                )
+                # Verified immutable archives carry actual sizes in their
+                # headers/offsets. Graph views keep the receive capacity fixed.
+                extent = self.receive.numel()
+            self.receive[:size].copy_(payload, non_blocking=True)
+            for _ in range(2):
+                warm_status = self.invoke_restore(count, extent)
+                self.status_host[:count].copy_(warm_status, non_blocking=True)
+                self.restored.record(self.stream)
+                self.restored.synchronize()
+                if bool(torch.any(self.status_host[:count] != 0)):
+                    raise RuntimeError("restore graph warmup failed")
+                del warm_status
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                status = self.invoke_restore(count, extent)
+            self.restore_graphs[count] = RestoreGraph(graph, status)
+            graph.replay()
+            self.status_host[:count].copy_(status, non_blocking=True)
+            self.restored.record(self.stream)
+            self.restored.synchronize()
+            if bool(torch.any(self.status_host[:count] != 0)):
+                raise RuntimeError("initial restore graph replay failed")
+        self.restore_graph_allocation_delta = torch.cuda.memory_allocated() - before
 
     def read(self, context: int) -> None:
         """Enqueue the complete read, with one decode plan per 48-layer step."""
@@ -560,9 +738,17 @@ class Runtime:
                     selected = torch.from_numpy(slots).to("cuda")
                     self.store.overflow.index_fill_(0, selected, 0x6B)
 
-    def validate_chunk(self, session: Session, begin: int, count: int) -> None:
+    def validate_chunk(
+        self,
+        session: Session,
+        begin: int,
+        count: int,
+        *,
+        ids: torch.Tensor | None = None,
+    ) -> None:
         """Compare all restored KV bits, using CPU source values as the oracle."""
-        ids = self.mapping[:count, 0]
+        if ids is None:
+            ids = self.mapping[:count, 0]
         indices = session.indices[begin : begin + count]
         for layer in range(L):
             expected = self.corpus.content[indices, layer]
@@ -589,6 +775,8 @@ class Runtime:
         self, session: Session, slots: tuple[int, ...], *, validate: bool
     ) -> dict[str, int]:
         """Restore one session through bounded buffers, checking every chunk status."""
+        if self.restore_wait == "request":
+            return self.restore_request(session, slots, validate=validate)
         transferred = metadata = status_bytes = chunks = 0
         for begin in range(0, session.blocks, self.chunk):
             count = min(self.chunk, session.blocks - begin)
@@ -617,7 +805,13 @@ class Runtime:
                 )
                 metadata += (count + 1) * 8
             self.receive[: payload.numel()].copy_(payload, non_blocking=True)
-            if self.arm == "raw_fa3":
+            if self.restore_dispatch == "graph":
+                captured = self.restore_graphs[count]
+                captured.graph.replay()
+                # Host-side NativeCodec._count reflects the last captured
+                # batch, not this replay. Retain the actual count-specific view.
+                status = captured.status
+            elif self.arm == "raw_fa3":
                 status = self.codec.raw_scatter(
                     self.pages, self.mapping[:count], self.receive[: payload.numel()]
                 )
@@ -625,12 +819,20 @@ class Runtime:
                 status = self.codec.decode(
                     self.pages,
                     self.mapping[:count],
-                    src=self.receive[: payload.numel()],
+                    src=self.receive[
+                        : self.receive.numel()
+                        if self.restore_dispatch == "eager-capacity"
+                        else payload.numel()
+                    ],
                     offsets=self.offsets[: count + 1],
                 )
             else:
                 status = self.store.import_blocks(
-                    self.receive[: payload.numel()],
+                    self.receive[
+                        : self.receive.numel()
+                        if self.restore_dispatch == "eager-capacity"
+                        else payload.numel()
+                    ],
                     self.offsets[:count],
                     self.mapping[:count, 0],
                 )
@@ -651,6 +853,353 @@ class Runtime:
             "restore_metadata_h2d_bytes": metadata,
             "status_d2h_bytes": status_bytes,
             "chunks": chunks,
+            "restore_host_waits": chunks,
+        }
+
+    def prepare_request_restore(
+        self, session: Session, slots: tuple[int, ...]
+    ) -> tuple[tuple[int, int, int], ...]:
+        """Fill disjoint pinned inputs before enqueue; caller retains them to wait."""
+        if session.blocks > self.max_request_blocks:
+            raise ValueError("request exceeds preallocated metadata capacity")
+        validate_request_slots(slots, session.blocks, self.blocks)
+        assert self.request_mapping_host is not None
+        assert self.request_offsets_host is not None
+        self.request_mapping_host.numpy()[: session.blocks, 0] = slots
+        layout = self.request_layouts.get(session.blocks)
+        if layout is None:
+            # Additional small validation probes, outside the timed session trace.
+            layout = request_restore_layout(session.blocks, self.chunk)
+            self.request_layouts[session.blocks] = layout
+        if self.arm != "raw_fa3":
+            offsets = self.request_offsets_host.numpy()
+            for begin, count, offset_begin in layout:
+                np.subtract(
+                    session.offsets[begin : begin + count + 1],
+                    session.offsets[begin],
+                    out=offsets[offset_begin : offset_begin + count + 1],
+                )
+        return layout
+
+    def request_payload(self, session: Session, begin: int, count: int) -> torch.Tensor:
+        """Borrow immutable pinned archive bytes for one chunk without copying."""
+        if self.arm == "raw_fa3":
+            return session.raw[
+                begin * RAW_BLOCK_BYTES : (begin + count) * RAW_BLOCK_BYTES
+            ]
+        return session.compressed[
+            int(session.offsets[begin]) : int(session.offsets[begin + count])
+        ]
+
+    def enqueue_request_chunk(
+        self, begin: int, count: int, offset_begin: int, payload: torch.Tensor
+    ) -> None:
+        """Queue a chunk and status D2H; borrow prepared inputs until completion."""
+        assert self.request_mapping_host is not None
+        assert self.request_offsets_host is not None
+        assert self.request_status_host is not None
+        self.mapping[:count].copy_(
+            self.request_mapping_host[begin : begin + count], non_blocking=True
+        )
+        if self.arm != "raw_fa3":
+            self.offsets[: count + 1].copy_(
+                self.request_offsets_host[offset_begin : offset_begin + count + 1],
+                non_blocking=True,
+            )
+        self.receive[: payload.numel()].copy_(payload, non_blocking=True)
+        if self.restore_dispatch == "graph":
+            captured = self.restore_graphs[count]
+            captured.graph.replay()
+            status = captured.status
+        else:
+            extent = (
+                self.receive.numel()
+                if self.restore_dispatch == "eager-capacity" and self.arm != "raw_fa3"
+                else payload.numel()
+            )
+            status = self.invoke_restore(count, extent)
+        # The same stream completes this copy before the next chunk can reset
+        # codec status or reuse any GPU input. The CPU destination is disjoint.
+        self.request_status_host[begin : begin + count].copy_(status, non_blocking=True)
+
+    def finish_request_restore(self, blocks: int) -> None:
+        """Wait once and inspect every retained status before allowing attention."""
+        assert self.request_status_host is not None
+        self.restored.record(self.stream)
+        self.restored.synchronize()
+        status = self.request_status_host[:blocks]
+        if bool(torch.any(status != 0)):
+            raise RestoreStatusError(
+                f"{self.arm} request restore failed: {status.tolist()}"
+            )
+
+    def restore_request(
+        self, session: Session, slots: tuple[int, ...], *, validate: bool
+    ) -> dict[str, int]:
+        """Restore serial chunks with one host wait and complete status retention."""
+        layout = self.prepare_request_restore(session, slots)
+        if validate:
+            # Validation-only stable IDs; the K-sized mapping will be overwritten.
+            self.read_ids[: session.blocks].copy_(
+                self.request_mapping_host[: session.blocks, 0], non_blocking=True
+            )
+            self.poison(self.read_ids[: session.blocks])
+        transferred = metadata = 0
+        for begin, count, offset_begin in layout:
+            payload = self.request_payload(session, begin, count)
+            self.enqueue_request_chunk(begin, count, offset_begin, payload)
+            transferred += payload.numel()
+            metadata += count * 4 + (0 if self.arm == "raw_fa3" else (count + 1) * 8)
+        self.finish_request_restore(session.blocks)
+        if validate:
+            for begin, count, _ in layout:
+                self.validate_chunk(
+                    session, begin, count, ids=self.read_ids[begin : begin + count]
+                )
+        return {
+            "payload_h2d_bytes": transferred,
+            "restore_metadata_h2d_bytes": metadata,
+            "status_d2h_bytes": session.blocks * 4,
+            "chunks": len(layout),
+            "restore_host_waits": 1,
+        }
+
+    def snapshot_inactive_block(self, block: int) -> list[torch.Tensor]:
+        """Copy one untouched block's owned bytes/tables for validation only."""
+        if self.pages is not None:
+            return [
+                cache[:, block].view(torch.int16).cpu() for cache in self.pages.caches
+            ]
+        values = [arena[block].cpu() for arena in self.arenas]
+        addresses = self.store.rec_addr[:, block].cpu()
+        values.extend(
+            (
+                addresses,
+                self.store.rec_len[:, block].cpu(),
+                self.store.fill[:, block].cpu(),
+            )
+        )
+        base = self.store.overflow.data_ptr()
+        limit = base + _tensor_bytes(self.store.overflow)
+        raw = addresses.numpy()
+        owned = raw[(raw >= base) & (raw < limit)]
+        if owned.size:
+            slots = np.unique((owned - base) // ap.RAW_RECORD_BYTES)
+            ids = torch.from_numpy(slots).to("cuda")
+            values.append(self.store.overflow.index_select(0, ids).cpu())
+        return values
+
+    def validate_restore_dispatch(self) -> dict[str, Any]:
+        """Probe changing source/map values for each real count before timed traces."""
+        probes = []
+        for count in restore_chunk_counts(self.case["contexts"], self.chunk):
+            choices: list[tuple[Session, int]] = []
+            unique_sources: set[bytes] = set()
+            for session in self.sessions:
+                if session.blocks < count:
+                    continue
+                for begin in range(0, session.blocks - count + 1, count):
+                    identity = session.indices[begin : begin + count].tobytes()
+                    if identity not in unique_sources:
+                        choices.append((session, begin))
+                        unique_sources.add(identity)
+                    if len(choices) == 2:
+                        break
+                if len(choices) == 2:
+                    break
+            if len(choices) == 1:
+                choices.append(choices[0])
+            for iteration, (source, begin) in enumerate(choices):
+                end = begin + count
+                start_byte, end_byte = (
+                    int(source.offsets[begin]),
+                    int(source.offsets[end]),
+                )
+                chunk = Session(
+                    count * T,
+                    source.indices[begin:end],
+                    source.raw[begin * RAW_BLOCK_BYTES : end * RAW_BLOCK_BYTES],
+                    source.compressed[start_byte:end_byte],
+                    source.offsets[begin : end + 1] - start_byte,
+                )
+                ids = (np.arange(count) + iteration * count) % self.blocks
+                if iteration:
+                    ids = ids[::-1]
+                selected = set(ids.tolist())
+                inactive = next(
+                    (i for i in range(self.blocks) if i not in selected), None
+                )
+                before = (
+                    self.snapshot_inactive_block(inactive)
+                    if inactive is not None
+                    else []
+                )
+                if inactive is not None and count < self.chunk:
+                    # A graph accidentally replaying a full batch instead of
+                    # its tail would overwrite this explicitly inactive block.
+                    self.mapping[count:].fill_(inactive)
+                self.restore(chunk, tuple(int(i) for i in ids), validate=True)
+                after = (
+                    self.snapshot_inactive_block(inactive)
+                    if inactive is not None
+                    else []
+                )
+                if len(before) != len(after) or any(
+                    not torch.equal(left, right)
+                    for left, right in zip(before, after, strict=True)
+                ):
+                    raise AssertionError("restore dispatch modified an inactive block")
+                probes.append(
+                    {
+                        "count": count,
+                        "source_capture_indices": chunk.indices.tolist(),
+                        "target_ids": ids.tolist(),
+                        "inactive_block": inactive,
+                        "inactive_block_intact": True if inactive is not None else None,
+                        "payload_sha256": _hash_array(
+                            (
+                                chunk.raw if self.arm == "raw_fa3" else chunk.compressed
+                            ).numpy()
+                        ),
+                        "all_selected_kv_bits_exact": True,
+                        "poisoned_before_restore": True,
+                        "status_all_zero": True,
+                    }
+                )
+        return {
+            "dispatch": self.restore_dispatch,
+            "counts": restore_chunk_counts(self.case["contexts"], self.chunk),
+            "probes": probes,
+            "coverage_by_count": {
+                str(count): {
+                    "distinct_payloads": len(
+                        {
+                            item["payload_sha256"]
+                            for item in probes
+                            if item["count"] == count
+                        }
+                    ),
+                    "distinct_target_maps": len(
+                        {
+                            tuple(item["target_ids"])
+                            for item in probes
+                            if item["count"] == count
+                        }
+                    ),
+                }
+                for count in restore_chunk_counts(self.case["contexts"], self.chunk)
+            },
+            "scope": "separate functional probes, excluded from performance timing",
+        }
+
+    def validate_request_status_retention(self) -> dict[str, Any]:
+        """Check early error retention despite later success with request helpers."""
+        if self.restore_wait != "request":
+            return {
+                "status": "not_applicable",
+                "reason": "chunk mode remains fail-fast",
+            }
+        source = max(self.sessions, key=lambda item: item.blocks)
+        if source.blocks <= self.chunk:
+            return {
+                "status": "not_applicable",
+                "reason": "no request uses multiple chunks",
+            }
+        # Reuse only count-specific graphs already needed by the real sessions.
+        tail = min(restore_chunk_counts(self.case["contexts"], self.chunk))
+        blocks = self.chunk + tail
+        probe = Session(
+            blocks * T,
+            source.indices[:blocks],
+            source.raw[: blocks * RAW_BLOCK_BYTES],
+            source.compressed[: int(source.offsets[blocks])],
+            source.offsets[: blocks + 1],
+        )
+        slots = tuple(range(blocks))
+        layout = self.prepare_request_restore(probe, slots)
+        self.read_ids[:blocks].copy_(
+            self.request_mapping_host[:blocks, 0], non_blocking=True
+        )
+        self.poison(self.read_ids[:blocks])
+        invalid_before = self.snapshot_inactive_block(0)
+        inactive = blocks if blocks < self.blocks else None
+        inactive_before = (
+            self.snapshot_inactive_block(inactive) if inactive is not None else None
+        )
+        first_payload = self.request_payload(probe, 0, self.chunk)
+        corrupted_payload = None
+        if self.arm == "raw_fa3":
+            # Preparation checked legal, disjoint IDs. Deliberately corrupt a
+            # validation fixture afterward, without a hot-path injection hook.
+            self.request_mapping_host[0, 0] = -1
+            fault = "first target ID is out of range"
+        else:
+            corrupted_payload = torch.empty(
+                first_payload.numel(), dtype=torch.uint8, pin_memory=True
+            )
+            corrupted_payload.copy_(first_payload)
+            corrupted_payload[0] = int(corrupted_payload[0]) ^ 1
+            fault = "first FPKB magic byte is corrupted"
+        self.output.fill_(float("nan"))
+        for begin, count, offset_begin in layout:
+            payload = (
+                corrupted_payload
+                if begin == 0 and corrupted_payload is not None
+                else self.request_payload(probe, begin, count)
+            )
+            self.enqueue_request_chunk(begin, count, offset_begin, payload)
+        try:
+            self.finish_request_restore(blocks)
+        except RestoreStatusError as error:
+            failure = str(error)
+        else:
+            raise AssertionError(
+                "early restore error was lost before the attention gate"
+            )
+        statuses = self.request_status_host[:blocks].tolist()
+        if statuses[0] == 0 or any(value != 0 for value in statuses[1:]):
+            raise AssertionError(
+                "expected one early error followed by successful blocks"
+            )
+        invalid_after = self.snapshot_inactive_block(0)
+        if len(invalid_before) != len(invalid_after) or not all(
+            torch.equal(before, after)
+            for before, after in zip(invalid_before, invalid_after, strict=True)
+        ):
+            raise AssertionError("invalid block overwrote its poisoned destination")
+        for begin, count, _ in layout:
+            valid_begin = max(begin, 1)
+            valid_count = begin + count - valid_begin
+            if valid_count:
+                self.validate_chunk(
+                    probe,
+                    valid_begin,
+                    valid_count,
+                    ids=self.read_ids[valid_begin : valid_begin + valid_count],
+                )
+        if inactive is not None:
+            inactive_after = self.snapshot_inactive_block(inactive)
+            if len(inactive_before) != len(inactive_after) or not all(
+                torch.equal(before, after)
+                for before, after in zip(inactive_before, inactive_after, strict=True)
+            ):
+                raise AssertionError("failed request changed the inactive destination")
+        if not bool(torch.isnan(self.output).all()):
+            raise AssertionError("failed restore modified poisoned attention output")
+        return {
+            "status": "passed",
+            "fault": fault,
+            "chunk_counts": [count for _, count, _ in layout],
+            "retained_block_statuses": statuses,
+            "earlier_error_retained_after_later_success": True,
+            "restore_raised_before_attention_gate": True,
+            "poisoned_invalid_destination_unchanged": True,
+            "later_valid_kv_bits_exact": True,
+            "attention_output_remained_poisoned": True,
+            "inactive_block": inactive,
+            "inactive_block_intact": True if inactive is not None else None,
+            "expected_error": failure,
+            "scope": "separate functional probe, excluded from timed replay",
         }
 
     def step(self, identity: int, *, validate: bool = False) -> dict[str, Any]:
@@ -669,6 +1218,7 @@ class Runtime:
             "restore_metadata_h2d_bytes": 0,
             "status_d2h_bytes": 0,
             "chunks": 0,
+            "restore_host_waits": 0,
         }
         if not decision.hit:
             transfers = self.restore(session, decision.slots, validate=validate)
@@ -863,6 +1413,7 @@ def _run_trace(
             for row in rows
         ),
         "restore_chunks": sum(row["chunks"] for row in rows),
+        "restore_host_waits": sum(row["restore_host_waits"] for row in rows),
         "status_d2h_bytes": sum(row["status_d2h_bytes"] for row in rows),
         "peak_resident_sessions": max(row["resident_sessions"] for row in rows),
         "peak_resident_blocks": max(row["resident_blocks"] for row in rows),
@@ -974,6 +1525,10 @@ def run_case(
             )
             _write(args.out, report)
             continue
+        arm_row["restore_dispatch_validation"] = runtime.validate_restore_dispatch()
+        arm_row["restore_status_retention_validation"] = (
+            runtime.validate_request_status_retention()
+        )
         arm_row["validation_trace"] = _run_trace(
             runtime, case["trace"], validate=True, references=references
         )
@@ -1102,8 +1657,29 @@ def main() -> None:
             ),
             "transfer": (
                 "actual pinned-host H2D in bounded chunks, fresh destination "
-                "metadata, public restore, per-chunk status D2H/event wait/check "
+                "metadata, public restore, status D2H/event wait/check "
                 "before dependent read"
+            ),
+            "restore_wait": (
+                "case selects chunk (default) or request; request uses disjoint "
+                "preallocated pinned metadata/status, one ordered stream and one "
+                "receive buffer, then one event wait and checks every block status "
+                "before attention; no transfer/decode overlap; upfront slot "
+                "validation and metadata preparation stay inside request wall"
+            ),
+            "restore_dispatch": (
+                "case selects eager (default), eager-capacity or graph for all arms; "
+                "graph versus eager-capacity isolates dispatch at matched extent; "
+                "eager versus eager-capacity controls the validation boundary; graph "
+                "captures the unchanged public restore by actual chunk count, "
+                "including status reset, and retains that graph's status; "
+                "H2D/host status checking/attention stay outside restore graph"
+            ),
+            "restore_graph_extent": (
+                "compressed graph/eager-capacity use fixed receive capacity with "
+                "verified archive offsets/content; eager retains actual payload "
+                "extent; raw views always retain exact count*raw bytes; "
+                "not a dynamic transferred-length validation API"
             ),
             "validation": (
                 "separate full trace; every loaded chunk poisoned then all48 "
