@@ -105,3 +105,132 @@ input hash, GPU identity, geometry, warmup, and graph/eager mode.
 Kernel timing is not TTFT or full-model TPOT. Capacity reports must include
 staging, overflow, tables, metadata, and workspace, and state which allocations
 remain excluded. See [validation](validation.md).
+
+## Experimental fused prefill
+
+Set `FRAGPACK_PREFILL=fused` before starting a worker to read FragPack records
+directly inside prefill attention. The normal open-block staging still receives
+new KV, but this mode neither allocates a BF16 prefill K/V workspace nor calls
+the store's gather operation during prefill. `FRAGPACK_PREFILL=gather` is the
+default comparison path. Both modes share the same record format and decode
+attention implementation.
+
+After reserving an idle SM90 GPU, select `tests/gpu/test_fragpack_prefill.py`
+for direct-attention correctness, including causal prefix handling, GQA, raw
+records, partial tails, and graph replay. Run a serving check as well: a passing
+kernel test does not validate mixed-batch metadata or model-runner integration.
+
+The four-arm synthetic microbenchmark compares raw FA3, gather + FA3,
+unsplit fused prefill, and split-KV fused prefill. Keep output on the approved
+data filesystem and compare
+eager and CUDA Graph execution separately:
+
+```bash
+python -m benchmarks.fragpack_prefill_bench \
+    --contexts 1024,4096,8192 --queries 16,128,512 \
+    --heads 4 --group 8 --rounds 10 --inner 5 --warmup-ms 20 \
+    --out /path/to/results/prefill-eager.json
+python -m benchmarks.fragpack_prefill_bench \
+    --contexts 1024,4096,8192 --queries 16,128,512 \
+    --heads 4 --group 8 --rounds 10 --inner 5 --warmup-ms 20 \
+    --cuda-graph --out /path/to/results/prefill-graph.json
+```
+
+`--splits auto` uses the serving planner. `--splits 1,2,4,8,16,32` runs a
+forced-count ablation using the same inputs for every choice; these larger
+forced workspaces may exceed the serving planner's allocation bound.
+
+The [split-KV results](optimization-splitkv-prefill-20261029.md) improve short
+suffixes over the [initial implementation](validation-fused-prefill-20261029.md),
+but long-query cases remain slower. This mode is still experimental.
+
+## Direct encoding of complete new blocks
+
+To bypass the kernel-order scratch round trip for complete new blocks, set
+these options before starting the same vLLM service:
+
+```bash
+export FRAGPACK_PREFILL=gather
+export FRAGPACK_WRITE=direct
+```
+
+Use `FRAGPACK_WRITE=staged` for the same-configuration control. Direct writes
+currently require the gather reader. They retain FA3, the BF16 prefill
+workspace, scratch allocation and the existing tail/overflow lifecycle.
+The caller supplies the complete layer batch's original K/V to gather and
+encode on the same stream; input slices for individual gather groups are not
+valid substitutes. See [architecture](architecture.md).
+
+After reserving an idle SM90 GPU, run
+`pytest -q tests/gpu/test_fragpack_direct_encode.py` and the existing GPU
+regressions. The new checks compare reconstructed bits and encoded records
+with the CPU reference, poison bypassed scratch, and exercise mixed tails,
+strided inputs, raw overflow and graph replay. Follow with the serving smoke
+client described above. A passing standalone kernel test does not establish
+the runtime adapter's source-row mapping or an end-to-end speedup.
+
+The source-checkout benchmark compares staged and direct writes with fresh
+prepare/commit work and records separate layer, prepare and total-step windows:
+
+```bash
+python -m benchmarks.fragpack_write_bench \
+    --tokens 128,1024,4096,1031 --heads 4 --group 8 \
+    --rounds 10 --inner 5 --warmup-ms 20 --seed 314 \
+    --cuda-graph --out /path/to/results/write-graph.json
+```
+
+Omit `--cuda-graph` for the eager comparison. This is a synthetic single-layer
+benchmark with warm hardware caches, not a serving latency benchmark. Preserve
+all three windows: faster encode/gather can be offset by preparation or launch
+costs. See the [measured results](optimization-direct-encode-20261030.md).
+
+## Prepare and real-model A/B measurements
+
+The prepare benchmark covers fresh claims across one or 48 layers, including
+unaligned request boundaries and permuted interior slots. Each sample calls
+public prepare and commit with a new step stamp and validates device state
+outside the timing window. It does not write KV or run model inference:
+
+```bash
+nsys profile --trace=cuda,nvtx --sample=none \
+    --output /path/to/results/prepare \
+    python -m benchmarks.fragpack_prepare_bench \
+    --layers 1,48 --tokens 128,1024,4096 --blocks 469 --heads 4 \
+    --rounds 10 --inner 5 --warmup 20 \
+    --out /path/to/results/prepare.json
+```
+
+The JSON's host submission and CUDA event spans are separate measurements;
+neither is kernel-only latency. Recover kernel durations from CUDA timestamps,
+linking the measured NVTX launch ranges through runtime correlation IDs.
+Exclude warmup ranges. This benchmark rejects CUDA Graph capture because a
+fixed host step stamp would stop exercising fresh block detection.
+
+For serving, start a fresh TP=1 eager service for each write mode, with the
+same model, tables, gather reader and KV budget. The measured configuration
+uses `--no-enable-prefix-caching --enable-prompt-tokens-details`,
+`--max-num-seqs 4 --max-num-batched-tokens 2048 --max-model-len 8192`,
+`--block-size 128 --kv-cache-memory-bytes 4294967296`, BF16 KV, and
+`--async-scheduling`. Keep functional hot-path instrumentation disabled.
+Run the streaming client against that service:
+
+```bash
+python -m benchmarks.fragpack_serving_bench \
+    --base-url http://127.0.0.1:8000 --model your-served-model \
+    --arm staged --replicate 0 \
+    --input-tokens 128,1024,4096 --concurrency 1,4 \
+    --requests-per-case 8 --warmup-batches 1 --output-tokens 64 \
+    --seed 314 --plan /path/to/results/shared-prompts.json \
+    --out /path/to/results/staged-0.json
+```
+
+Reuse the exact plan for both modes. Use `--arm direct` only with a service
+started with `FRAGPACK_WRITE=direct`; this label does not reconfigure a running
+server. Use three fresh process pairs in staged/direct, direct/staged,
+staged/direct order. The client checks prompt/output token counts and zero
+cached tokens, retains per-request streaming events, and reports TTFT, TPOT,
+request latency and active-batch output throughput. Its synthetic prompts run
+the real full model; they are not AgentX, a capacity-pressure workload, or a
+quality evaluation. Requests within a process are nested samples, not
+independent process repetitions. See the
+[prepare and serving report](optimization-prepare-iterations-20261030.md).

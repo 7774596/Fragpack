@@ -4,19 +4,56 @@ This document describes the checks needed for the standalone extraction.
 It does not certify that an unrun check passed. GPU execution requires separate
 authorization and an idle supported GPU.
 
+## Prepare optimization and real-model status on 2026-10-30
+
+The [two-round prepare report](optimization-prepare-iterations-20261030.md)
+records 55 CPU tests, 26 direct GPU tests and 54 GPU regressions passing, with
+zero skips. All 48 real model layers execute in TP=1 eager staged/direct
+serving: six primary processes, three pairs, 288 measured plus 90 warmup
+requests, BF16 KV and no APC. Two earlier completed processes remain as
+diagnostic data after measured-window MoE JIT triggered a whole-pair rerun;
+one preflight failure also remains recorded. No primary measured-window new
+Triton binary writes were observed. This is not a clean sanitizer result.
+
+The 48-layer/4096-token prepare kernel improves 40.32 to 18.45 us. Serving
+latency changes are much smaller (paired median reductions 0.59–1.92%), with
+mixed directions across repetitions in four of six cases. This is a synthetic
+prompt workload on the actual model, not AgentX, a capacity-pressure test,
+or a quality evaluation. Concurrent generated outputs vary even within one
+mode; exact KV reconstruction is checked by the GPU tests separately.
+The reader remains gather/FA3; full-model graphs and TP > 1 are unverified.
+
+## Initial direct-write status on 2026-10-30
+
+The [direct-encoding report](optimization-direct-encode-20261030.md) records
+`FRAGPACK_WRITE=direct` with the default gather/FA3 prefill reader. It passed
+50 CPU tests, 15 new GPU cases plus 54 GPU regressions, and seven TP=1 eager
+serving requests with actual direct-block execution observed. Kernel graphs
+include commit replay; full-model graph serving and TP > 1 remain unverified.
+
+Both eager and CUDA Graph write/attention matrices completed. Large full-block
+cases reduce write/encode time, but prepare adds work and complete-step timing
+does not improve consistently. Direct writes remain opt-in. The new sanitizer
+attempt passed six pytest cases but exited with an unresolved CUDA
+function-handle API error; it is not a clean pass.
+
 ## Status on 2026-10-29
 
-See the [standalone validation report](validation-20261029.md) for the
-configuration, artifacts and observed limits.
+See the [initial extraction report](validation-20261029.md) and the
+[fused-prefill report](validation-fused-prefill-20261029.md) for their separate
+configurations, artifacts and observed limits. The subsequent
+[split-KV report](optimization-splitkv-prefill-20261029.md) records the current
+experimental prefill implementation.
 
 | Layer | Status |
 | --- | --- |
 | Source and CLI inspection | vLLM 0.30 flag definitions and source boundaries inspected |
-| Standalone packaging and CPU suite | Wheel and sdist built; installed-package check and 24 CPU tests passed |
-| Standalone CUDA compilation and correctness | 18 GPU tests passed on H800, including kernel graph replay |
-| Standalone vLLM eager serving | TP=1; seven requests passed, including cold prefill above budget, long decode, concurrency and APC |
+| Standalone packaging and CPU suite | Initial wheel/sdist and 24 CPU tests passed; current split-KV checkout passes 50 CPU tests |
+| Standalone CUDA compilation and correctness | 18 existing and 36 split/unsplit prefill GPU tests passed on H800, including kernel graph replay |
+| Compute Sanitizer | Unresolved CUDA function-handle API error in fused-prefill and existing store-only tests; not a clean pass |
+| Standalone vLLM eager serving | TP=1; seven requests passed; split-KV run observes multi-split execution, forbids gather, and reports zero BF16 workspace plus 4,392,960 partial bytes |
 | Full-model CUDA Graph and TP>1 serving | Not run |
-| Standalone performance | Not run |
+| Standalone performance | Fused prefill single-layer eager/Graph matrix completed; no end-to-end performance comparison |
 | External cache service integration | Outside this extraction |
 
 Historical DaseR test counts and performance tables do not establish these
