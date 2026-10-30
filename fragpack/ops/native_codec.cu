@@ -8,6 +8,7 @@
 #include <c10/cuda/CUDAException.h>
 #include <climits>
 #include <cstdint>
+#include <vector>
 
 #include "fragpack_common.cuh"
 
@@ -16,6 +17,7 @@ using namespace fragpack;
 
 constexpr uint32_t kMagic = 0x424b5046u;
 constexpr int kVersion = 1, kFixed = 64, kAlign = 4096;
+constexpr int kDecodeSmem = kTile + kEscCap;
 enum : int { kBadHeader = 1, kBadLengths = 2, kBadMapping = 4, kBadRecord = 8 };
 
 __host__ __device__ int64_t head_bytes(int L, int H) {
@@ -425,10 +427,14 @@ __global__ void validate_records(const uint8_t* src, const int64_t* offsets,
 __global__ void __launch_bounds__(kThreads) decode_kernel(
     Pages p, const int32_t* plut, const uint8_t* slut, const uint8_t* src,
     const int64_t* offsets, const int64_t* rec_offsets, const int32_t* status) {
-  // The helper's final nibble lookahead may extend into padding. A zero-padded
-  // shared copy keeps that read bounded even for a tightly bounded input blob.
-  __shared__ __align__(16) uint8_t encoded[kDenseBytes + kVarCap + 16];
-  __shared__ __align__(16) uint8_t esc[kEscCap];
+  // The bounded, zero-padded encoded copy and decoded tile have disjoint
+  // lifetimes. decode_rec finishes all record reads before its first emit;
+  // the CTA barrier there lets every warp reuse this region as output.
+  // Escape expansion stays separate because subsequent emits still read it.
+  extern __shared__ __align__(16) uint8_t smem[];
+  uint8_t* encoded = smem;
+  uint8_t* tile = smem;
+  uint8_t* esc = smem + kTile;
   const int i = blockIdx.x, r = blockIdx.y, tid = threadIdx.x;
   if (status[i]) return;
   const int l = r / (2 * p.H), kvh = r % (2 * p.H), kv = kvh / p.H, h = kvh % p.H;
@@ -445,17 +451,69 @@ __global__ void __launch_bounds__(kThreads) decode_kernel(
     rec = encoded;
   }
   const uint32_t l0 = plut[2 * r], l1 = plut[2 * r + 1];
+  auto put = [&](int tok, int dim, uint32_t value, bool pair) {
+    uint8_t* dst = tile + tok * 256 + (((dim >> 3) ^ (tok & 7)) << 4) + 2 * (dim & 7);
+    if (pair)
+      *reinterpret_cast<uint32_t*>(dst) = value;
+    else
+      *reinterpret_cast<uint16_t*>(dst) = (uint16_t)value;
+  };
   decode_rec(rec, vlen, l0, l1, slut + 16 * r, esc, tid,
              [&](int st, const uint32_t (&bf)[4]) {
+    // Raw records read their input directly; compressed records have already
+    // loaded their dense words into registers and expanded their escapes.
+    // No thread may overwrite encoded until all warps reach this point.
+    if (st == 0) __syncthreads();
 #pragma unroll
     for (int q = 0; q < 4; ++q) {
       const int a = 16 * warp + 8 * (q >> 1) + g;
       const int z = 16 * st + 8 * (q & 1) + 2 * c;
-      const int tok = kv == 0 ? a : z, dim = kv == 0 ? z : a;
-      *element(p, i, l, kv, h, tok, dim) = (uint16_t)bf[q];
-      *element(p, i, l, kv, h, tok + kv, dim + 1 - kv) = (uint16_t)(bf[q] >> 16);
+      if (kv == 0) {
+        put(a, z, bf[q], true);
+      } else {
+        put(z, a, bf[q], false);
+        put(z + 1, a, bf[q] >> 16, false);
+      }
     }
   });
+  __syncthreads();
+  const int64_t* a = p.desc + 6 * l;
+  uint16_t* base = reinterpret_cast<uint16_t*>(a[0]) + kv * a[1] + h * a[4];
+  const bool vectorized = (reinterpret_cast<uintptr_t>(base) & 15u) == 0 &&
+                          (a[2] & 7) == 0 && (a[3] & 7) == 0;
+#pragma unroll
+  for (int q = 0; q < 8; ++q) {
+    const int x = q * kThreads + tid, tok = x >> 4, chunk = x & 15;
+    const uint4 value = *reinterpret_cast<const uint4*>(
+        tile + tok * 256 + ((chunk ^ (tok & 7)) << 4));
+    const int page = p.map[i * (128 >> p.logP) + (tok >> p.logP)];
+    uint16_t* dst = base + page * a[2] + (tok & (p.P - 1)) * a[3] + 8 * chunk;
+    if (vectorized) {
+      *reinterpret_cast<uint4*>(dst) = value;
+    } else {
+      // Registration permits odd BF16 base offsets and positive strides.
+      // Halfword stores preserve that contract and every padding canary.
+#pragma unroll
+      for (int w = 0; w < 4; ++w) {
+        const uint32_t word = u4get(value, w);
+        dst[2 * w] = (uint16_t)word;
+        dst[2 * w + 1] = (uint16_t)(word >> 16);
+      }
+    }
+  }
+}
+
+void configure_decode(int device) {
+  // CUDA function attributes are device-specific. Cache setup per calling
+  // host thread/device; simultaneous identical setup calls are harmless.
+  // No synchronization or device readback is added to the restore path.
+  static thread_local std::vector<bool> configured;
+  if ((int)configured.size() <= device) configured.resize(device + 1, false);
+  if (!configured[device]) {
+    C10_CUDA_CHECK(cudaFuncSetAttribute(decode_kernel,
+                                      cudaFuncAttributeMaxDynamicSharedMemorySize, kDecodeSmem));
+    configured[device] = true;
+  }
 }
 
 // Fair raw control: coalesced token-major dimension pairs, identical mappings
@@ -609,6 +667,7 @@ void decode_blobs(torch::Tensor desc, torch::Tensor page_map, torch::Tensor plut
               "decode requires offsets[N or N+1], rec_offsets[N,L,2,H]");
   const c10::cuda::CUDAGuard guard(desc.device());
   if (!p.N) return;
+  configure_decode(desc.get_device());
   const auto stream = at::cuda::getCurrentCUDAStream();
   validate_headers<<<p.N, kThreads, 0, stream>>>(p, src.data_ptr<uint8_t>(), src.numel(),
       offsets.data_ptr<int64_t>(), rec_offsets.data_ptr<int64_t>(), status.data_ptr<int32_t>(), digest);
@@ -616,7 +675,7 @@ void decode_blobs(torch::Tensor desc, torch::Tensor page_map, torch::Tensor plut
   validate_records<<<dim3(p.N, 2 * p.L * p.H), kThreads, 0, stream>>>(src.data_ptr<uint8_t>(),
       offsets.data_ptr<int64_t>(), rec_offsets.data_ptr<int64_t>(), status.data_ptr<int32_t>(), 2 * p.L * p.H);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
-  decode_kernel<<<dim3(p.N, 2 * p.L * p.H), kThreads, 0, stream>>>(p,
+  decode_kernel<<<dim3(p.N, 2 * p.L * p.H), kThreads, kDecodeSmem, stream>>>(p,
       plut.data_ptr<int32_t>(), slut.data_ptr<uint8_t>(), src.data_ptr<uint8_t>(),
       offsets.data_ptr<int64_t>(), rec_offsets.data_ptr<int64_t>(), status.data_ptr<int32_t>());
   C10_CUDA_KERNEL_LAUNCH_CHECK();
