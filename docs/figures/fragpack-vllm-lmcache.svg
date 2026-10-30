@@ -1,0 +1,644 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="1296pt" height="648pt" viewBox="0 0 1296 648" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <title>FragPack, vLLM, and LMCache</title>
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:title>FragPack, vLLM, and LMCache</dc:title>
+    <dc:description>FragPack is nested in the vLLM GPU worker; native BF16 records become compressed closed blocks consumed by fused decode attention. The FragPack–LMCache adapter and external compressed-blob path are proposed. Vector shapes and editable SVG text; Liberation Serif font.</dc:description>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.0, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 648
+L 1296 648
+L 1296 0
+L 0 0
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="vllm-process">
+    <path d="M 27.6 30
+L 686.4 30
+Q 690 30 690 33.6
+L 690 551.4
+Q 690 555 686.4 555
+L 27.6 555
+Q 24 555 24 551.4
+L 24 33.6
+Q 24 30 27.6 30
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f4f8fc; stroke: #315f8c; stroke-width: 1.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="lmcache-service">
+    <path d="M 1005.6 30
+L 1268.4 30
+Q 1272 30 1272 33.6
+L 1272 551.4
+Q 1272 555 1268.4 555
+L 1005.6 555
+Q 1002 555 1002 551.4
+L 1002 33.6
+Q 1002 30 1005.6 30
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f3f9f6; stroke: #377f6a; stroke-width: 1.7; stroke-linejoin: miter"/>
+   </g>
+   <g id="proposed-adapter">
+    <path d="M 723.6 135
+L 968.4 135
+Q 972 135 972 138.6
+L 972 494.4
+Q 972 498 968.4 498
+L 723.6 498
+Q 720 498 720 494.4
+L 720 138.6
+Q 720 135 723.6 135
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #fffcf5; stroke-dasharray: 9.6,6.4; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="scheduler">
+    <path d="M 51.6 105
+L 287.4 105
+Q 291 105 291 108.6
+L 291 173.4
+Q 291 177 287.4 177
+L 51.6 177
+Q 48 177 48 173.4
+L 48 108.6
+Q 48 105 51.6 105
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6eff8; stroke: #315f8c; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="model-execution">
+    <path d="M 417.6 105
+L 662.4 105
+Q 666 105 666 108.6
+L 666 173.4
+Q 666 177 662.4 177
+L 417.6 177
+Q 414 177 414 173.4
+L 414 108.6
+Q 414 105 417.6 105
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6eff8; stroke: #315f8c; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="fragpack-worker-plugin">
+    <path d="M 51.6 255
+L 662.4 255
+Q 666 255 666 258.6
+L 666 539.4
+Q 666 543 662.4 543
+L 51.6 543
+Q 48 543 48 539.4
+L 48 258.6
+Q 48 255 51.6 255
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #fff9f0; stroke: #b56d24; stroke-width: 1.9; stroke-linejoin: miter"/>
+   </g>
+   <g id="open-blocks">
+    <path d="M 69.6 306
+L 215.4 306
+Q 219 306 219 309.6
+L 219 392.4
+Q 219 396 215.4 396
+L 69.6 396
+Q 66 396 66 392.4
+L 66 309.6
+Q 66 306 69.6 306
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #ffffff; stroke: #315f8c; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="closed-records">
+    <path d="M 351.6 306
+L 503.4 306
+Q 507 306 507 309.6
+L 507 392.4
+Q 507 396 503.4 396
+L 351.6 396
+Q 348 396 348 392.4
+L 348 309.6
+Q 348 306 351.6 306
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #ffffff; stroke: #b56d24; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="blob-port">
+    <path d="M 558.6 306
+L 644.4 306
+Q 648 306 648 309.6
+L 648 392.4
+Q 648 396 644.4 396
+L 558.6 396
+Q 555 396 555 392.4
+L 555 309.6
+Q 555 306 558.6 306
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #ffffff; stroke: #b56d24; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="fused-decode">
+    <path d="M 210.6 438
+L 503.4 438
+Q 507 438 507 441.6
+L 507 496.2
+Q 507 499.8 503.4 499.8
+L 210.6 499.8
+Q 207 499.8 207 496.2
+L 207 441.6
+Q 207 438 210.6 438
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f8e7cc; stroke: #b56d24; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="cache-manager">
+    <path d="M 1029.6 153
+L 1244.4 153
+Q 1248 153 1248 156.6
+L 1248 236.4
+Q 1248 240 1244.4 240
+L 1029.6 240
+Q 1026 240 1026 236.4
+L 1026 156.6
+Q 1026 153 1029.6 153
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e2f0e9; stroke: #377f6a; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="storage-backends">
+    <path d="M 1029.6 327
+L 1244.4 327
+Q 1248 327 1248 330.6
+L 1248 491.4
+Q 1248 495 1244.4 495
+L 1029.6 495
+Q 1026 495 1026 491.4
+L 1026 330.6
+Q 1026 327 1029.6 327
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #ffffff; stroke: #377f6a; stroke-width: 1.6; stroke-linejoin: miter"/>
+   </g>
+   <g id="backend-dram">
+    <path d="M 1048.2 373.2
+L 1225.8 373.2
+Q 1227 373.2 1227 374.4
+L 1227 403.2
+Q 1227 404.4 1225.8 404.4
+L 1048.2 404.4
+Q 1047 404.4 1047 403.2
+L 1047 374.4
+Q 1047 373.2 1048.2 373.2
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f3f9f6; stroke: #377f6a; stroke-width: 1.2; stroke-linejoin: miter"/>
+   </g>
+   <g id="backend-ssd">
+    <path d="M 1048.2 415.2
+L 1225.8 415.2
+Q 1227 415.2 1227 416.4
+L 1227 445.2
+Q 1227 446.4 1225.8 446.4
+L 1048.2 446.4
+Q 1047 446.4 1047 445.2
+L 1047 416.4
+Q 1047 415.2 1048.2 415.2
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f3f9f6; stroke: #377f6a; stroke-width: 1.2; stroke-linejoin: miter"/>
+   </g>
+   <g id="backend-remote">
+    <path d="M 1048.2 457.2
+L 1225.8 457.2
+Q 1227 457.2 1227 458.4
+L 1227 487.2
+Q 1227 488.4 1225.8 488.4
+L 1048.2 488.4
+Q 1047 488.4 1047 487.2
+L 1047 458.4
+Q 1047 457.2 1048.2 457.2
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #f3f9f6; stroke: #377f6a; stroke-width: 1.2; stroke-linejoin: miter"/>
+   </g>
+   <g id="schedule-model">
+    <path d="M 291 141
+L 411.987539 141
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 405.987539 138
+L 411.987539 141
+L 405.987539 144
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="external-lookup-and-readiness">
+    <path d="M 219 102.987539
+L 219 78
+L 711 78
+L 711 210
+L 1023.987539 210
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 222 96.987539
+L 219 102.987539
+L 216 96.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 1017.987539 207
+L 1023.987539 210
+L 1017.987539 213
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="block-lifecycle">
+    <path d="M 169.5 177
+L 169.5 252.987539
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 172.5 246.987539
+L 169.5 252.987539
+L 166.5 246.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="attention-calls">
+    <path d="M 540 179.012461
+L 540 252.987539
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 537 185.012461
+L 540 179.012461
+L 543 185.012461
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 543 246.987539
+L 540 252.987539
+L 537 246.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #315f8c; stroke: #315f8c; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="encode-closed-blocks">
+    <path d="M 219 364.8
+L 345.987539 364.8
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 339.987539 361.8
+L 345.987539 364.8
+L 339.987539 367.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="records-to-blob">
+    <path d="M 509.012461 364.8
+L 552.987539 364.8
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 515.012461 367.8
+L 509.012461 364.8
+L 515.012461 361.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 546.987539 361.8
+L 552.987539 364.8
+L 546.987539 367.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="raw-to-decode">
+    <path d="M 142.5 396
+L 142.5 426
+L 267 426
+L 267 435.987539
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 270 429.987539
+L 267 435.987539
+L 264 429.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="packed-to-decode">
+    <path d="M 427.5 396
+L 427.5 435.987539
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 430.5 429.987539
+L 427.5 435.987539
+L 424.5 429.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="compressed-blob-save-restore">
+    <path d="M 601.5 398.012461
+L 601.5 426
+L 1023.987539 426
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 598.5 404.012461
+L 601.5 398.012461
+L 604.5 404.012461
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 1017.987539 423
+L 1023.987539 426
+L 1017.987539 429
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="cache-to-storage">
+    <path d="M 1137 242.012461
+L 1137 324.987539
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #377f6a; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 1134 248.012461
+L 1137 242.012461
+L 1140 248.012461
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #377f6a; stroke: #377f6a; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 1140 318.987539
+L 1137 324.987539
+L 1134 318.987539
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #377f6a; stroke: #377f6a; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="existing-legend">
+    <path d="M 51 586.8
+L 105.987539 586.8
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke: #52606a; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 99.987539 583.8
+L 105.987539 586.8
+L 99.987539 589.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #52606a; stroke: #52606a; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="proposed-legend">
+    <path d="M 521.012461 586.8
+L 573.987539 586.8
+" clip-path="url(#pc0f360e4f7)" style="fill: none; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 527.012461 589.8
+L 521.012461 586.8
+L 527.012461 583.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+    <path d="M 567.987539 583.8
+L 573.987539 586.8
+L 567.987539 589.8
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #b56d24; stroke-dasharray: 10.8,7.2; stroke-dashoffset: 0; stroke: #b56d24; stroke-width: 1.8; stroke-linecap: round"/>
+   </g>
+   <g id="raw-kv-tiles-0-0">
+    <path d="M 108 360.6
+L 123 360.6
+L 123 372.6
+L 108 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-0-1">
+    <path d="M 126 360.6
+L 141 360.6
+L 141 372.6
+L 126 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-0-2">
+    <path d="M 144 360.6
+L 159 360.6
+L 159 372.6
+L 144 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-0-3">
+    <path d="M 162 360.6
+L 177 360.6
+L 177 372.6
+L 162 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-1-0">
+    <path d="M 108 375.6
+L 123 375.6
+L 123 387.6
+L 108 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-1-1">
+    <path d="M 126 375.6
+L 141 375.6
+L 141 387.6
+L 126 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-1-2">
+    <path d="M 144 375.6
+L 159 375.6
+L 159 387.6
+L 144 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="raw-kv-tiles-1-3">
+    <path d="M 162 375.6
+L 177 375.6
+L 177 387.6
+L 162 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #a6c0d9; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-0-0">
+    <path d="M 399 360.6
+L 411 360.6
+L 411 372.6
+L 399 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-0-1">
+    <path d="M 414 360.6
+L 426 360.6
+L 426 372.6
+L 414 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-0-2">
+    <path d="M 429 360.6
+L 441 360.6
+L 441 372.6
+L 429 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-0-3">
+    <path d="M 444 360.6
+L 456 360.6
+L 456 372.6
+L 444 372.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-1-0">
+    <path d="M 399 375.6
+L 411 375.6
+L 411 387.6
+L 399 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-1-1">
+    <path d="M 414 375.6
+L 426 375.6
+L 426 387.6
+L 414 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-1-2">
+    <path d="M 429 375.6
+L 441 375.6
+L 441 387.6
+L 429 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="packed-kv-tiles-1-3">
+    <path d="M 444 375.6
+L 456 375.6
+L 456 387.6
+L 444 387.6
+z
+" clip-path="url(#pc0f360e4f7)" style="fill: #e6bd88; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="vllm-heading">
+    <text style="font-weight: 700; font-size: 29px; font-family: 'Liberation Serif'; text-anchor: start; fill: #315f8c" x="48" y="59.920859" transform="rotate(-0 48 59.920859)">vLLM inference process</text>
+   </g>
+   <g id="lmcache-heading">
+    <text style="font-weight: 700; font-size: 29px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #377f6a" x="1137" y="59.773594" transform="rotate(-0 1137 59.773594)">LMCache</text>
+   </g>
+   <g id="lmcache-subheading">
+    <text style="font-size: 22px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="1137" y="85.090312" transform="rotate(-0 1137 85.090312)">External KV cache</text>
+   </g>
+   <g id="scheduler-title">
+    <text style="font-weight: 700; font-size: 24px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="169.5" y="133.57125" transform="rotate(-0 169.5 133.57125)">Request scheduler</text>
+   </g>
+   <g id="scheduler-detail">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="169.5" y="162.609375" transform="rotate(-0 169.5 162.609375)">APC · block allocation</text>
+   </g>
+   <g id="model-title">
+    <text style="font-weight: 700; font-size: 24px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="540" y="133.57125" transform="rotate(-0 540 133.57125)">Model execution</text>
+   </g>
+   <g id="model-detail">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="540" y="162.609375" transform="rotate(-0 540 162.609375)">Prefill / decode</text>
+   </g>
+   <g id="schedule-label">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="352.5" y="129.968906" transform="rotate(-0 352.5 129.968906)">Schedule</text>
+   </g>
+   <g id="lookup-label">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #315f8c" x="483" y="69.710938" transform="rotate(-0 483 69.710938)">Prefix lookup / readiness</text>
+   </g>
+   <g id="fragpack-heading">
+    <text style="font-weight: 700; font-size: 27px; font-family: 'Liberation Serif'; text-anchor: start; fill: #b56d24" x="66" y="284.187187" transform="rotate(-0 66 284.187187)">FragPack · GPU worker plugin</text>
+   </g>
+   <g id="lifecycle-label">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: start; fill: #52606a" x="182.4" y="217.882812" transform="rotate(-0 182.4 217.882812)">Block lifecycle</text>
+   </g>
+   <g id="attention-label">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: end; fill: #52606a" x="525" y="217.809375" transform="rotate(-0 525 217.809375)">Attention calls</text>
+   </g>
+   <g id="open-title">
+    <text style="font-weight: 700; font-size: 23px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="142.5" y="327.730781" transform="rotate(-0 142.5 327.730781)">Open blocks</text>
+   </g>
+   <g id="open-dtype">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="142.5" y="347.768906" transform="rotate(-0 142.5 347.768906)">BF16</text>
+   </g>
+   <g id="closed-title">
+    <text style="font-weight: 700; font-size: 23px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="427.5" y="327.730781" transform="rotate(-0 427.5 327.730781)">Closed blocks</text>
+   </g>
+   <g id="closed-format">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="427.5" y="347.768906" transform="rotate(-0 427.5 347.768906)">Packed records</text>
+   </g>
+   <g id="encode-label">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #b56d24" x="283.5" y="335.168906" transform="rotate(-0 283.5 335.168906)">Encode</text>
+   </g>
+   <g id="encode-size">
+    <text style="font-size: 18px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="283.5" y="352.328438" transform="rotate(-0 283.5 352.328438)">128 tokens</text>
+   </g>
+   <g id="blob-title">
+    <text style="font-weight: 700; font-size: 23px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="601.5" y="339.730781" transform="rotate(-0 601.5 339.730781)">Blob I/O</text>
+   </g>
+   <g id="blob-actions">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; fill: #52606a" transform="translate(577.230469 360.364777)">export</text>
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; fill: #52606a" transform="translate(576.169141 379.573035)">import</text>
+   </g>
+   <g id="decode-title">
+    <text style="font-weight: 700; font-size: 24px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="357" y="459.97125" transform="rotate(-0 357 459.97125)">Fused decode attention</text>
+   </g>
+   <g id="decode-detail">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="357" y="488.168906" transform="rotate(-0 357 488.168906)">On-demand KV reconstruction</text>
+   </g>
+   <g id="prefill-path">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="357" y="525.710938" transform="rotate(-0 357 525.710938)">Prefill: BF16 workspace → FlashAttention</text>
+   </g>
+   <g id="adapter-heading-1">
+    <text style="font-weight: 700; font-size: 24px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #b56d24" x="846" y="167.6775" transform="rotate(-0 846 167.6775)">FragPack–LMCache</text>
+   </g>
+   <g id="adapter-heading-2">
+    <text style="font-size: 22px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #b56d24" x="846" y="190.090312" transform="rotate(-0 846 190.090312)">adapter (proposed)</text>
+   </g>
+   <g id="connector-api">
+    <text style="font-weight: 700; font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="846" y="251.049844" transform="rotate(-0 846 251.049844)">KVConnector interface</text>
+   </g>
+   <g id="mapping">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="846" y="293.020312" transform="rotate(-0 846 293.020312)">Block / chunk mapping</text>
+   </g>
+   <g id="identity">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="846" y="329.020312" transform="rotate(-0 846 329.020312)">Format + table identity</text>
+   </g>
+   <g id="completion">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="846" y="365.156484" transform="rotate(-0 846 365.156484)">Transfer + completion</text>
+   </g>
+   <g id="blob-transfer-label">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #b56d24" x="846" y="411.849844" transform="rotate(-0 846 411.849844)">Compressed KV blobs</text>
+   </g>
+   <g id="blob-transfer-direction">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="846" y="455.409375" transform="rotate(-0 846 455.409375)">save / restore</text>
+   </g>
+   <g id="cache-manager-title">
+    <text style="font-weight: 700; font-size: 24px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="181.4775" transform="rotate(-0 1137 181.4775)">Cache manager</text>
+   </g>
+   <g id="cache-manager-detail">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="219.009375" transform="rotate(-0 1137 219.009375)">Lookup · retain · evict</text>
+   </g>
+   <g id="storage-operation">
+    <text style="font-size: 19px; font-family: 'Liberation Serif'; text-anchor: start; fill: #52606a" x="1146" y="286.568906" transform="rotate(-0 1146 286.568906)">Store / retrieve</text>
+   </g>
+   <g id="storage-title">
+    <text style="font-weight: 700; font-size: 22px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="356.804375" transform="rotate(-0 1137 356.804375)">Storage backends</text>
+   </g>
+   <g id="backend-dram-label">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="393.849844" transform="rotate(-0 1137 393.849844)">CPU DRAM</text>
+   </g>
+   <g id="backend-ssd-label">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="435.849844" transform="rotate(-0 1137 435.849844)">NVMe SSD</text>
+   </g>
+   <g id="backend-remote-label">
+    <text style="font-size: 21px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #172634" x="1137" y="477.790781" transform="rotate(-0 1137 477.790781)">Remote storage</text>
+   </g>
+   <g id="existing-legend-label">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: start; fill: #172634" x="121.2" y="591.58125" transform="rotate(-0 121.2 591.58125)">Existing component capability</text>
+   </g>
+   <g id="proposed-legend-label">
+    <text style="font-size: 20px; font-family: 'Liberation Serif'; text-anchor: start; fill: #172634" x="589.8" y="591.58125" transform="rotate(-0 589.8 591.58125)">Proposed FragPack–LMCache integration</text>
+   </g>
+   <g id="readiness-contract">
+    <text style="font-style: italic; font-size: 20px; font-family: 'Liberation Serif'; text-anchor: middle; fill: #52606a" x="648" y="628.882812" transform="rotate(-0 648 628.882812)">External KV becomes reusable only after transfer, successful import, and readiness confirmation.</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pc0f360e4f7">
+   <rect x="0" y="0" width="1296" height="648"/>
+  </clipPath>
+ </defs>
+</svg>
