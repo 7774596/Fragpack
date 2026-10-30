@@ -1,0 +1,6 @@
+# Fixed optional external-cache target: CPython 3.10, Linux x86_64, CUDA 12.9.
+# Install in an isolated environment compatible with requirements/vllm-cu129.txt.
+# The URL and hash select the CUDA channel; the distribution version is 0.5.6.
+--extra-index-url https://download.pytorch.org/whl/cu129
+torch==2.13.0+cu129
+lmcache @ https://github.com/LMCache/LMCache/releases/download/v0.5.6-cu129/lmcache-0.5.6-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl#sha256=f577840e2de146b33bc84b96affe1ccee67b13f32592f59935a6307d73deb6ca
