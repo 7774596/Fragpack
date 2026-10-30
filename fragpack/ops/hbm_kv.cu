@@ -3,6 +3,8 @@
 #include <torch/extension.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAException.h>
+#include <cstdint>
+#include <optional>
 
 #include "fragpack_common.cuh"
 
@@ -24,8 +26,12 @@ enum : int {
   kHeirs = 9,        // blocks waiting for a closing block's slot this step
   kDonors = 10,      // closing blocks whose slot passes to an heir this step
 };
-// Per-block step stamps (int32[kTags, NB]).
-enum : int { kTagLive = 0, kTagClose = 1, kTagClaim = 2, kTagCloseDedupe = 3, kTags = 4 };
+// Per-block step stamps, plus the current batch row of a direct new block.
+// kDirectRow is -1 for staged blocks; unlike the other rows it is not a stamp.
+enum : int {
+  kTagLive = 0, kTagClose = 1, kTagClaim = 2, kTagCloseDedupe = 3,
+  kDirectRow = 4, kTags = 5
+};
 
 constexpr int kPrepThreads = 1024;
 
@@ -52,6 +58,11 @@ Store make_store(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
                  torch::Tensor close_list, torch::Tensor rec_addr, torch::Tensor rec_len,
                  torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
                  torch::Tensor fill) {
+  TORCH_CHECK(tags.dim() == 2 && tags.size(0) == kTags &&
+                  tags.size(1) == rec_addr.size(1) && tags.is_contiguous() &&
+                  tags.scalar_type() == torch::kInt32 && tags.is_cuda() &&
+                  tags.device() == rec_addr.device(),
+              "store tags must include the direct source-row map");
   Store s;
   s.counters = counters.data_ptr<int32_t>();
   s.wslot = wslot.data_ptr<int32_t>();
@@ -75,6 +86,33 @@ Store make_store(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
   s.S_t = scratch.numel() / (2LL * s.H * kRawRecord);
   s.cap = claim_list.numel() / 2;
   return s;
+}
+
+// Borrowed for one layer only. The caller retains these original BF16 tensors
+// through gather and encode, ordered on the same stream as their production.
+struct RawInputs {
+  const uint16_t* k = nullptr;
+  const uint16_t* v = nullptr;
+  int64_t ks0 = 0, ks1 = 0, vs0 = 0, vs1 = 0, rows = 0;
+};
+
+RawInputs raw_inputs(const torch::Tensor& key, const torch::Tensor& value,
+                     int heads, const torch::Device& device) {
+  TORCH_CHECK(key.is_cuda() && value.is_cuda() && key.device() == device &&
+                  value.device() == device,
+              "new K/V must be CUDA tensors on the store device");
+  TORCH_CHECK(key.scalar_type() == torch::kBFloat16 && value.scalar_type() == torch::kBFloat16,
+              "new K/V must be BF16");
+  TORCH_CHECK(key.dim() == 3 && value.dim() == 3 && key.sizes() == value.sizes() &&
+                  key.size(1) == heads && key.size(2) == 128,
+              "new K/V must have matching [tokens, KV heads, 128] shapes");
+  TORCH_CHECK(key.stride(2) == 1 && value.stride(2) == 1 &&
+                  key.stride(0) > 0 && key.stride(1) > 0 &&
+                  value.stride(0) > 0 && value.stride(1) > 0,
+              "new K/V need contiguous head dimensions and positive row/head strides");
+  return {reinterpret_cast<const uint16_t*>(key.data_ptr()),
+          reinterpret_cast<const uint16_t*>(value.data_ptr()),
+          key.stride(0), key.stride(1), value.stride(0), value.stride(1), key.size(0)};
 }
 
 // Staging record (kv * H + h) of the block in staging slot ``w`` at ``layer``.
@@ -116,13 +154,17 @@ __device__ __forceinline__ void ovf_free(const Store& s, int64_t addr) {
 //    it fills a transient slot and takes over the persistent slot of a block
 //    closing this step (a request finishing its partial block and opening a
 //    new tail in one chunk holds both slots until commit).
-// 4. Close list: blocks receiving offset 127 that own a slot; each closing
-//    persistent slot is paired with the next waiting heir.
+// 4. Cooperatively validate direct candidates, then build the close list:
+//    blocks receiving offset 127 that own a slot; each closing persistent
+//    slot is paired with the next waiting heir.
 // 5. Point every claimed block's records (all layers) at its staging, release
 //    overflow records they held, and empty its arena pages for the encodes.
+// Direct blocks still reserve that slot, but write leaves it untouched: gather
+// must borrow their original K/V until encode publishes valid stored records.
 __global__ void __launch_bounds__(kPrepThreads) prepare_kernel(Store s, const int64_t* slots,
                                                                int n_tok, const int32_t* live,
-                                                               int n_live, int32_t step) {
+                                                               int n_live, int32_t step,
+                                                               bool direct_new_blocks) {
   const int tid = threadIdx.x;
   int32_t* live_tag = s.tags + kTagLive * s.NB;
   int32_t* close_tag = s.tags + kTagClose * s.NB;
@@ -138,6 +180,7 @@ __global__ void __launch_bounds__(kPrepThreads) prepare_kernel(Store s, const in
   for (int i = tid; i < n_live; i += kPrepThreads) live_tag[live[i]] = step;
   __syncthreads();
   for (int b = tid; b < s.NB; b += kPrepThreads) {
+    s.tags[kDirectRow * s.NB + b] = -1;
     const int w = s.wslot[b];
     if (w >= s.S_p) {
       s.wslot[b] = -1;
@@ -157,6 +200,7 @@ __global__ void __launch_bounds__(kPrepThreads) prepare_kernel(Store s, const in
     const int b = sl >> 7;
     if (atomicExch(&claim_tag[b], step) == step) continue;
     int w = s.wslot[b];
+    const bool fresh = w < 0;
     if (w < 0) {
       const bool closes = close_tag[b] == step;
       if (closes) {
@@ -180,9 +224,35 @@ __global__ void __launch_bounds__(kPrepThreads) prepare_kernel(Store s, const in
       }
     }
     s.wslot[b] = w;
-    if (w >= 0) s.claim_list[atomicAdd(&s.counters[kClaims], 1)] = b;
+    if (w >= 0) {
+      s.claim_list[atomicAdd(&s.counters[kClaims], 1)] = b;
+      // Tentative candidate only: the warp pass below checks every slot
+      // before a later kernel can consume this map. Existing tails remain
+      // staged because their preceding values are not in the new input.
+      if (direct_new_blocks && fresh && close_tag[b] == step && i <= n_tok - 128)
+        s.tags[kDirectRow * s.NB + b] = i;
+    }
   }
   __syncthreads();
+  const int n_claim = s.counters[kClaims];
+  if (direct_new_blocks) {
+    const int lane = tid & 31, warp = tid >> 5;
+    for (int c = warp; c < n_claim; c += kPrepThreads / 32) {
+      const int b = s.claim_list[c];
+      const int row = s.tags[kDirectRow * s.NB + b];
+      if (row < 0) continue;  // Uniform across this warp.
+      bool matches = true;
+#pragma unroll
+      for (int q = 0; q < 4; ++q) {
+        const int off = 32 * q + lane;
+        matches &= slots[row + off] == ((int64_t)b << 7) + off;
+      }
+      const bool complete = __all_sync(0xffffffffu, matches);
+      if (lane == 0 && !complete) s.tags[kDirectRow * s.NB + b] = -1;
+    }
+  }
+  // Close-list construction does not read the direct map; its existing
+  // trailing CTA barrier also completes the cooperative coverage check.
   const int n_heirs = s.counters[kHeirs];
   for (int i = tid; i < n_tok; i += kPrepThreads) {
     const int64_t sl = slots[i];
@@ -205,11 +275,12 @@ __global__ void __launch_bounds__(kPrepThreads) prepare_kernel(Store s, const in
   // S_p >= max_num_seqs leaves no heir unpaired; one would lose its KV.
   if (tid == 0 && s.counters[kDonors] < n_heirs)
     atomicAdd(&s.counters[kErrStaging], n_heirs - s.counters[kDonors]);
-  const int n_claim = s.counters[kClaims];
-  const int per = s.L * 2 * s.H;
-  for (int x = tid; x < n_claim * per; x += kPrepThreads) {
-    const int b = s.claim_list[x / per];
-    const int r = x % per, layer = r / (2 * s.H), kvh = r % (2 * s.H);
+  // Match the [layer, block, K/V head] tables while keeping all ownership
+  // cleanup intact. A zero-claim step never enters the loop or its divisions.
+  const int per = 2 * s.H, layer_records = n_claim * per;
+  for (int x = tid; x < s.L * layer_records; x += kPrepThreads) {
+    const int layer = x / layer_records, r = x % layer_records;
+    const int b = s.claim_list[r / per], kvh = r % per;
     const int64_t idx = ((int64_t)layer * s.NB + b) * 2 * s.H + kvh;
     ovf_free(s, s.rec_addr[idx]);
     s.rec_addr[idx] = staging_addr(s, s.wslot[b], layer, kvh);
@@ -227,7 +298,7 @@ __global__ void write_kernel(Store s, const uint16_t* k, const uint16_t* v, int6
   if (sl < 0) return;
   const int b = sl >> 7, off = sl & 127;
   const int w = s.wslot[b];
-  if (w < 0) return;
+  if (w < 0 || s.tags[kDirectRow * s.NB + b] >= 0) return;
   for (int x = threadIdx.x; x < s.H * 64; x += blockDim.x) {
     const int h = x >> 6, p = x & 63;
     {
@@ -255,13 +326,15 @@ __global__ void write_kernel(Store s, const uint16_t* k, const uint16_t* v, int6
 }
 
 // grid (cap, 2 H): CTA (i, kvh) encodes record kvh of close_list[i] at
-// ``layer`` from staging into the block's arena page, which the block's 2 H
+// ``layer`` from staging or original K/V into the block's arena page. Its 2 H
 // records share: each takes the next 16-byte aligned ``kDenseBytes + var_len``
 // bytes. A record that does not code, or no longer fits the page, is stored
 // raw in the overflow pool. Matches attn_page.encode_record bit for bit.
+template <bool Direct>
 __global__ void __launch_bounds__(kThreads) encode_kernel(Store s, int layer, int64_t arena,
                                                           int64_t page_bytes,
-                                                          const uint8_t* rank_of) {
+                                                          const uint8_t* rank_of,
+                                                          RawInputs inputs) {
   __shared__ uint8_t rank_s[256];
   __shared__ __align__(16) uint8_t var_s[kVarCap];
   __shared__ int wsum[2][8];
@@ -273,8 +346,44 @@ __global__ void __launch_bounds__(kThreads) encode_kernel(Store s, int layer, in
   const int64_t idx = ((int64_t)layer * s.NB + b) * 2 * s.H + kvh;
   rank_s[tid] = rank_of[((int64_t)layer * 2 * s.H + kvh) * 256 + tid];
   uint4 wd[8];
+  const int row = s.tags[kDirectRow * s.NB + b];
+  if constexpr (Direct) {
+    if (row >= 0) {
+      CUDA_KERNEL_ASSERT((int64_t)row + 128 <= inputs.rows);
+      const bool is_k = kvh < s.H;
+      const int h = kvh % s.H, g = lane >> 2, c = lane & 3;
+      const uint16_t* in = is_k ? inputs.k : inputs.v;
+      const int64_t s0 = is_k ? inputs.ks0 : inputs.vs0;
+      const int64_t s1 = is_k ? inputs.ks1 : inputs.vs1;
+      // Recreate the exact kernel-order uint4 values in registers. Scalar
+      // BF16 loads also support fused-QKV slices without extra alignment.
 #pragma unroll
-  for (int st = 0; st < 8; ++st) wd[st] = reinterpret_cast<const uint4*>(src)[st * kThreads + tid];
+      for (int st = 0; st < 8; ++st) {
+        uint32_t words[4];
+#pragma unroll
+        for (int q = 0; q < 4; ++q) {
+          const int j = q >> 1, f = q & 1;
+          const int a = 16 * warp + 8 * j + g;
+          const int z = 16 * st + 8 * f + 2 * c;
+          const int tok = is_k ? a : z, dim = is_k ? z : a;
+          const uint16_t* p = in + ((int64_t)row + tok) * s0 + h * s1 + dim;
+          words[q] = (uint32_t)p[0] | ((uint32_t)p[is_k ? 1 : s0] << 16);
+        }
+        wd[st] = make_uint4(words[0], words[1], words[2], words[3]);
+      }
+    } else {
+#pragma unroll
+      for (int st = 0; st < 8; ++st)
+        wd[st] = reinterpret_cast<const uint4*>(src)[st * kThreads + tid];
+    }
+  } else {
+    // Public Python methods reject missing inputs before launching. Keep a
+    // native failure explicit as well, rather than coding unfilled scratch.
+    CUDA_KERNEL_ASSERT(row < 0);
+#pragma unroll
+    for (int st = 0; st < 8; ++st)
+      wd[st] = reinterpret_cast<const uint4*>(src)[st * kThreads + tid];
+  }
   // Hand this layer's slot record to the heir: copy its transient record in
   // (each thread overwrites only the words it has just read) and point the
   // heir's table there; attention has read the transient one already.
@@ -442,6 +551,7 @@ __global__ void commit_kernel(Store s) {
     else if (w >= 0 && w < s.S_p)
       s.free_stack[atomicAdd(&s.counters[kFreeTop], 1)] = w;
     s.wslot[b] = -1;
+    s.tags[kDirectRow * s.NB + b] = -1;
   }
   __syncthreads();
   if (threadIdx.x == 0) s.counters[kCloses] = 0;
@@ -450,16 +560,57 @@ __global__ void commit_kernel(Store s) {
 constexpr int kGatherSmem = kTile + kEscCap;
 
 // grid (pages, 2 H): decodes record kvh of block src[i] at one layer into
-// workspace page i, token-major [pages, 128, H, 128] BF16 (K or V).
+// workspace page i, token-major [pages, 128, H, 128] BF16 (K or V). Direct
+// new blocks copy original K/V instead of reading their unfilled scratch.
+template <bool Direct>
 __global__ void __launch_bounds__(kThreads) gather_kernel(const int32_t* src, const int64_t* rec_addr,
                                                           const int32_t* rec_len,
                                                           const uint32_t* plut, const uint8_t* slut,
-                                                          uint8_t* wk, uint8_t* wv, int H) {
+                                                          uint8_t* wk, uint8_t* wv, int H,
+                                                          const int32_t* direct_rows,
+                                                          RawInputs inputs) {
   extern __shared__ __align__(16) uint8_t smem[];
   uint8_t* tile = smem;
   uint8_t* esc = smem + kTile;
   const int kvh = blockIdx.y, kv = kvh / H, h = kvh % H;
   const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5, g = lane >> 2, c = lane & 3;
+  if constexpr (Direct) {
+    const int row = direct_rows[src[blockIdx.x]];
+    if (row >= 0) {
+      // A captured commit clears the map only when the graph executes.
+      // Ordinary reads may therefore carry a map without source tensors;
+      // an actually pending direct block must fail rather than read scratch.
+      CUDA_KERNEL_ASSERT(inputs.k != nullptr && inputs.v != nullptr &&
+                         (int64_t)row + 128 <= inputs.rows);
+      const uint16_t* in = kv == 0 ? inputs.k : inputs.v;
+      const int64_t s0 = kv == 0 ? inputs.ks0 : inputs.vs0;
+      const int64_t s1 = kv == 0 ? inputs.ks1 : inputs.vs1;
+      uint16_t* out = reinterpret_cast<uint16_t*>(kv == 0 ? wk : wv);
+      // Typical fused-QKV slices preserve 16-byte alignment. Copy eight
+      // BF16 values per instruction there, while odd-offset/stride views
+      // keep the scalar path and the same public input contract.
+      const bool vectorized =
+          ((reinterpret_cast<uintptr_t>(in) | reinterpret_cast<uintptr_t>(out)) & 15u) == 0 &&
+          (s0 & 7) == 0 && (s1 & 7) == 0;
+      if (vectorized) {
+        const uint16_t* src_head = in + (int64_t)row * s0 + h * s1;
+        uint16_t* dst_head = out + ((int64_t)blockIdx.x * 128 * H + h) * 128;
+#pragma unroll
+        for (int q = 0; q < 8; ++q) {
+          const int x = q * kThreads + tid, tok = x >> 4, chunk = x & 15;
+          const uint4 val = *reinterpret_cast<const uint4*>(src_head + tok * s0 + 8 * chunk);
+          *reinterpret_cast<uint4*>(dst_head + (int64_t)tok * H * 128 + 8 * chunk) = val;
+        }
+      } else {
+        for (int x = tid; x < 128 * 128; x += kThreads) {
+          const int tok = x >> 7, dim = x & 127;
+          out[(((int64_t)blockIdx.x * 128 + tok) * H + h) * 128 + dim] =
+              in[((int64_t)row + tok) * s0 + h * s1 + dim];
+        }
+      }
+      return;
+    }
+  }
   const int64_t idx = (int64_t)src[blockIdx.x] * 2 * H + kvh;
   const uint8_t* rec = reinterpret_cast<const uint8_t*>(rec_addr[idx]);
   auto put = [&](int tok, int dim, uint32_t v, int bytes) {
@@ -672,8 +823,16 @@ void hbm_prepare(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
                  torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
                  torch::Tensor fill,
                  torch::Tensor slot_mapping, int64_t n_tok, torch::Tensor live, int64_t n_live,
-                 int64_t step) {
-  TORCH_CHECK(slot_mapping.scalar_type() == torch::kInt64, "slot_mapping must be int64");
+                 int64_t step, bool direct_new_blocks) {
+  TORCH_CHECK(slot_mapping.is_cuda() && slot_mapping.device() == rec_addr.device() &&
+                  slot_mapping.scalar_type() == torch::kInt64 && slot_mapping.is_contiguous(),
+              "slot_mapping must be contiguous CUDA int64 on the store device");
+  TORCH_CHECK(n_tok >= 0 && n_tok <= slot_mapping.numel() && n_tok <= INT32_MAX &&
+                  n_live >= 0 && n_live <= live.numel(),
+              "invalid prepare token/live counts");
+  TORCH_CHECK(live.is_cuda() && live.device() == rec_addr.device() &&
+                  live.scalar_type() == torch::kInt32 && live.is_contiguous(),
+              "live blocks must be contiguous CUDA int32 on the store device");
   // Claims, heirs and closes are each bounded by the token count.
   TORCH_CHECK(claim_list.numel() == close_list.numel() && 2 * n_tok <= claim_list.numel(),
               "block lists too small");
@@ -681,7 +840,7 @@ void hbm_prepare(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags
                        rec_addr, rec_len, staging, scratch, overflow, fill);
   prepare_kernel<<<1, kPrepThreads, 0, at::cuda::getCurrentCUDAStream()>>>(
       s, slot_mapping.data_ptr<int64_t>(), n_tok, live.data_ptr<int32_t>(), n_live,
-      static_cast<int32_t>(step));
+      static_cast<int32_t>(step), direct_new_blocks);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
@@ -692,15 +851,18 @@ void hbm_write(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                torch::Tensor fill,
                torch::Tensor key, torch::Tensor value, torch::Tensor slot_mapping,
                int64_t layer) {
-  const int64_t n = key.size(0);
-  if (n == 0) return;
-  TORCH_CHECK(key.stride(2) == 1 && value.stride(2) == 1, "head dim must be contiguous");
   Store s = make_store(counters, wslot, tags, free_stack, ovf_bits, claim_list, close_list,
                        rec_addr, rec_len, staging, scratch, overflow, fill);
+  const RawInputs inputs = raw_inputs(key, value, s.H, rec_addr.device());
+  const int64_t n = inputs.rows;
+  TORCH_CHECK(layer >= 0 && layer < s.L, "invalid write layer");
+  TORCH_CHECK(slot_mapping.is_cuda() && slot_mapping.device() == rec_addr.device() &&
+                  slot_mapping.scalar_type() == torch::kInt64 && slot_mapping.is_contiguous() &&
+                  slot_mapping.numel() >= n, "write slot mapping must cover all input rows");
+  if (n == 0) return;
   write_kernel<<<n, 256, 0, at::cuda::getCurrentCUDAStream()>>>(
-      s, reinterpret_cast<const uint16_t*>(key.data_ptr()),
-      reinterpret_cast<const uint16_t*>(value.data_ptr()), key.stride(0), key.stride(1),
-      value.stride(0), value.stride(1), slot_mapping.data_ptr<int64_t>(), layer);
+      s, inputs.k, inputs.v, inputs.ks0, inputs.ks1, inputs.vs0, inputs.vs1,
+      slot_mapping.data_ptr<int64_t>(), layer);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
@@ -710,15 +872,27 @@ void hbm_encode(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                 torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
                 torch::Tensor fill,
                 torch::Tensor rank_of, int64_t layer, int64_t arena, int64_t page_bytes,
-                int64_t max_close) {
-  if (max_close == 0) return;
+                int64_t max_close, std::optional<torch::Tensor> key,
+                std::optional<torch::Tensor> value) {
+  TORCH_CHECK(key.has_value() == value.has_value(), "encode requires both new K and V or neither");
   Store s = make_store(counters, wslot, tags, free_stack, ovf_bits, claim_list, close_list,
                        rec_addr, rec_len, staging, scratch, overflow, fill);
-  TORCH_CHECK(2 * max_close <= close_list.numel(), "close list too small");
+  TORCH_CHECK(layer >= 0 && layer < s.L, "invalid encode layer");
+  TORCH_CHECK(max_close >= 0 && 2 * max_close <= close_list.numel(), "close list too small");
   TORCH_CHECK(rank_of.numel() == (int64_t)s.L * 2 * s.H * 256, "rank_of must hold every layer");
-  TORCH_CHECK(page_bytes % 16 == 0 && page_bytes < (1LL << 31), "bad arena page size");
-  encode_kernel<<<dim3(max_close, 2 * s.H), kThreads, 0, at::cuda::getCurrentCUDAStream()>>>(
-      s, layer, arena, page_bytes, rank_of.data_ptr<uint8_t>());
+  TORCH_CHECK(page_bytes > 0 && page_bytes % 16 == 0 && page_bytes < (1LL << 31),
+              "bad arena page size");
+  RawInputs inputs;
+  if (key.has_value()) inputs = raw_inputs(*key, *value, s.H, rec_addr.device());
+  if (max_close == 0) return;
+  const auto stream = at::cuda::getCurrentCUDAStream();
+  if (key.has_value()) {
+    encode_kernel<true><<<dim3(max_close, 2 * s.H), kThreads, 0, stream>>>(
+        s, layer, arena, page_bytes, rank_of.data_ptr<uint8_t>(), inputs);
+  } else {
+    encode_kernel<false><<<dim3(max_close, 2 * s.H), kThreads, 0, stream>>>(
+        s, layer, arena, page_bytes, rank_of.data_ptr<uint8_t>(), inputs);
+  }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
@@ -735,20 +909,58 @@ void hbm_commit(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
 
 void hbm_gather(torch::Tensor src_blocks, torch::Tensor rec_addr, torch::Tensor rec_len,
                 torch::Tensor plut, torch::Tensor slut, torch::Tensor wk, torch::Tensor wv,
-                int64_t kv_heads) {
+                int64_t kv_heads, std::optional<torch::Tensor> direct_rows,
+                std::optional<torch::Tensor> key, std::optional<torch::Tensor> value) {
+  const bool direct = direct_rows.has_value();
+  TORCH_CHECK(key.has_value() == value.has_value(),
+              "gather requires both new K and V or neither");
+  TORCH_CHECK(!key.has_value() || direct,
+              "gather with new K/V requires direct source rows");
+  TORCH_CHECK(kv_heads > 0 && rec_addr.dim() == 3 && rec_addr.size(1) == 2 &&
+                  rec_addr.size(2) == kv_heads, "bad gather record-table shape");
+  TORCH_CHECK(src_blocks.is_cuda() && src_blocks.device() == rec_addr.device() &&
+                  src_blocks.scalar_type() == torch::kInt32 && src_blocks.is_contiguous(),
+              "gather blocks must be contiguous CUDA int32 on the store device");
+  TORCH_CHECK(wk.is_cuda() && wv.is_cuda() && wk.device() == rec_addr.device() &&
+                  wv.device() == rec_addr.device() && wk.scalar_type() == torch::kBFloat16 &&
+                  wv.scalar_type() == torch::kBFloat16 && wk.is_contiguous() && wv.is_contiguous(),
+              "gather workspaces must be contiguous BF16 on the store device");
   const int64_t n = src_blocks.numel();
+  RawInputs inputs;
+  const int32_t* rows = nullptr;
+  if (direct) {
+    TORCH_CHECK(direct_rows->is_cuda() && direct_rows->device() == rec_addr.device() &&
+                    direct_rows->scalar_type() == torch::kInt32 && direct_rows->dim() == 1 &&
+                    direct_rows->numel() == rec_addr.size(0) && direct_rows->is_contiguous(),
+                "direct source rows must be contiguous CUDA int32 [blocks]");
+    if (key.has_value()) inputs = raw_inputs(*key, *value, kv_heads, rec_addr.device());
+    rows = direct_rows->data_ptr<int32_t>();
+  }
   if (n == 0) return;
-  TORCH_CHECK(wk.numel() * wk.element_size() >= n * 128 * kv_heads * 256, "workspace too small");
+  TORCH_CHECK(wk.numel() >= n * 128 * kv_heads * 128 && wv.numel() >= n * 128 * kv_heads * 128,
+              "workspace too small");
   static bool attr = false;
   if (!attr) {
-    cudaFuncSetAttribute(gather_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kGatherSmem);
+    C10_CUDA_CHECK(cudaFuncSetAttribute(gather_kernel<false>,
+                                      cudaFuncAttributeMaxDynamicSharedMemorySize, kGatherSmem));
+    C10_CUDA_CHECK(cudaFuncSetAttribute(gather_kernel<true>,
+                                      cudaFuncAttributeMaxDynamicSharedMemorySize, kGatherSmem));
     attr = true;
   }
-  gather_kernel<<<dim3(n, 2 * kv_heads), kThreads, kGatherSmem, at::cuda::getCurrentCUDAStream()>>>(
-      src_blocks.data_ptr<int32_t>(), rec_addr.data_ptr<int64_t>(), rec_len.data_ptr<int32_t>(),
-      reinterpret_cast<const uint32_t*>(plut.data_ptr()), slut.data_ptr<uint8_t>(),
-      reinterpret_cast<uint8_t*>(wk.data_ptr()), reinterpret_cast<uint8_t*>(wv.data_ptr()),
-      kv_heads);
+  const auto stream = at::cuda::getCurrentCUDAStream();
+  if (direct) {
+    gather_kernel<true><<<dim3(n, 2 * kv_heads), kThreads, kGatherSmem, stream>>>(
+        src_blocks.data_ptr<int32_t>(), rec_addr.data_ptr<int64_t>(), rec_len.data_ptr<int32_t>(),
+        reinterpret_cast<const uint32_t*>(plut.data_ptr()), slut.data_ptr<uint8_t>(),
+        reinterpret_cast<uint8_t*>(wk.data_ptr()), reinterpret_cast<uint8_t*>(wv.data_ptr()),
+        kv_heads, rows, inputs);
+  } else {
+    gather_kernel<false><<<dim3(n, 2 * kv_heads), kThreads, kGatherSmem, stream>>>(
+        src_blocks.data_ptr<int32_t>(), rec_addr.data_ptr<int64_t>(), rec_len.data_ptr<int32_t>(),
+        reinterpret_cast<const uint32_t*>(plut.data_ptr()), slut.data_ptr<uint8_t>(),
+        reinterpret_cast<uint8_t*>(wk.data_ptr()), reinterpret_cast<uint8_t*>(wv.data_ptr()),
+        kv_heads, rows, inputs);
+  }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

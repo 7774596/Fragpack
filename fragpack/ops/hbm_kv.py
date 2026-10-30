@@ -37,6 +37,14 @@ closed blocks into their arena pages. :meth:`commit` (after the last layer)
 releases the closed blocks' staging. Every launch shape depends only on host
 values fixed per batch shape, so the per-layer ops are CUDA-graph safe.
 
+With ``direct_new_blocks=True``, prepare marks fresh complete blocks whose
+128 input rows map consecutively to their slots. Write skips their scratch;
+gather reads the caller's original K/V into the attention workspace, and
+encode reads those tensors directly into the unchanged record codec. Original
+K/V must remain alive and immutable until that layer's encoding completes on
+the current stream. Existing tails still use staging. Scratch allocation and
+block ownership are retained; this mode saves transfers, not reserved bytes.
+
 External tiers move closed blocks as block blobs (``attn_page.BLOB_MAGIC``):
 :meth:`HbmKvStore.export_blocks` copies a block's records out, and
 :meth:`HbmKvStore.import_blocks` installs them into another block on any
@@ -77,7 +85,8 @@ _FALLBACKS = 6
 _ENCODED = 7
 _SPILLS = 8
 _N_COUNTERS = 16
-_N_TAGS = 4
+_N_TAGS = 5
+_DIRECT_ROW = 4
 # Import status bits, mirrored from hbm_kv.cu.
 _BLOB_FAILURES = {1: "bad header", 2: "bad lengths", 4: "overflow full"}
 
@@ -192,6 +201,10 @@ class HbmKvStore:
             heirs cover the second slot a request needs within a step). Also
             bounds the heirs of a step, which take transient scratch.
         overflow_records: Raw records that may be held in the overflow pool.
+        direct_new_blocks: Skip scratch writes for fresh complete blocks.
+            During an active step, gather and encode require the complete
+            layer's original K/V. Ordinary record consumers may read these
+            blocks only after encoding; no input pointers are retained.
 
     Async/thread-safety:
         All methods enqueue on the current CUDA stream and must be called from
@@ -206,12 +219,15 @@ class HbmKvStore:
         max_tokens: int,
         staging_slots: int,
         overflow_records: int,
+        *,
+        direct_new_blocks: bool = False,
     ) -> None:
         dev = kv_caches[0].device
         self.num_layers = len(kv_caches)
         self.kv_heads = kv_heads
         self.num_blocks = kv_caches[0].shape[0]
         self.tables = tables
+        self.direct_new_blocks = direct_new_blocks
         if tables.rank_of.shape[:3] != (self.num_layers, 2, kv_heads):
             raise ValueError(
                 f"tables {tuple(tables.rank_of.shape)} do not match "
@@ -247,6 +263,9 @@ class HbmKvStore:
         self.counters[0] = staging_slots
         self.wslot = torch.full((NB,), -1, **i32)
         self.tags = torch.zeros((_N_TAGS, NB), **i32)
+        # A source row is not a step stamp. Negative means use stored records.
+        self.direct_rows = self.tags[_DIRECT_ROW]
+        self.direct_rows.fill_(-1)
         self.free_stack = torch.arange(staging_slots, **i32)
         # One bit per overflow slot (set = in use); the tail past
         # ``overflow_records`` is preset so it is never handed out.
@@ -359,6 +378,8 @@ class HbmKvStore:
         Async/thread-safety:
             Enqueues one host-to-device copy and one kernel. Call once per
             step before the first :meth:`write`, outside CUDA graph capture.
+            Direct mode validates complete blocks on the GPU, without a
+            metadata readback. Its source rows survive until :meth:`commit`.
         """
         self._step = self._step % 0x7FFFFFFE + 1
         n_live = int(live_blocks.size)
@@ -370,7 +391,13 @@ class HbmKvStore:
             ).pin_memory()
             self.live[:n_live].copy_(host, non_blocking=True)
         extension().hbm_prepare(
-            *self._state, slot_mapping, num_tokens, self.live, n_live, self._step
+            *self._state,
+            slot_mapping,
+            num_tokens,
+            self.live,
+            n_live,
+            self._step,
+            self.direct_new_blocks,
         )
 
     def write(
@@ -380,7 +407,7 @@ class HbmKvStore:
         value: torch.Tensor,
         slot_mapping: torch.Tensor,
     ) -> None:
-        """Store one layer's new K / V tokens into their blocks' staging.
+        """Store new K/V into staging, skipping selected direct blocks.
 
         Args:
             layer: Layer index.
@@ -396,19 +423,33 @@ class HbmKvStore:
         """
         extension().hbm_write(*self._state, key, value, slot_mapping, layer)
 
-    def encode(self, layer: int, max_close: int) -> None:
+    def encode(
+        self,
+        layer: int,
+        max_close: int,
+        *,
+        key: torch.Tensor | None = None,
+        value: torch.Tensor | None = None,
+    ) -> None:
         """Code this layer's records of every block closed this step.
 
         Args:
             layer: Layer index.
             max_close: Upper bound on blocks closed this step (grid size).
+            key: Original BF16 ``[N, H, 128]`` for the complete layer batch,
+                required with value during an active direct step.
+            value: Original V with the same shape; row/head strides may differ.
 
         Returns:
             None.
 
         Async/thread-safety:
             Enqueues one kernel; CUDA-graph safe for a fixed ``max_close``.
+            Inputs must stay alive and immutable until encoding completes on
+            the current stream. Call after this layer's attention/gathers;
+            publishing and reclaiming block storage still require commit.
         """
+        self._check_direct_inputs(key, value, encoding=True)
         extension().hbm_encode(
             *self._state,
             self.tables.rank_of,
@@ -416,6 +457,8 @@ class HbmKvStore:
             self.arena_base[layer],
             self.arena_stride[layer],
             max_close,
+            key,
+            value,
         )
 
     def commit(self) -> None:
@@ -430,7 +473,14 @@ class HbmKvStore:
         extension().hbm_commit(*self._state)
 
     def gather(
-        self, layer: int, blocks: torch.Tensor, wk: torch.Tensor, wv: torch.Tensor
+        self,
+        layer: int,
+        blocks: torch.Tensor,
+        wk: torch.Tensor,
+        wv: torch.Tensor,
+        *,
+        key: torch.Tensor | None = None,
+        value: torch.Tensor | None = None,
     ) -> None:
         """Decode blocks of one layer into token-major BF16 pages.
 
@@ -439,13 +489,25 @@ class HbmKvStore:
             blocks: int32 ``[P]`` block ids.
             wk: BF16 ``[>= P, 128, H, 128]`` K pages (page ``i`` = ``blocks[i]``).
             wv: BF16 ``[>= P, 128, H, 128]`` V pages.
+            key: Complete layer-batch K, required when reading direct blocks
+                before commit. Source rows are absolute batch indices, not
+                gather-group rows.
+            value: Complete layer-batch V, same shape as key.
 
         Returns:
             None.
 
         Async/thread-safety:
             Enqueues one kernel.
+            Direct inputs stay immutable through this gather and the layer's
+            encode, ordered on the current stream. After commit, normal
+            record-only gathering needs no original input tensors.
+            The GPU map also guards commit inside a replayed CUDA graph:
+            omitting inputs for a still-direct block raises an asynchronous
+            CUDA assertion instead of reading its unfilled scratch. Python
+            cannot infer graph-replayed commit state without a device readback.
         """
+        self._check_direct_inputs(key, value)
         extension().hbm_gather(
             blocks,
             self.rec_addr[layer],
@@ -455,7 +517,23 @@ class HbmKvStore:
             wk,
             wv,
             self.kv_heads,
+            self.direct_rows if self.direct_new_blocks or key is not None else None,
+            key,
+            value,
         )
+
+    def _check_direct_inputs(
+        self,
+        key: torch.Tensor | None,
+        value: torch.Tensor | None,
+        *,
+        encoding: bool = False,
+    ) -> None:
+        """Reject missing original tensors without inspecting device state."""
+        if (key is None) != (value is None):
+            raise ValueError("key and value must be supplied together")
+        if encoding and self.direct_new_blocks and key is None:
+            raise ValueError("direct encode requires the complete layer key/value")
 
     def layer_tables(
         self, layer: int

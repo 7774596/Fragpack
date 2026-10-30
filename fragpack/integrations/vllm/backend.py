@@ -8,7 +8,11 @@ KiB per record on average instead of 32 KiB raw), so the same KV memory holds
 manages the records over the engine's cache; decode attention decompresses
 records inside the attention kernel
 (:func:`~fragpack.ops.fused_attn_decode.decode_attention`), and prefill decodes
-the context pages into a BF16 workspace and runs FlashAttention over it.
+the context pages into a BF16 workspace and runs FlashAttention over it by
+default. ``FRAGPACK_PREFILL=fused`` instead consumes records directly inside
+prefill attention and allocates no BF16 prefill workspace.
+``FRAGPACK_WRITE=direct`` with the default gather reader skips scratch for
+complete new blocks, using the original K/V for gather and subsequent encode.
 
 Per step: :meth:`FragPackMetadataBuilder.build` calls ``HbmKvStore.prepare``
 (eagerly, also before a FULL CUDA-graph replay); per layer the impl writes the
@@ -68,6 +72,11 @@ from fragpack.ops.fused_attn_decode import (
     decode_units,
     workspace_elems,
 )
+from fragpack.ops.fused_attn_prefill import (
+    prefill_attention,
+    prefill_split_count,
+    prefill_workspace_capacity,
+)
 from fragpack.ops.hbm_kv import (
     BLOCK_TOKENS,
     HEAD_DIM,
@@ -117,6 +126,34 @@ class PrefillGroup:
 
 
 @dataclass
+class FusedPrefill:
+    """One prefill sub-batch reading physical records without a KV workspace.
+
+    Attributes:
+        block_table (torch.Tensor): Physical block IDs, in request order.
+        cu_seqlens_q (torch.Tensor): Query offsets relative to tok0.
+        seq_lens (torch.Tensor): Total context lengths, including new queries.
+        tok0 (int): First prefill token in the mixed batch.
+        tok1 (int): Exclusive end of the prefill token range.
+        max_seqlen_q (int): Largest query length in this sub-batch.
+        num_splits (int): KV partitions per query tile, selected on the host.
+        workspace: Shared FP32 attention partials; None for one-split calls.
+
+    Async/thread-safety:
+        GPU metadata belongs to this model step and is consumed on its stream.
+    """
+
+    block_table: torch.Tensor
+    cu_seqlens_q: torch.Tensor
+    seq_lens: torch.Tensor
+    tok0: int
+    tok1: int
+    max_seqlen_q: int
+    num_splits: int
+    workspace: tuple[torch.Tensor, torch.Tensor] | None
+
+
+@dataclass
 class FragPackMetadata:
     """Per-step metadata shared by every layer.
 
@@ -134,9 +171,10 @@ class FragPackMetadata:
         decode_workspace: ``(opart, ml, plan)`` of the decode kernel; the
             first layer of a step writes the plan, the others reuse it.
         max_close: Grid bound of the per-layer encode.
-        prefills: Prefill groups.
-        wk: BF16 prefill K workspace ``[W, 128, H, 128]``.
-        wv: BF16 prefill V workspace.
+        prefills: Workspace-based prefill groups; empty in fused mode.
+        fused_prefill: Direct-record prefill metadata, or None when not used.
+        wk: BF16 prefill K workspace ``[W, 128, H, 128]``; None in fused mode.
+        wv: BF16 prefill V workspace; None in fused mode.
     """
 
     store: HbmKvStore
@@ -152,8 +190,9 @@ class FragPackMetadata:
     decode_workspace: tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     max_close: int
     prefills: list[PrefillGroup]
-    wk: torch.Tensor
-    wv: torch.Tensor
+    fused_prefill: FusedPrefill | None
+    wk: torch.Tensor | None
+    wv: torch.Tensor | None
 
 
 class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
@@ -182,6 +221,14 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
     ) -> None:
         super().__init__(kv_cache_spec, layer_names, vllm_config, device)
         require_supported_vllm(use_v2_model_runner=vllm_config.use_v2_model_runner)
+        self.prefill_mode = os.environ.get("FRAGPACK_PREFILL", "gather")
+        if self.prefill_mode not in ("gather", "fused"):
+            raise ValueError("FRAGPACK_PREFILL must be 'gather' or 'fused'")
+        self.write_mode = os.environ.get("FRAGPACK_WRITE", "staged")
+        if self.write_mode not in ("staged", "direct"):
+            raise ValueError("FRAGPACK_WRITE must be 'staged' or 'direct'")
+        if self.write_mode == "direct" and self.prefill_mode != "gather":
+            raise ValueError("FRAGPACK_WRITE=direct requires FRAGPACK_PREFILL=gather")
         if vllm_config.speculative_config is not None:
             raise ValueError("FragPack attention does not support speculative decoding")
         if vllm_config.cache_config.block_size != BLOCK_TOKENS:
@@ -193,6 +240,10 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
         capture = vllm_config.compilation_config.max_cudagraph_capture_size or 0
         self.max_tokens = max(sched.max_num_batched_tokens, capture)
         self.kv_heads = kv_cache_spec.num_kv_heads
+        query_heads = vllm_config.model_config.get_num_attention_heads(
+            vllm_config.parallel_config
+        )
+        self.group = query_heads // self.kv_heads
         order = sorted(layer_names, key=extract_layer_index)
         self.layer_names = order
         self.layer_index = {name: i for i, name in enumerate(order)}
@@ -214,8 +265,25 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
             -vllm_config.model_config.max_model_len // BLOCK_TOKENS
         )
         ws = (self.workspace_pages, BLOCK_TOKENS, self.kv_heads, HEAD_DIM)
-        self.wk = torch.empty(ws, dtype=torch.bfloat16, device=device)
-        self.wv = torch.empty(ws, dtype=torch.bfloat16, device=device)
+        self.wk = self.wv = None
+        self.prefill_partial_workspace = None
+        if self.prefill_mode == "gather":
+            self.wk = torch.empty(ws, dtype=torch.bfloat16, device=device)
+            self.wv = torch.empty(ws, dtype=torch.bfloat16, device=device)
+        else:
+            # The host split planner caps active partial rows by one wave of
+            # 64-column CTAs. This fixed allocation is shared across layers,
+            # and every split/combine completes on the ordered worker stream.
+            partial, softmax = prefill_workspace_capacity(self.num_sms)
+            self.prefill_partial_workspace = (
+                torch.empty(partial, **f32),
+                torch.empty(softmax, **f32),
+            )
+        logger.info(
+            "FragPack prefill path: %s, write path: %s",
+            self.prefill_mode,
+            self.write_mode,
+        )
 
         path = os.environ.get("FRAGPACK_TABLES")
         if not path:
@@ -296,8 +364,29 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
                     logger.info("FragPack store: %s", stats)
 
         prefills: list[PrefillGroup] = []
+        fused_prefill = None
         if npf and not capture:
-            prefills = self._prefill_groups(cam, nd, num_reqs, qsl, seq)
+            if self.prefill_mode == "fused":
+                tok0 = int(qsl[nd])
+                splits = prefill_split_count(
+                    qlen[nd:num_reqs],
+                    seq[nd:num_reqs],
+                    self.kv_heads,
+                    self.group,
+                    self.num_sms,
+                )
+                fused_prefill = FusedPrefill(
+                    block_table=cam.block_table_tensor[nd:num_reqs],
+                    cu_seqlens_q=cam.query_start_loc[nd : num_reqs + 1] - tok0,
+                    seq_lens=cam.seq_lens[nd:num_reqs],
+                    tok0=tok0,
+                    tok1=int(qsl[num_reqs]),
+                    max_seqlen_q=int(qlen[nd:num_reqs].max()),
+                    num_splits=splits,
+                    workspace=self.prefill_partial_workspace if splits > 1 else None,
+                )
+            else:
+                prefills = self._prefill_groups(cam, nd, num_reqs, qsl, seq)
         return FragPackMetadata(
             store=store,
             layer_tables=self.layer_tables,
@@ -312,6 +401,7 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
             decode_workspace=self.decode_workspace,
             max_close=max_close,
             prefills=prefills,
+            fused_prefill=fused_prefill,
             wk=self.wk,
             wv=self.wv,
         )
@@ -339,6 +429,7 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
                 overflow_records=int(
                     os.environ.get("FRAGPACK_OVERFLOW", _OVERFLOW_RECORDS)
                 ),
+                direct_new_blocks=self.write_mode == "direct",
             )
             self.store_key = key
             register_store(self.store)
@@ -350,10 +441,16 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
             # public statistics channel; no telemetry RPC runs in attention.
             memory = self.store.memory_usage()
             memory["prefill_workspace"] = sum(
-                t.numel() * t.element_size() for t in (self.wk, self.wv)
+                t.numel() * t.element_size()
+                for t in (self.wk, self.wv)
+                if t is not None
             )
             memory["decode_workspace"] = sum(
                 t.numel() * t.element_size() for t in self.decode_workspace
+            )
+            memory["prefill_partial_workspace"] = sum(
+                t.numel() * t.element_size()
+                for t in self.prefill_partial_workspace or ()
             )
             publish_capacity(
                 FragPackCapacity(
@@ -382,7 +479,7 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
                     + self.store.overflow.numel()
                 )
                 / 2**20,
-                2 * self.wk.numel() * self.wk.element_size() / 2**20,
+                memory["prefill_workspace"] / 2**20,
             )
         return self.store
 
@@ -550,7 +647,12 @@ class FragPackAttentionImpl(AttentionImpl[FragPackMetadata]):
         li = md.layer_index[layer.layer_name]
         store = md.store
         n = md.num_tokens
-        store.write(li, key[:n], value[:n], md.slot_mapping[:n])
+        layer_key, layer_value = key[:n], value[:n]
+        store.write(li, layer_key, layer_value, md.slot_mapping[:n])
+        # Every gather group indexes the complete batch's original K/V. Keep
+        # these tensor views alive through encoding on the same worker stream.
+        direct_key = layer_key if store.direct_new_blocks else None
+        direct_value = layer_value if store.direct_new_blocks else None
         nd = md.num_decodes
         if nd:
             decode_attention(
@@ -565,7 +667,10 @@ class FragPackAttentionImpl(AttentionImpl[FragPackMetadata]):
                 replan=li == 0,
             )
         for g in md.prefills:
-            store.gather(li, g.src_blocks, md.wk, md.wv)
+            assert md.wk is not None and md.wv is not None
+            store.gather(
+                li, g.src_blocks, md.wk, md.wv, key=direct_key, value=direct_value
+            )
             flash_attn_varlen_func(
                 q=query[g.tok0 : g.tok1],
                 k=md.wk,
@@ -580,7 +685,21 @@ class FragPackAttentionImpl(AttentionImpl[FragPackMetadata]):
                 block_table=g.block_table,
                 fa_version=self.fa_version,
             )
-        store.encode(li, md.max_close)
+        if md.fused_prefill is not None:
+            fp = md.fused_prefill
+            prefill_attention(
+                query[fp.tok0 : fp.tok1],
+                md.layer_tables[li],
+                fp.block_table,
+                fp.cu_seqlens_q,
+                fp.seq_lens,
+                fp.max_seqlen_q,
+                self.scale,
+                output[fp.tok0 : fp.tok1],
+                num_splits=fp.num_splits,
+                workspace=fp.workspace,
+            )
+        store.encode(li, md.max_close, key=direct_key, value=direct_value)
         if li == md.last_layer:
             store.commit()
         return output

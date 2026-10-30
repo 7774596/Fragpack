@@ -8,7 +8,12 @@ from pathlib import Path
 from types import ModuleType
 
 _DIR = Path(__file__).parent
-_SOURCES = ("fragpack_ext.cpp", "fused_attn_decode.cu", "hbm_kv.cu")
+_SOURCES = (
+    "fragpack_ext.cpp",
+    "fused_attn_decode.cu",
+    "fused_attn_prefill.cu",
+    "hbm_kv.cu",
+)
 
 
 @functools.cache
@@ -16,7 +21,7 @@ def extension() -> ModuleType:
     """Build (once per process) and return the FragPack extension module.
 
     Returns:
-        The compiled module exposing ``fused_decode`` and the ``hbm_*`` ops.
+        The compiled module exposing fused attention and the ``hbm_*`` ops.
 
     Async/thread-safety:
         Cached; the first call compiles (minutes) under torch's file lock.

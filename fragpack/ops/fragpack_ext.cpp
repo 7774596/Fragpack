@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Python bindings for the FragPack decode-attention and HBM KV store kernels.
 #include <torch/extension.h>
+#include <pybind11/stl.h>
+#include <optional>
 
 void fused_decode(torch::Tensor q, torch::Tensor rec_addr, torch::Tensor rec_len,
                   torch::Tensor plut, torch::Tensor slut, torch::Tensor block_table,
@@ -8,13 +10,19 @@ void fused_decode(torch::Tensor q, torch::Tensor rec_addr, torch::Tensor rec_len
                   torch::Tensor plan, torch::Tensor out, int64_t units, bool replan,
                   double scale);
 
+void fused_prefill(torch::Tensor q, torch::Tensor rec_addr, torch::Tensor rec_len,
+                   torch::Tensor plut, torch::Tensor slut, torch::Tensor block_table,
+                   torch::Tensor cu_seqlens_q, torch::Tensor seq_lens, torch::Tensor out,
+                   std::optional<torch::Tensor> opart, std::optional<torch::Tensor> ml,
+                   int64_t num_splits, int64_t max_seqlen_q, double scale);
+
 void hbm_prepare(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                  torch::Tensor free_stack, torch::Tensor ovf_bits, torch::Tensor claim_list,
                  torch::Tensor close_list, torch::Tensor rec_addr, torch::Tensor rec_len,
                  torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
                  torch::Tensor fill,
                  torch::Tensor slot_mapping, int64_t n_tok, torch::Tensor live, int64_t n_live,
-                 int64_t step);
+                 int64_t step, bool direct_new_blocks);
 
 void hbm_write(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                torch::Tensor free_stack, torch::Tensor ovf_bits, torch::Tensor claim_list,
@@ -30,7 +38,8 @@ void hbm_encode(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                 torch::Tensor staging, torch::Tensor scratch, torch::Tensor overflow,
                 torch::Tensor fill,
                 torch::Tensor rank_of, int64_t layer, int64_t arena, int64_t arena_stride,
-                int64_t max_close);
+                int64_t max_close, std::optional<torch::Tensor> key,
+                std::optional<torch::Tensor> value);
 
 void hbm_commit(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
                 torch::Tensor free_stack, torch::Tensor ovf_bits, torch::Tensor claim_list,
@@ -40,7 +49,8 @@ void hbm_commit(torch::Tensor counters, torch::Tensor wslot, torch::Tensor tags,
 
 void hbm_gather(torch::Tensor src_blocks, torch::Tensor rec_addr, torch::Tensor rec_len,
                 torch::Tensor plut, torch::Tensor slut, torch::Tensor wk, torch::Tensor wv,
-                int64_t kv_heads);
+                int64_t kv_heads, std::optional<torch::Tensor> direct_rows,
+                std::optional<torch::Tensor> key, std::optional<torch::Tensor> value);
 
 void hbm_export(torch::Tensor blocks, torch::Tensor rec_addr, torch::Tensor rec_len,
                 torch::Tensor out, int64_t stride, torch::Tensor lengths, int64_t digest);
@@ -58,6 +68,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("hbm_export", &hbm_export);
   m.def("hbm_import", &hbm_import);
   m.def("fused_decode", &fused_decode);
+  m.def("fused_prefill", &fused_prefill);
   m.def("hbm_prepare", &hbm_prepare);
   m.def("hbm_write", &hbm_write);
   m.def("hbm_encode", &hbm_encode);
