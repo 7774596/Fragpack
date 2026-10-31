@@ -9,6 +9,8 @@
 或 [resident GPU 时间](optimization-native-codec-coalesced-20261031.md)混合汇总。
 本轮测量真实 pinned H2D、每 chunk 的 status D2H/等待、整会话 LRU 和 48 层只读
 attention 的 **host wall time**；不是 TTFT、生成吞吐或完整模型服务。
+校准、归档编码、参考输出和恢复校验不计时；D2H 在此仅传回恢复状态，未测新 KV
+编码及迁出 payload 的往返过程。
 
 ## 协议与全部时间结果
 
