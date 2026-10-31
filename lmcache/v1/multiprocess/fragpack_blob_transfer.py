@@ -12,8 +12,9 @@ records, still compressed, behind a small header (``fragpack.attn_page``).
 Stores export the blocks into the shared ``RecordStoreWorker`` pool on the
 context stream; the worker reads the blob lengths back, reserves one L1 object
 per blob and commits it, off the handler thread. Retrieves copy the blobs into
-a staging buffer and install them into the destination blocks, then wait for
-the import status once per request: a blob that fails to install (overflow
+staging buffers on a private stream and install them into the destination
+blocks on the context stream, then wait for the import status once per
+request: a blob that fails to install (overflow
 pool full, mismatched codec tables) fails the retrieve, so the engine
 recomputes instead of reading a block whose tables were not written.
 """
@@ -53,6 +54,10 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 FRAGPACK_KV_CODECS = (KV_CODEC_BF16, KV_CODEC_FP8)
+
+# Retrieve staging sets that batches rotate through, so copies of later
+# batches run ahead of the imports of earlier ones.
+RETRIEVE_STAGING_SETS = 4
 
 
 def _blob_records(
@@ -152,10 +157,20 @@ class FragPackBlobTransfer:
             max(self._width, config.store_pool_chunks),
             self._slot_bytes,
         )
+        self._set_bytes = self._width * self._slot_bytes
         with torch.cuda.device(device):
             self._retrieve_staging = torch.empty(
-                self._width * self._slot_bytes, dtype=torch.uint8, device=device
+                RETRIEVE_STAGING_SETS * self._set_bytes,
+                dtype=torch.uint8,
+                device=device,
             )
+        # Blobs are copied in on their own stream; per staging set, the point
+        # after which its import has read it.
+        self._fill_stream = torch.cuda.Stream(device=device)
+        self._set_free: list[torch.cuda.Event | None] = [
+            None
+        ] * RETRIEVE_STAGING_SETS
+        self._next_set = 0
 
     @property
     def attached(self) -> bool:
@@ -288,8 +303,9 @@ class FragPackBlobTransfer:
                 a slot, or the skip splits a block.
 
         Note:
-            Enqueues on ``cache_context.stream``, then waits for that stream
-            once to read the import status.
+            Copies blobs in on a private stream, imports them on the current
+            (context) stream ordered after the copies, then waits for that
+            stream once to read the import status.
         """
         port = self._port
         if port is None:
@@ -306,21 +322,34 @@ class FragPackBlobTransfer:
         )
         first = max(first, skip_first_n_tokens // BLOCK_TOKENS)
         slot = self._slot_bytes
+        stream = torch.cuda.current_stream()
+        fill = self._fill_stream
         statuses: list[torch.Tensor] = []
         for start in range(first, len(memory_objs), self._width):
             batch = memory_objs[start : start + self._width]
-            offsets: list[int] = []
-            for index, obj in enumerate(batch):
+            sizes: list[int] = []
+            for obj in batch:
                 if obj is None:
                     raise ValueError("FragPack retrieve has a missing blob")
                 size = obj.get_size()
                 if size > slot:
                     raise ValueError(f"FragPack blob of {size} B exceeds {slot} B")
-                offset = index * slot
-                lmcache_memcpy_async_h2d(
-                    obj, self._retrieve_staging[offset : offset + size]
-                )
-                offsets.append(offset)
+                sizes.append(size)
+            staging_set = self._next_set
+            self._next_set = (staging_set + 1) % RETRIEVE_STAGING_SETS
+            free = self._set_free[staging_set]
+            if free is not None:
+                fill.wait_event(free)
+            base = staging_set * self._set_bytes
+            offsets = [base + index * slot for index in range(len(batch))]
+            with torch.cuda.stream(fill):
+                for obj, size, offset in zip(batch, sizes, offsets, strict=True):
+                    lmcache_memcpy_async_h2d(
+                        obj, self._retrieve_staging[offset : offset + size]
+                    )
+            filled = torch.cuda.Event()
+            filled.record(fill)
+            stream.wait_event(filled)
             statuses.append(
                 port.import_blocks(
                     self._retrieve_staging,
@@ -328,6 +357,9 @@ class FragPackBlobTransfer:
                     blocks[start : start + len(batch)],
                 )
             )
+            done = torch.cuda.Event()
+            done.record(stream)
+            self._set_free[staging_set] = done
         if not statuses:
             return
         status = torch.cat(statuses).cpu()

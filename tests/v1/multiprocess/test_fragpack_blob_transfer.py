@@ -47,11 +47,18 @@ def _run_server() -> None:
         StorageManagerConfig,
     )
     from lmcache.v1.mp_observability.config import DEFAULT_OBSERVABILITY_CONFIG
-    from lmcache.v1.multiprocess.config import MPServerConfig
+    from lmcache.v1.multiprocess.config import LosslessKVConfig, MPServerConfig
     from lmcache.v1.multiprocess.server import run_cache_server
 
     run_cache_server(
-        mp_config=MPServerConfig(transport="zmq", host=_HOST, port=_PORT, chunk_size=T),
+        # Two-block batches, so retrieves span batches and their staging sets.
+        mp_config=MPServerConfig(
+            transport="zmq",
+            host=_HOST,
+            port=_PORT,
+            chunk_size=T,
+            lossless_kv=LosslessKVConfig(batch_size=2),
+        ),
         storage_manager_config=StorageManagerConfig(
             l1_manager_config=L1ManagerConfig(
                 memory_config=L1MemoryManagerConfig(
@@ -191,15 +198,19 @@ def test_blobs_round_trip_through_server(client, fp8: bool, instance_id: int) ->
         time.sleep(1.0)  # blobs commit on the record worker
         assert _lookup(client, early) == 0
         assert _lookup(client, opened) == 0
-        retrieve = _key(model, 3, len(src), "retrieve")
-        assert _lookup(client, retrieve) == len(src)
-
-        ok = (
-            client.retrieve(retrieve, instance_id, [dst], _event_handle(keepalive), T)
-            .to_device_future()
-            .result(timeout=_TIMEOUT)
-        )
-        assert ok is True
+        # Repeated retrieves reinstall the same blobs; with two batches each,
+        # the third wraps around the staging sets.
+        for attempt in range(3):
+            retrieve = _key(model, 3, len(src), f"retrieve-{attempt}")
+            assert _lookup(client, retrieve) == len(src)
+            ok = (
+                client.retrieve(
+                    retrieve, instance_id, [dst], _event_handle(keepalive), T
+                )
+                .to_device_future()
+                .result(timeout=_TIMEOUT)
+            )
+            assert ok is True
         torch.cuda.synchronize()
         for s_b, d_b in zip(src[1:], dst[1:], strict=True):
             h.ref[:, :, d_b] = h.ref[:, :, s_b]
