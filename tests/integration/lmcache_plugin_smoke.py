@@ -114,13 +114,17 @@ def main() -> None:
         blob[ap.blob_head_bytes(1, 1) :] = b"\x34" * (2 * ap.RAW_RECORD_BYTES)
         blob = bytes(blob)
         assert client.get(keys[0]) is None
+        assert client.probe_many(keys) == (False, False, False)
         assert client.put(keys[0], blob)
         assert client.put(keys[0], blob)
         assert client.get(keys[0]) == blob
         assert client.put(keys[2], blob)
         assert client.lookup_prefix(keys) == 1
+        assert client.probe_many(keys) == (True, False, True)
+        assert client.probe_many(keys * 22) == (True, False, True) * 22
         assert client.put(keys[1], blob)
         assert client.lookup_prefix(keys) == 3
+        assert client.probe_many(keys) == (True, True, True)
         salted = identity.block_keys(list(range(128)), cache_salt="other-tenant")
         assert client.get(salted[0]) is None
 
@@ -165,6 +169,7 @@ def main() -> None:
                     "blob_bytes": len(blob),
                     "packed_envelope_bytes": len(packed),
                     "prefix_blocks": 3,
+                    "presence_probe": "gap and 66-key multi-RPC batch passed",
                     "gpu_initialized": False,
                 }
             )

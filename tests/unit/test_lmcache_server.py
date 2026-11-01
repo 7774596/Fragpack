@@ -12,7 +12,11 @@ import pytest
 import torch
 
 from fragpack.compression import attn_page as ap
-from fragpack.integrations.lmcache.client import RemoteBlobClient, require_lmcache_056
+from fragpack.integrations.lmcache.client import (
+    MAX_PREFIX_KEYS,
+    RemoteBlobClient,
+    require_lmcache_056,
+)
 from fragpack.integrations.lmcache.identity import CacheIdentity
 from fragpack.integrations.lmcache.protocol import decode_message, encode_message
 from fragpack.integrations.lmcache.server import FragPackServerModule
@@ -328,6 +332,8 @@ def test_uncertain_rpc_failure_disables_retries(rpc_client_factory, fail_during_
         lambda: client.get(key),
         lambda: client.lookup_prefix([key]),
         lambda: client.lookup_prefix([]),
+        lambda: client.probe_many([key]),
+        lambda: client.probe_many([]),
     ):
         with pytest.raises(RuntimeError, match="close its messaging client"):
             operation()
@@ -408,3 +414,150 @@ def test_rpc_concurrency_never_accumulates_pending_requests(rpc_client_factory):
     assert transport.calls == 4
     assert transport.max_pending == 1
     assert not client.failed
+
+
+def test_presence_probe_crosses_holes_without_reading_payloads(setup, monkeypatch):
+    identity, keys, manager, store = setup
+    assert store.put(keys[0], raw_blob(identity))
+    assert store.put(keys[2], raw_blob(identity))
+
+    def forbid_payload_read(*args, **kwargs):
+        raise AssertionError("presence must not copy a resident object")
+
+    monkeypatch.setattr(manager, "read_prefetched_results", forbid_payload_read)
+    assert store.probe_many(keys) == (True, False, True)
+    assert store.probe_many([keys[2], keys[0], keys[2]]) == (True, True, True)
+    assert all(value == 0 for value in manager.reads.values())
+    assert not manager.results
+    assert store.probe_many([]) == ()
+    # The presence answer does not pin objects past return.
+    manager.resident.clear()
+    assert store.probe_many(keys) == (False, False, False)
+
+
+def test_presence_probe_rejects_batch_and_identity_before_manager_access(setup):
+    _, keys, manager, store = setup
+    before = manager.next_handle
+    foreign = CacheIdentity("foreign", 123, 1, 1).block_keys([1] * 128)[0]
+    with pytest.raises(ValueError, match="identity"):
+        store.probe_many([keys[0], foreign])
+    with pytest.raises(ValueError, match="at most"):
+        store.probe_many([keys[0]] * (MAX_PREFIX_KEYS + 1))
+    assert manager.next_handle == before
+    manager.adapters.append(object())
+    with pytest.raises(RuntimeError, match="no L2"):
+        store.probe_many(keys)
+
+
+def test_presence_probe_failure_keeps_late_lock_for_shutdown(setup):
+    identity, keys, manager, store = setup
+    assert store.put(keys[0], raw_blob(identity))
+    manager.mode = "timeout"
+    with pytest.raises(TimeoutError):
+        store.probe_many(keys)
+    assert store.report_status()["failed"]
+    assert store.report_status()["pending_read_cleanup"] == 1
+    with pytest.raises(RuntimeError, match="restart"):
+        store.probe_many([])
+    manager.mode = "ok"
+    store.close()
+    assert not any(manager.reads.values())
+
+
+def test_presence_probe_uncertain_release_disables_store(setup, monkeypatch):
+    identity, keys, manager, store = setup
+    assert store.put(keys[0], raw_blob(identity))
+    release = manager.finish_read_prefetched
+
+    def release_then_raise(*args, **kwargs):
+        release(*args, **kwargs)
+        raise RuntimeError("release outcome uncertain")
+
+    monkeypatch.setattr(manager, "finish_read_prefetched", release_then_raise)
+    with pytest.raises(RuntimeError, match="outcome uncertain"):
+        store.probe_many(keys)
+    assert store.report_status()["failed"]
+    assert not any(manager.reads.values())
+    with pytest.raises(RuntimeError, match="restart"):
+        store.probe_many(keys)
+
+
+def test_presence_probe_rpc_crosses_holes_and_has_no_payload(setup):
+    identity, keys, manager, store = setup
+    assert store.put(keys[2], raw_blob(identity))
+    module = FragPackServerModule(object(), store, identity)
+    header = {"op": "probe", "keys": [key.to_dict() for key in keys]}
+    response = module.handle(encode_message(header))
+    assert decode_message(response, 0) == ({"present": [False, False, True]}, b"")
+    assert not any(manager.reads.values())
+    with pytest.raises(ValueError, match="bounded key list"):
+        module.handle(encode_message(header, b"unexpected"))
+    with pytest.raises(ValueError, match="bounded key list"):
+        module.handle(
+            encode_message(
+                {"op": "probe", "keys": [keys[0].to_dict()] * (MAX_PREFIX_KEYS + 1)}
+            )
+        )
+
+
+def test_remote_presence_probe_batches_all_keys_even_after_misses(rpc_client_factory):
+    class Transport:
+        def __init__(self):
+            self.headers = []
+
+        def server_module_call(self, request):
+            header, payload = decode_message(request.payload, 0)
+            assert header["op"] == "probe" and not payload
+            self.headers.append(header)
+            return self
+
+        def result(self, timeout):
+            group = self.headers[-1]["keys"]
+            return SimpleNamespace(
+                success=True,
+                error="",
+                payload=encode_message(
+                    {"present": [index % 2 == 1 for index in range(len(group))]}
+                ),
+            )
+
+    transport = Transport()
+    client, identity, _ = rpc_client_factory(transport)
+    keys = identity.block_keys(list(range(128 * (2 * MAX_PREFIX_KEYS + 3))))
+    assert client.probe_many([]) == ()
+    assert not transport.headers
+    assert client.probe_many(keys) == tuple(
+        index % 2 == 1 for index in range(len(keys))
+    )
+    assert [len(header["keys"]) for header in transport.headers] == [32, 32, 3]
+    assert [key for header in transport.headers for key in header["keys"]] == [
+        key.to_dict() for key in keys
+    ]
+
+
+@pytest.mark.parametrize(
+    ("header", "payload"),
+    [
+        ({}, b""),
+        ({"present": [True, False]}, b""),
+        ({"present": [1]}, b""),
+        ({"present": [None]}, b""),
+        ({"present": True}, b""),
+        ({"present": [True]}, b"unexpected"),
+    ],
+)
+def test_remote_presence_probe_rejects_malformed_responses(
+    rpc_client_factory, header, payload
+):
+    class Transport:
+        def server_module_call(self, request):
+            return self
+
+        def result(self, timeout):
+            return SimpleNamespace(
+                success=True, error="", payload=encode_message(header, payload)
+            )
+
+    client, _, key = rpc_client_factory(Transport())
+    with pytest.raises(ValueError, match="Malformed presence"):
+        client.probe_many([key])

@@ -9,6 +9,7 @@ import pytest
 
 from fragpack.compression import attn_page as ap
 from fragpack.integrations.lmcache.identity import BlockKey, CacheIdentity
+from fragpack.integrations.lmcache.native_transfer import pack_native_raw
 from fragpack.integrations.lmcache.protocol import (
     canonicalize_blob,
     decode_message,
@@ -84,6 +85,7 @@ def test_chained_prefix_keys_preserve_complete_prefix_and_exclude_tail() -> None
         {"kv_heads": 2},
         {"world_size": 2},
         {"world_size": 2, "rank": 1},
+        {"representation": "native-raw"},
     ],
 )
 def test_incompatible_identity_never_reuses_keys(change: dict) -> None:
@@ -105,6 +107,37 @@ def test_tenant_salt_is_preserved_and_separates_keys() -> None:
         BlockKey.from_dict({**a.to_dict(), "surprise": "field"})
     with pytest.raises(ValueError):
         BlockKey.from_dict({**a.to_dict(), "prefix_hash": "xyz"})
+
+
+def test_default_fpkb_namespace_preserves_published_identity() -> None:
+    assert _identity().namespace == (
+        "d8c4a2d06cb212e78088785c70b513e48540c04ab31febbb800679f7ba061002"
+    )
+    assert (
+        replace(_identity(), representation="fpkb").namespace == _identity().namespace
+    )
+    with pytest.raises(ValueError, match="representation"):
+        replace(_identity(), representation="unrecognized")
+
+
+def test_native_raw_has_distinct_wire_and_preserves_token_major_payload() -> None:
+    identity = replace(_identity(), representation="native-raw")
+    raw = bytes(range(256)) * (4 * ap.RAW_RECORD_BYTES // 256)
+    blob = pack_native_raw(raw, identity)
+    assert blob[:4] == b"FPNR"
+    validate_blob(blob, identity)
+    dirty = bytearray(blob)
+    dirty[32:64] = bytes([0x5A]) * 32
+    clean = canonicalize_blob(bytes(dirty), identity)
+    assert clean == blob
+    assert clean[ap.blob_head_bytes(2, 1) :] == raw
+    with pytest.raises(ValueError, match="identity mismatch"):
+        validate_blob(blob, _identity())
+    fpkb, _ = _blob(_identity())
+    with pytest.raises(ValueError, match="identity mismatch"):
+        validate_blob(fpkb, identity)
+    with pytest.raises(ValueError, match="native-raw"):
+        pack_native_raw(raw, _identity())
 
 
 @pytest.mark.parametrize("token", [True, -1, 1.5, 1 << 64])

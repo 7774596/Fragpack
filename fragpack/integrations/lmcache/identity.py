@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import struct
+from typing import Literal
 
 from fragpack.compression import attn_page as ap
 
@@ -90,7 +91,7 @@ class BlockKey:
 
 @dataclass(frozen=True)
 class CacheIdentity:
-    """Immutable FPKB v1 identity for a model's 128-token/128-dimension KV.
+    """Immutable wire identity for a model's 128-token/128-dimension KV.
 
     Args:
         model_revision: Exact model and relevant execution configuration revision;
@@ -100,6 +101,8 @@ class CacheIdentity:
         kv_heads: KV heads in this TP shard, from 1 through the core limit of 16.
         rank: This shard's zero-based TP rank.
         world_size: Number of TP shards participating in the model.
+        representation: ``fpkb`` preserves the existing namespace and record
+            layout; ``native-raw`` identifies token-major FPNR raw records.
 
     Computing keys performs only host hashing. It neither reads tensors nor
     synchronizes CUDA. Token IDs must be nonnegative Python integers.
@@ -111,6 +114,7 @@ class CacheIdentity:
     kv_heads: int
     rank: int = 0
     world_size: int = 1
+    representation: Literal["fpkb", "native-raw"] = "fpkb"
 
     def __post_init__(self) -> None:
         if not isinstance(self.model_revision, str) or not self.model_revision.strip():
@@ -120,6 +124,8 @@ class CacheIdentity:
         _integer(self.kv_heads, "kv_heads", 1, 16)
         _integer(self.world_size, "world_size", 1, (1 << 31) - 1)
         _integer(self.rank, "rank", 0, self.world_size - 1)
+        if self.representation not in ("fpkb", "native-raw"):
+            raise ValueError("representation must be fpkb or native-raw")
 
     @property
     def namespace(self) -> str:
@@ -136,12 +142,17 @@ class CacheIdentity:
             "rank": self.rank,
             "world_size": self.world_size,
         }
+        # Preserve the exact historical FPKB namespace. Raw uses an explicit
+        # format/layout tag rather than overloading a model-revision label.
+        if self.representation == "native-raw":
+            value["format"] = "FPNR"
+            value["layout"] = "layer-kv-head-token-dim"
         encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
 
     @property
     def max_blob_bytes(self) -> int:
-        """Return the all-raw FPKB upper bound, including alignment padding."""
+        """Return the shared envelope/all-raw upper bound, including alignment."""
         return ap.blob_slot_bytes(self.num_layers, self.kv_heads)
 
     def block_keys(

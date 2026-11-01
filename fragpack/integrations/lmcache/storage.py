@@ -15,6 +15,7 @@ from typing import Any, Sequence
 
 import torch
 
+from fragpack.integrations.lmcache.client import MAX_PREFIX_KEYS
 from fragpack.integrations.lmcache.identity import BlockKey, CacheIdentity
 from fragpack.integrations.lmcache.protocol import canonicalize_blob
 from fragpack.logging import init_logger
@@ -228,6 +229,39 @@ class LMCacheL1Store:
                 )
                 count += 1
             return count
+
+    def probe_many(self, keys: Sequence[BlockKey]) -> tuple[bool, ...]:
+        """Return per-key L1 presence for one bounded batch without reading KV.
+
+        Each successful lookup releases its captured read ownership before
+        the next key. Missing keys do not stop the scan. These observations
+        neither hold objects resident nor certify their payloads. Calls are
+        serialized under the host lock and belong on background threads.
+        """
+        if len(keys) > MAX_PREFIX_KEYS:
+            raise ValueError(f"Presence probe accepts at most {MAX_PREFIX_KEYS} keys")
+        with self._lock:
+            self._check_open()
+            names = [self._key(key) for key in keys]
+            present = []
+            for obj_key in names:
+                result = self._lookup(obj_key)
+                if result is None:
+                    present.append(False)
+                    continue
+                try:
+                    self._manager.finish_read_prefetched(
+                        [obj_key], l1_owners=result.l1_owners
+                    )
+                except Exception:
+                    # The release may have taken effect before raising. Stop
+                    # admission rather than retrying an uncertain release by
+                    # key; the manager owner must perform final shutdown.
+                    self._failed = True
+                    logger.exception("Presence probe read release is uncertain")
+                    raise
+                present.append(True)
+            return tuple(present)
 
     def report_status(self) -> dict:
         """Return capabilities and failure state without touching stored bytes."""

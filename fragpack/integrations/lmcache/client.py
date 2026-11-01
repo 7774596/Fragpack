@@ -57,6 +57,10 @@ class BlobClient(Protocol):
         """Return the number of consecutive resident keys from the beginning."""
         ...
 
+    def probe_many(self, keys: Sequence[BlockKey]) -> tuple[bool, ...]:
+        """Return advisory presence per key without reading object payloads."""
+        ...
+
 
 class RemoteBlobClient:
     """Use a caller-owned LMCache 0.5.6 RequestClient for FPKB objects.
@@ -185,3 +189,30 @@ class RemoteBlobClient:
             if count < len(group):
                 break
         return found
+
+    def probe_many(self, keys: Sequence[BlockKey]) -> tuple[bool, ...]:
+        """Check every key in bounded RPC groups, including keys after a miss.
+
+        Results preserve input order and are advisory, not a residency lease
+        or a consistent snapshot. Calls block on host transport and belong on
+        a background worker. No object bytes are read or returned. Uncertain
+        RPC failures retain the same stopped-client contract as ``put/get``.
+        """
+        self._check_active()
+        # Validate all keys before any RPC so a later foreign namespace cannot
+        # leave a partially queried input that the caller mistakes for a batch.
+        names = [self._key(key) for key in keys]
+        present = []
+        for start in range(0, len(names), MAX_PREFIX_KEYS):
+            group = names[start : start + MAX_PREFIX_KEYS]
+            header, payload = self._call({"op": "probe", "keys": group})
+            values = header.get("present")
+            if (
+                payload
+                or not isinstance(values, list)
+                or len(values) != len(group)
+                or any(type(value) is not bool for value in values)
+            ):
+                raise ValueError("Malformed presence probe response")
+            present.extend(values)
+        return tuple(present)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Bounded RPC framing and structural validation of existing FPKB blobs.
+"""Bounded RPC framing and structural validation of FPKB and native-raw blobs.
 
 All functions operate on owned CPU bytes. They do not initialize CUDA, invoke
 LMCache, or change the FPKB representation. Canonicalization erases only bytes
@@ -20,10 +20,11 @@ _FRAME = struct.Struct("<4sIIQ")
 _WIRE_MAGIC = b"FPLM"
 _WIRE_VERSION = 1
 MAX_HEADER_BYTES = 64 * 1024
+NATIVE_RAW_MAGIC = int.from_bytes(b"FPNR", "little")
 
 
 def validate_blob(blob: bytes, identity: CacheIdentity) -> None:
-    """Validate FPKB framing, identity, record lengths and exact padded extent.
+    """Validate the identity-selected framing, record lengths and padded extent.
 
     Args:
         blob: One complete aligned host blob, without another object's bytes.
@@ -43,13 +44,13 @@ def validate_blob(blob: bytes, identity: CacheIdentity) -> None:
         raise ValueError("blob extent is outside the identity's bounds")
     magic, version, layers, heads, declared, digest = _BLOB_HEADER.unpack_from(blob)
     if (magic, version, layers, heads, digest) != (
-        ap.BLOB_MAGIC,
+        ap.BLOB_MAGIC if identity.representation == "fpkb" else NATIVE_RAW_MAGIC,
         1,
         identity.num_layers,
         identity.kv_heads,
         identity.table_digest,
     ):
-        raise ValueError("FPKB format, geometry or codec-table identity mismatch")
+        raise ValueError("blob format, geometry or codec-table identity mismatch")
     if declared < head or declared > len(blob):
         raise ValueError("FPKB declared length exceeds the object extent")
     if (declared + ap.BLOB_ALIGN - 1) // ap.BLOB_ALIGN * ap.BLOB_ALIGN != len(blob):
@@ -59,6 +60,8 @@ def validate_blob(blob: bytes, identity: CacheIdentity) -> None:
     raw_var_length = ap.RAW_RECORD_BYTES - ap.DENSE_BYTES
     total = head
     for (length,) in struct.iter_unpack("<i", blob[ap.BLOB_FIXED_BYTES : table_end]):
+        if identity.representation == "native-raw" and length != raw_var_length:
+            raise ValueError("native-raw requires all-raw token-major records")
         if length != raw_var_length and not (
             ap.HEADER_BYTES <= length <= ap.VAR_CAP and length % 16 == 0
         ):
@@ -69,7 +72,7 @@ def validate_blob(blob: bytes, identity: CacheIdentity) -> None:
 
 
 def canonicalize_blob(blob: bytes, identity: CacheIdentity) -> bytes:
-    """Return validated FPKB bytes with undefined header/alignment bytes zeroed.
+    """Return validated wire bytes with undefined header/alignment bytes zeroed.
 
     Native export leaves reserved header bytes, head padding and tail padding
     unwritten. Clear them before crossing a process boundary so allocator reuse

@@ -50,7 +50,7 @@ class FragPackServerModule:
                 raise ValueError("Get request must not contain object bytes")
             blob = self._store.get(key)
             return encode_message({"found": blob is not None}, blob or b"")
-        if op == "lookup":
+        if op in ("lookup", "probe"):
             raw_keys = header.get("keys")
             if (
                 payload
@@ -61,6 +61,8 @@ class FragPackServerModule:
             keys = [BlockKey.from_dict(value) for value in raw_keys]
             if any(key.namespace != self._identity.namespace for key in keys):
                 raise ValueError("Prefix contains a different cache identity")
+            if op == "probe":
+                return encode_message({"present": list(self._store.probe_many(keys))})
             return encode_message({"prefix_blocks": self._store.lookup_prefix(keys)})
         raise ValueError("Unknown FragPack blob operation")
 
