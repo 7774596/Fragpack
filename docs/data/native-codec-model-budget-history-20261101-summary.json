@@ -1,0 +1,5816 @@
+{
+  "schema": "fragpack.model-budget-history-summary.v1",
+  "status": "complete",
+  "created_utc": "2026-11-01T02:45:15.978085+00:00",
+  "budget_bytes": 44662192128,
+  "context_tokens": 32768,
+  "history_sessions": [
+    12,
+    13,
+    14,
+    18,
+    19,
+    20,
+    38
+  ],
+  "queries": [
+    1,
+    128
+  ],
+  "trace_requests": 128,
+  "rounds_per_process": 6,
+  "timed_traces": 672,
+  "timed_requests": 86016,
+  "execution": {
+    "kind": "segmented_forward",
+    "plans": [
+      "history-main-r3",
+      "history-main-r6"
+    ],
+    "initial_planned_processes": 2,
+    "actual_processes": 3,
+    "processes_per_case": 2,
+    "direction_processes": {
+      "F": 2,
+      "R": 1
+    },
+    "evidence_verified": true,
+    "retry": {
+      "declaration": "execution-retry-r6-declaration.json",
+      "declaration_sha256": "17aa6a6931ed0383cfffe160052634db8b6d730cfa9dec8a577c89f30c11ef7b",
+      "rejected_plan": "history-main-r5",
+      "replacement_plan": "history-main-r6",
+      "evidence_verified": true,
+      "all_rejected_timing_excluded": true,
+      "benchmark_command_equivalence": true,
+      "failure_record_sha256": "f07cccac8f13493beee35f2e51089de31db8eb4519fde911d737129d4f30ef83",
+      "monitoring_policy": {
+        "query_period_seconds": 2,
+        "query_timeout_seconds": 30,
+        "query_retries": 0,
+        "timeout_behavior": "fail closed, preserve error and stop only owned child",
+        "latency_records": "query starts/ends; normal counts/max; slow or failed queries retained"
+      },
+      "prior_retries": [
+        {
+          "declaration": "execution-retry-declaration.json",
+          "declaration_sha256": "87e40e6b84197d5b708e5a91b9a0cf0bf3d7766245471c607f050e5acabbb103",
+          "rejected_plan": "history-main-r4",
+          "replacement_plan": "history-main-r5",
+          "evidence_verified": true,
+          "all_rejected_timing_excluded": true,
+          "benchmark_command_equivalence": true,
+          "failure_record_sha256": "842057b85b8af1eeacb9f45e4bf9d404030ba71b047a9d7fed5c4458b735ac92",
+          "monitoring_policy": null,
+          "prior_retries": []
+        }
+      ]
+    }
+  },
+  "accepted_source_files": [
+    {
+      "file": "history-forward-r3.json",
+      "plan": "history-main-r3",
+      "direction": "F",
+      "status": "running",
+      "command_status": "failed",
+      "returncode": -15,
+      "acceptance": "amended_complete_prefix",
+      "accepted_case_names": [
+        "model-budget-c32768-w12-q1-k4",
+        "model-budget-c32768-w13-q1-k4",
+        "model-budget-c32768-w14-q1-k4",
+        "model-budget-c32768-w18-q1-k4",
+        "model-budget-c32768-w19-q1-k4",
+        "model-budget-c32768-w20-q1-k4",
+        "model-budget-c32768-w38-q1-k4",
+        "model-budget-c32768-w12-q128-k4",
+        "model-budget-c32768-w13-q128-k4",
+        "model-budget-c32768-w14-q128-k4",
+        "model-budget-c32768-w18-q128-k4"
+      ]
+    },
+    {
+      "file": "history-forward-suffix-r6.json",
+      "plan": "history-main-r6",
+      "direction": "F",
+      "status": "passed",
+      "command_status": "executed",
+      "returncode": 0,
+      "acceptance": "complete_file",
+      "accepted_case_names": [
+        "model-budget-c32768-w19-q128-k4",
+        "model-budget-c32768-w20-q128-k4",
+        "model-budget-c32768-w38-q128-k4"
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "plan": "history-main-r6",
+      "direction": "R",
+      "status": "passed",
+      "command_status": "executed",
+      "returncode": 0,
+      "acceptance": "complete_file",
+      "accepted_case_names": [
+        "model-budget-c32768-w38-q128-k4",
+        "model-budget-c32768-w20-q128-k4",
+        "model-budget-c32768-w19-q128-k4",
+        "model-budget-c32768-w18-q128-k4",
+        "model-budget-c32768-w14-q128-k4",
+        "model-budget-c32768-w13-q128-k4",
+        "model-budget-c32768-w12-q128-k4",
+        "model-budget-c32768-w38-q1-k4",
+        "model-budget-c32768-w20-q1-k4",
+        "model-budget-c32768-w19-q1-k4",
+        "model-budget-c32768-w18-q1-k4",
+        "model-budget-c32768-w14-q1-k4",
+        "model-budget-c32768-w13-q1-k4",
+        "model-budget-c32768-w12-q1-k4"
+      ]
+    }
+  ],
+  "capacity_ranges": [
+    {
+      "query_tokens": 1,
+      "arm": "raw_fa3",
+      "blocks": [
+        3547,
+        3547
+      ],
+      "sessions": [
+        13,
+        13
+      ],
+      "tokens": [
+        454016,
+        454016
+      ]
+    },
+    {
+      "query_tokens": 1,
+      "arm": "native_fa3",
+      "blocks": [
+        3545,
+        3545
+      ],
+      "sessions": [
+        13,
+        13
+      ],
+      "tokens": [
+        453760,
+        453760
+      ]
+    },
+    {
+      "query_tokens": 1,
+      "arm": "gather_fa3",
+      "blocks": [
+        4868,
+        4868
+      ],
+      "sessions": [
+        19,
+        19
+      ],
+      "tokens": [
+        623104,
+        623104
+      ]
+    },
+    {
+      "query_tokens": 1,
+      "arm": "fused_hbm",
+      "blocks": [
+        4872,
+        4872
+      ],
+      "sessions": [
+        19,
+        19
+      ],
+      "tokens": [
+        623616,
+        623616
+      ]
+    },
+    {
+      "query_tokens": 128,
+      "arm": "raw_fa3",
+      "blocks": [
+        3539,
+        3539
+      ],
+      "sessions": [
+        13,
+        13
+      ],
+      "tokens": [
+        452992,
+        452992
+      ]
+    },
+    {
+      "query_tokens": 128,
+      "arm": "native_fa3",
+      "blocks": [
+        3536,
+        3536
+      ],
+      "sessions": [
+        13,
+        13
+      ],
+      "tokens": [
+        452608,
+        452608
+      ]
+    },
+    {
+      "query_tokens": 128,
+      "arm": "gather_fa3",
+      "blocks": [
+        4856,
+        4856
+      ],
+      "sessions": [
+        18,
+        18
+      ],
+      "tokens": [
+        621568,
+        621568
+      ]
+    },
+    {
+      "query_tokens": 128,
+      "arm": "fused_hbm",
+      "blocks": [
+        4861,
+        4861
+      ],
+      "sessions": [
+        18,
+        18
+      ],
+      "tokens": [
+        622208,
+        622208
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.93712148,
+            "trace_seconds_min_max": [
+              0.936179398,
+              0.9377043190000001
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 38654705664,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 38654837248,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 0.7035499569999999,
+            "read_seconds": 0.233242226
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.9337115155,
+            "trace_seconds_min_max": [
+              0.93093412,
+              0.9347296239999999
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 38654705664,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 38654837248,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 0.7013896580000001,
+            "read_seconds": 0.23204154800000001
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.788089384,
+            "trace_seconds_min_max": [
+              0.7852888769999999,
+              0.790559978
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.551977665,
+            "read_seconds": 0.23585386800000002
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.789084637,
+            "trace_seconds_min_max": [
+              0.7878846119999999,
+              0.789763
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.5521590164999999,
+            "read_seconds": 0.23642427549999998
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.0808788249999999,
+            "trace_seconds_min_max": [
+              1.078896508,
+              1.081425307
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.540679969,
+            "read_seconds": 0.5397522105
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.0799820655,
+            "trace_seconds_min_max": [
+              1.07900036,
+              1.081007095
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.5414491555,
+            "read_seconds": 0.5380226644999999
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.7569994025,
+            "trace_seconds_min_max": [
+              0.755739347,
+              0.757325509
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.544100361,
+            "read_seconds": 0.212608432
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.7528954795,
+            "trace_seconds_min_max": [
+              0.7494670649999999,
+              0.753427522
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.540709853,
+            "read_seconds": 0.211856371
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 15.903177888954168,
+        "R": 15.489460727337468
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.994092086,
+            "trace_seconds_min_max": [
+              0.991408802,
+              0.99550179
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 41875931136,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 41876062720,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 0.762270539,
+            "read_seconds": 0.23142496899999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.9922757919999999,
+            "trace_seconds_min_max": [
+              0.99056521,
+              0.993517932
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 41875931136,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 41876062720,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 0.759973495,
+            "read_seconds": 0.2319572935
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.835602884,
+            "trace_seconds_min_max": [
+              0.834992399,
+              0.837498341
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.5997007394999999,
+            "read_seconds": 0.235478125
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.8343528075,
+            "trace_seconds_min_max": [
+              0.832599949,
+              0.8351412269999999
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.5975674799999999,
+            "read_seconds": 0.2365515905
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.127461508,
+            "trace_seconds_min_max": [
+              1.126675243,
+              1.128221997
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.586018343,
+            "read_seconds": 0.5410162690000001
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.126453057,
+            "trace_seconds_min_max": [
+              1.12524056,
+              1.127693313
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.5863741365,
+            "read_seconds": 0.5396143425000001
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.803638137,
+            "trace_seconds_min_max": [
+              0.8031335629999999,
+              0.804759544
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.5885024465,
+            "read_seconds": 0.214841992
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.8002370795,
+            "trace_seconds_min_max": [
+              0.796950993,
+              0.800838287
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.5868114010000001,
+            "read_seconds": 0.2131831415
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 15.943110727067989,
+        "R": 15.915231004647945
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.4523390630000002,
+            "trace_seconds_min_max": [
+              1.451248753,
+              1.453429613
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 67645734912,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 67645866496,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 1.2311071430000002,
+            "read_seconds": 0.22078080099999997
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.451288908,
+            "trace_seconds_min_max": [
+              1.450326632,
+              1.4525688319999999
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 67645734912,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 67645866496,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 1.227394615,
+            "read_seconds": 0.22348412300000003
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.1987904405,
+            "trace_seconds_min_max": [
+              1.19619193,
+              1.199563986
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 47678124032,
+            "metadata_h2d_bytes": 206848,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 47678330880,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.9684706580000001,
+            "read_seconds": 0.22984484850000003
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.1958963475,
+            "trace_seconds_min_max": [
+              1.193412316,
+              1.197436204
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 47678124032,
+            "metadata_h2d_bytes": 206848,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 47678330880,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 0.9666118189999999,
+            "read_seconds": 0.22892622
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.1743890645,
+            "trace_seconds_min_max": [
+              1.173440915,
+              1.1759051699999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.6313819045,
+            "read_seconds": 0.542530478
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.1697797055,
+            "trace_seconds_min_max": [
+              1.1687715049999998,
+              1.1706380900000002
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.6315500255,
+            "read_seconds": 0.5377454420000001
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 0.84630227,
+            "trace_seconds_min_max": [
+              0.8458177060000001,
+              0.8497170500000001
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.6330283025,
+            "read_seconds": 0.212680139
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 0.8468082860000001,
+            "trace_seconds_min_max": [
+              0.843700536,
+              0.847636711
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.6316988075,
+            "read_seconds": 0.214711155
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 17.45794965923877,
+        "R": 17.597637458137317
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.6781814450000003,
+            "trace_seconds_min_max": [
+              2.677661798,
+              2.679217663
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.4623150795,
+            "read_seconds": 0.2153559515
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.674675715,
+            "trace_seconds_min_max": [
+              2.674560361,
+              2.674774019
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.4563237865000005,
+            "read_seconds": 0.2179105535
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.1592108745,
+            "trace_seconds_min_max": [
+              2.1582656669999998,
+              2.159378858
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 95356207104,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 95356489216,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.9370805005,
+            "read_seconds": 0.221388535
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.1540091425,
+            "trace_seconds_min_max": [
+              2.1530795350000003,
+              2.1544595490000003
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 95356207104,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 95356489216,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.9330392395,
+            "read_seconds": 0.220421816
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.3506817974999998,
+            "trace_seconds_min_max": [
+              1.349608044,
+              1.351183291
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.8115521335,
+            "read_seconds": 0.5387673570000001
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.353149492,
+            "trace_seconds_min_max": [
+              1.352423682,
+              1.353634717
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.8139374785,
+            "read_seconds": 0.5387582455
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.0290501575,
+            "trace_seconds_min_max": [
+              1.025229424,
+              1.03061792
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.8153514884999999,
+            "read_seconds": 0.21323233899999997
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.0258499925,
+            "trace_seconds_min_max": [
+              1.02424306,
+              1.027517289
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.8128136415,
+            "read_seconds": 0.21253601
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 19.377722576223753,
+        "R": 19.46653082390587
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.6773217989999996,
+            "trace_seconds_min_max": [
+              2.677063231,
+              2.677962324
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.462264053,
+            "read_seconds": 0.214503826
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.6765325575000003,
+            "trace_seconds_min_max": [
+              2.67625456,
+              2.677051554
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.4566837285000003,
+            "read_seconds": 0.2193686665
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.1603447489999996,
+            "trace_seconds_min_max": [
+              2.16022742,
+              2.161617853
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 95356211200,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 95356493312,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.9379579,
+            "read_seconds": 0.2220564235
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.1557751749999996,
+            "trace_seconds_min_max": [
+              2.154491434,
+              2.156371201
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 95356211200,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 95356493312,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.933587407,
+            "read_seconds": 0.2217283985
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.3934351710000001,
+            "trace_seconds_min_max": [
+              1.3930728049999999,
+              1.39533821
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8515625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 109,
+            "misses": 19,
+            "evictions": 0,
+            "reuse_requests": 109,
+            "reuse_hits": 109,
+            "reuse_misses": 0,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 43137343488,
+            "metadata_h2d_bytes": 199680,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 43137543168,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.856464821,
+            "read_seconds": 0.53662365
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.3948996745000002,
+            "trace_seconds_min_max": [
+              1.394265136,
+              1.3953813019999999
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8515625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 109,
+            "misses": 19,
+            "evictions": 0,
+            "reuse_requests": 109,
+            "reuse_hits": 109,
+            "reuse_misses": 0,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 43137343488,
+            "metadata_h2d_bytes": 199680,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 43137543168,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 0.85766488,
+            "read_seconds": 0.5371318235
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.072826104,
+            "trace_seconds_min_max": [
+              1.069276136,
+              1.0732703000000001
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8515625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 109,
+            "misses": 19,
+            "evictions": 0,
+            "reuse_requests": 109,
+            "reuse_hits": 109,
+            "reuse_misses": 0,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 43137343488,
+            "metadata_h2d_bytes": 199680,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 43137543168,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.85981418,
+            "read_seconds": 0.212432476
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.070302424,
+            "trace_seconds_min_max": [
+              1.0678382069999999,
+              1.072237916
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8515625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 109,
+            "misses": 19,
+            "evictions": 0,
+            "reuse_requests": 109,
+            "reuse_hits": 109,
+            "reuse_misses": 0,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 43137343488,
+            "metadata_h2d_bytes": 199680,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 43137543168,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 0.8569079575,
+            "read_seconds": 0.212963717
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 19.309484955939737,
+        "R": 19.456418754958506
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.5049440505,
+            "trace_seconds_min_max": [
+              2.504389262,
+              2.505333271
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 125627793408,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 125627924992,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.286480056,
+            "read_seconds": 0.218030627
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.500643216,
+            "trace_seconds_min_max": [
+              2.50009949,
+              2.501236939
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 125627793408,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 125627924992,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 2.281358114,
+            "read_seconds": 0.21882964150000003
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.022389474,
+            "trace_seconds_min_max": [
+              2.02189234,
+              2.023190022
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 88545054720,
+            "metadata_h2d_bytes": 271360,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 88545326080,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.7988033875000002,
+            "read_seconds": 0.22330288099999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.0173853399999997,
+            "trace_seconds_min_max": [
+              2.017079693,
+              2.018566284
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 88545054720,
+            "metadata_h2d_bytes": 271360,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 88545326080,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 1.7950789005,
+            "read_seconds": 0.2218871705
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.6551047355,
+            "trace_seconds_min_max": [
+              1.653944989,
+              1.6556334709999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8046875,
+            "reuse_gpu_hit_rate": 0.9537037037037037,
+            "requests": 128,
+            "hits": 103,
+            "misses": 25,
+            "evictions": 6,
+            "reuse_requests": 108,
+            "reuse_hits": 103,
+            "reuse_misses": 5,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 56759640064,
+            "metadata_h2d_bytes": 221184,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 56759861248,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 1.1268295605,
+            "read_seconds": 0.5277352235
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.6547434045000002,
+            "trace_seconds_min_max": [
+              1.6532990300000001,
+              1.656447109
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8046875,
+            "reuse_gpu_hit_rate": 0.9537037037037037,
+            "requests": 128,
+            "hits": 103,
+            "misses": 25,
+            "evictions": 6,
+            "reuse_requests": 108,
+            "reuse_hits": 103,
+            "reuse_misses": 5,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 56759640064,
+            "metadata_h2d_bytes": 221184,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 56759861248,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 1.1282763495,
+            "read_seconds": 0.5260620135
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.3339916985,
+            "trace_seconds_min_max": [
+              1.333198375,
+              1.3345757630000001
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8046875,
+            "reuse_gpu_hit_rate": 0.9537037037037037,
+            "requests": 128,
+            "hits": 103,
+            "misses": 25,
+            "evictions": 6,
+            "reuse_requests": 108,
+            "reuse_hits": 103,
+            "reuse_misses": 5,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 56759640064,
+            "metadata_h2d_bytes": 221184,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 56759861248,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 1.1305349210000002,
+            "read_seconds": 0.2028846825
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.332238584,
+            "trace_seconds_min_max": [
+              1.33180534,
+              1.33266635
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8046875,
+            "reuse_gpu_hit_rate": 0.9537037037037037,
+            "requests": 128,
+            "hits": 103,
+            "misses": 25,
+            "evictions": 6,
+            "reuse_requests": 108,
+            "reuse_hits": 103,
+            "reuse_misses": 5,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 56759640064,
+            "metadata_h2d_bytes": 221184,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 56759861248,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 1.127454642,
+            "read_seconds": 0.20444494400000002
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 19.264086014363446,
+        "R": 19.32534289209853
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 5.1406939220000005,
+            "trace_seconds_min_max": [
+              5.140468911,
+              5.141939455
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 270582939648,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 270583071232,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 4.9216717265,
+            "read_seconds": 0.2185447185
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.137431281,
+            "trace_seconds_min_max": [
+              5.137327022,
+              5.1378791459999995
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 270582939648,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 270583071232,
+            "physical_blocks": 3547,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 454016,
+            "gpu_timed_peak_bytes": 44632381952,
+            "restore_policy_seconds": 4.917616775,
+            "read_seconds": 0.219364588
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 4.0950459409999995,
+            "trace_seconds_min_max": [
+              4.094729721,
+              4.095612282
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 190712467456,
+            "metadata_h2d_bytes": 432640,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 190712900096,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 3.8716795035,
+            "read_seconds": 0.22291445750000002
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 4.090672876,
+            "trace_seconds_min_max": [
+              4.090357161,
+              4.090985676
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 190712467456,
+            "metadata_h2d_bytes": 432640,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 190712900096,
+            "physical_blocks": 3545,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 453760,
+            "gpu_timed_peak_bytes": 44657588224,
+            "restore_policy_seconds": 3.868425826,
+            "read_seconds": 0.22192916099999999
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 3.7505644675000003,
+            "trace_seconds_min_max": [
+              3.7491092289999997,
+              3.751241972
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.4375,
+            "reuse_gpu_hit_rate": 0.6222222222222222,
+            "requests": 128,
+            "hits": 56,
+            "misses": 72,
+            "evictions": 53,
+            "reuse_requests": 90,
+            "reuse_hits": 56,
+            "reuse_misses": 34,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 163467821056,
+            "metadata_h2d_bytes": 389632,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 163468210688,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 3.242674778,
+            "read_seconds": 0.5072858164999999
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.7518648415,
+            "trace_seconds_min_max": [
+              3.7505499419999997,
+              3.75356024
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.4375,
+            "reuse_gpu_hit_rate": 0.6222222222222222,
+            "requests": 128,
+            "hits": 56,
+            "misses": 72,
+            "evictions": 53,
+            "reuse_requests": 90,
+            "reuse_hits": 56,
+            "reuse_misses": 34,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 163467821056,
+            "metadata_h2d_bytes": 389632,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 163468210688,
+            "physical_blocks": 4868,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623104,
+            "gpu_timed_peak_bytes": 44661054976,
+            "restore_policy_seconds": 3.2492946464999997,
+            "read_seconds": 0.502050667
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 3.4496285435,
+            "trace_seconds_min_max": [
+              3.4495639479999998,
+              3.450619198
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.4375,
+            "reuse_gpu_hit_rate": 0.6222222222222222,
+            "requests": 128,
+            "hits": 56,
+            "misses": 72,
+            "evictions": 53,
+            "reuse_requests": 90,
+            "reuse_hits": 56,
+            "reuse_misses": 34,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 163467821056,
+            "metadata_h2d_bytes": 389632,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 163468210688,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 3.2513193545,
+            "read_seconds": 0.19785514499999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q1-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.446127571,
+            "trace_seconds_min_max": [
+              3.445843402,
+              3.446705083
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.4375,
+            "reuse_gpu_hit_rate": 0.6222222222222222,
+            "requests": 128,
+            "hits": 56,
+            "misses": 72,
+            "evictions": 53,
+            "reuse_requests": 90,
+            "reuse_hits": 56,
+            "reuse_misses": 34,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 163467821056,
+            "metadata_h2d_bytes": 389632,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 163468210688,
+            "physical_blocks": 4872,
+            "whole_session_capacity": 19,
+            "physical_token_capacity": 623616,
+            "gpu_timed_peak_bytes": 44631644160,
+            "restore_policy_seconds": 3.2473984330000003,
+            "read_seconds": 0.1981397565
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 20.340599865809338,
+        "R": 20.37513200169264
+      },
+      "fastest_by_direction": {
+        "F": "fused_hbm",
+        "R": "fused_hbm"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.9953082135,
+            "trace_seconds_min_max": [
+              1.991259183,
+              2.004614965
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 38654705664,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 38654837248,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 0.703628947,
+            "read_seconds": 1.2912467804999999
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.9998470890000002,
+            "trace_seconds_min_max": [
+              1.999299862,
+              2.003349488
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 38654705664,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 38654837248,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 0.7017571240000001,
+            "read_seconds": 1.2975172585
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.8423233360000002,
+            "trace_seconds_min_max": [
+              1.836215344,
+              1.846018995
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.5515166275,
+            "read_seconds": 1.290259954
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.851729832,
+            "trace_seconds_min_max": [
+              1.8497465849999999,
+              1.85442515
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.5495463759999999,
+            "read_seconds": 1.301062059
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.160142833,
+            "trace_seconds_min_max": [
+              2.158212946,
+              2.1635090559999997
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.5437093534999999,
+            "read_seconds": 1.6159413909999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.160344259,
+            "trace_seconds_min_max": [
+              2.1580258220000004,
+              2.1641494789999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.540446022,
+            "read_seconds": 1.619414495
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 5.471872501,
+            "trace_seconds_min_max": [
+              5.467781134,
+              5.4739550480000005
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.5430419665,
+            "read_seconds": 4.9283988789999995
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w12-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.4775058969999995,
+            "trace_seconds_min_max": [
+              5.46662604,
+              5.481296904
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.90625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 116,
+            "misses": 12,
+            "evictions": 0,
+            "reuse_requests": 116,
+            "reuse_hits": 116,
+            "reuse_misses": 0,
+            "initial_touch_misses": 12,
+            "payload_h2d_bytes": 27244642304,
+            "metadata_h2d_bytes": 174592,
+            "host_raw_history_bytes": 38654705664,
+            "host_compressed_history_bytes": 27244642304,
+            "h2d_total_bytes": 27244816896,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.5417598485,
+            "read_seconds": 4.9349224175
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 7.6672303789922625,
+        "R": 7.406429112240998
+      },
+      "fastest_by_direction": {
+        "F": "native_fa3",
+        "R": "native_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.057433445,
+            "trace_seconds_min_max": [
+              2.054287334,
+              2.059762459
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 41875931136,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 41876062720,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 0.762191696,
+            "read_seconds": 1.2942275765
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.058588495,
+            "trace_seconds_min_max": [
+              2.056854555,
+              2.060208212
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 41875931136,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 41876062720,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 0.7601042554999999,
+            "read_seconds": 1.2973819674999998
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 1.8926292654999999,
+            "trace_seconds_min_max": [
+              1.889371423,
+              1.89944333
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.5995760549999999,
+            "read_seconds": 1.2919423725
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 1.897933176,
+            "trace_seconds_min_max": [
+              1.895449798,
+              1.900073905
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.5980191385,
+            "read_seconds": 1.2988765224999999
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.201107642,
+            "trace_seconds_min_max": [
+              2.199557683,
+              2.20588
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.5868779805000001,
+            "read_seconds": 1.613681102
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.2058679810000004,
+            "trace_seconds_min_max": [
+              2.201965505,
+              2.208926709
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.587162112,
+            "read_seconds": 1.6178568755
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 5.5142379945,
+            "trace_seconds_min_max": [
+              5.5058670549999995,
+              5.517360979
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.5882499805000001,
+            "read_seconds": 4.9255156765
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w13-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.5135739145,
+            "trace_seconds_min_max": [
+              5.5059984040000005,
+              5.519237197
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8984375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 115,
+            "misses": 13,
+            "evictions": 0,
+            "reuse_requests": 115,
+            "reuse_hits": 115,
+            "reuse_misses": 0,
+            "initial_touch_misses": 13,
+            "payload_h2d_bytes": 29515018240,
+            "metadata_h2d_bytes": 178176,
+            "host_raw_history_bytes": 41875931136,
+            "host_compressed_history_bytes": 29515018240,
+            "h2d_total_bytes": 29515196416,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.5874437025,
+            "read_seconds": 4.925747133500001
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 8.010182778962271,
+        "R": 7.8041492697645705
+      },
+      "fastest_by_direction": {
+        "F": "native_fa3",
+        "R": "native_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.4558477965,
+            "trace_seconds_min_max": [
+              2.452168051,
+              2.458582935
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 67645734912,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 67645866496,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 1.230248812,
+            "read_seconds": 1.2251323594999999
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.461397937,
+            "trace_seconds_min_max": [
+              2.459511616,
+              2.464667184
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 67645734912,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 67645866496,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 1.2329635210000003,
+            "read_seconds": 1.2284715759999998
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.1987040899999997,
+            "trace_seconds_min_max": [
+              2.196551347,
+              2.2060623599999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 47678124032,
+            "metadata_h2d_bytes": 206848,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 47678330880,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.9714575455,
+            "read_seconds": 1.2267987255
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.1961316965,
+            "trace_seconds_min_max": [
+              2.191828992,
+              2.203199296
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8359375,
+            "reuse_gpu_hit_rate": 0.9385964912280702,
+            "requests": 128,
+            "hits": 107,
+            "misses": 21,
+            "evictions": 8,
+            "reuse_requests": 114,
+            "reuse_hits": 107,
+            "reuse_misses": 7,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 47678124032,
+            "metadata_h2d_bytes": 206848,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 47678330880,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 0.9728968799999999,
+            "read_seconds": 1.222783361
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.2560357585,
+            "trace_seconds_min_max": [
+              2.252845932,
+              2.257128648
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.6336659199999999,
+            "read_seconds": 1.6220761979999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.247595315,
+            "trace_seconds_min_max": [
+              2.246066674,
+              2.2494832400000004
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.6308418915,
+            "read_seconds": 1.616576343
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 5.5543773540000005,
+            "trace_seconds_min_max": [
+              5.550762668,
+              5.558793023
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.635186001,
+            "read_seconds": 4.9185614425
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w14-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.5529442775,
+            "trace_seconds_min_max": [
+              5.545110877999999,
+              5.565688956
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.890625,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 114,
+            "misses": 14,
+            "evictions": 0,
+            "reuse_requests": 114,
+            "reuse_hits": 114,
+            "reuse_misses": 0,
+            "initial_touch_misses": 14,
+            "payload_h2d_bytes": 31785402368,
+            "metadata_h2d_bytes": 181760,
+            "host_raw_history_bytes": 45097156608,
+            "host_compressed_history_bytes": 31785402368,
+            "h2d_total_bytes": 31785584128,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.6313757935000001,
+            "read_seconds": 4.921235974999999
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 10.47066951243778,
+        "R": 10.777056261910722
+      },
+      "fastest_by_direction": {
+        "F": "native_fa3",
+        "R": "native_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 3.627139443,
+            "trace_seconds_min_max": [
+              3.6245707549999997,
+              3.628568007
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.4616362565000003,
+            "read_seconds": 1.1642212045
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.630584619,
+            "trace_seconds_min_max": [
+              3.6245113289999997,
+              3.639015678
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.4603019479999997,
+            "read_seconds": 1.1700393974999999
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 3.1195929765,
+            "trace_seconds_min_max": [
+              3.115094363,
+              3.124484646
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 95356207104,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 95356489216,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.9533446014999998,
+            "read_seconds": 1.165783958
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.1191784900000004,
+            "trace_seconds_min_max": [
+              3.115093832,
+              3.122660587
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7818181818181819,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 110,
+            "reuse_hits": 86,
+            "reuse_misses": 24,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 95356207104,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 95356489216,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.9525967425000001,
+            "read_seconds": 1.1666573045000002
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 2.428613157,
+            "trace_seconds_min_max": [
+              2.42592802,
+              2.4308680049999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.8119845444999999,
+            "read_seconds": 1.6158209225
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.430011588,
+            "trace_seconds_min_max": [
+              2.426493388,
+              2.432821678
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 0.814800679,
+            "read_seconds": 1.6147395315
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-r3.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r3",
+            "trace_seconds": 5.7198432895,
+            "trace_seconds_min_max": [
+              5.713441841,
+              5.725573429
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.8168849399999999,
+            "read_seconds": 4.9026539035
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w18-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.7235092844999995,
+            "trace_seconds_min_max": [
+              5.708686391,
+              5.7340790109999995
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.859375,
+            "reuse_gpu_hit_rate": 1.0,
+            "requests": 128,
+            "hits": 110,
+            "misses": 18,
+            "evictions": 0,
+            "reuse_requests": 110,
+            "reuse_hits": 110,
+            "reuse_misses": 0,
+            "initial_touch_misses": 18,
+            "payload_h2d_bytes": 40866942976,
+            "metadata_h2d_bytes": 196096,
+            "host_raw_history_bytes": 57982058496,
+            "host_compressed_history_bytes": 40866942976,
+            "h2d_total_bytes": 40867139072,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 0.8144038235,
+            "read_seconds": 4.908414758999999
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 13.99302327567008,
+        "R": 14.086054524763014
+      },
+      "fastest_by_direction": {
+        "F": "gather_fa3",
+        "R": "gather_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.627696668,
+            "trace_seconds_min_max": [
+              3.621800169,
+              3.630307361
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.4593562895,
+            "read_seconds": 1.1676976230000002
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.6285966,
+            "trace_seconds_min_max": [
+              3.623604655,
+              3.6353430490000003
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 135291469824,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 135291601408,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.4590829684999997,
+            "read_seconds": 1.1687269715
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.1173138015,
+            "trace_seconds_min_max": [
+              3.114592642,
+              3.1240105970000003
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 95356211200,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 95356493312,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.9482202949999998,
+            "read_seconds": 1.168955937
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.1106034855000004,
+            "trace_seconds_min_max": [
+              3.108839003,
+              3.1218567839999998
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.671875,
+            "reuse_gpu_hit_rate": 0.7889908256880734,
+            "requests": 128,
+            "hits": 86,
+            "misses": 42,
+            "evictions": 29,
+            "reuse_requests": 109,
+            "reuse_hits": 86,
+            "reuse_misses": 23,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 95356211200,
+            "metadata_h2d_bytes": 282112,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 95356493312,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.9471710265000002,
+            "read_seconds": 1.1629020625
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.668339495,
+            "trace_seconds_min_max": [
+              2.660494739,
+              2.67154617
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8125,
+            "reuse_gpu_hit_rate": 0.9541284403669725,
+            "requests": 128,
+            "hits": 104,
+            "misses": 24,
+            "evictions": 6,
+            "reuse_requests": 109,
+            "reuse_hits": 104,
+            "reuse_misses": 5,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 54489268224,
+            "metadata_h2d_bytes": 217600,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 54489485824,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 1.087076366,
+            "read_seconds": 1.5807123390000002
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.66780367,
+            "trace_seconds_min_max": [
+              2.6627162400000004,
+              2.669387773
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8125,
+            "reuse_gpu_hit_rate": 0.9541284403669725,
+            "requests": 128,
+            "hits": 104,
+            "misses": 24,
+            "evictions": 6,
+            "reuse_requests": 109,
+            "reuse_hits": 104,
+            "reuse_misses": 5,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 54489268224,
+            "metadata_h2d_bytes": 217600,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 54489485824,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 1.085173892,
+            "read_seconds": 1.5821961085
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.9528504915,
+            "trace_seconds_min_max": [
+              5.9420135190000005,
+              5.972449414
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8125,
+            "reuse_gpu_hit_rate": 0.9541284403669725,
+            "requests": 128,
+            "hits": 104,
+            "misses": 24,
+            "evictions": 6,
+            "reuse_requests": 109,
+            "reuse_hits": 104,
+            "reuse_misses": 5,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 54489268224,
+            "metadata_h2d_bytes": 217600,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 54489485824,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 1.0834713655,
+            "read_seconds": 4.868442313
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w19-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 5.9504219595,
+            "trace_seconds_min_max": [
+              5.935644188,
+              5.9560050470000006
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.8125,
+            "reuse_gpu_hit_rate": 0.9541284403669725,
+            "requests": 128,
+            "hits": 104,
+            "misses": 24,
+            "evictions": 6,
+            "reuse_requests": 109,
+            "reuse_hits": 104,
+            "reuse_misses": 5,
+            "initial_touch_misses": 19,
+            "payload_h2d_bytes": 54489268224,
+            "metadata_h2d_bytes": 217600,
+            "host_raw_history_bytes": 61203283968,
+            "host_compressed_history_bytes": 43137343488,
+            "h2d_total_bytes": 54489485824,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 1.085050065,
+            "read_seconds": 4.8645670375
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 14.069061258679639,
+        "R": 14.275301765426319
+      },
+      "fastest_by_direction": {
+        "F": "gather_fa3",
+        "R": "gather_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.464196932,
+            "trace_seconds_min_max": [
+              3.4570013840000002,
+              3.4687845580000003
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 125627793408,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 125627924992,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.2825811795,
+            "read_seconds": 1.1813791514999998
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 3.4672783569999996,
+            "trace_seconds_min_max": [
+              3.462201879,
+              3.472086426
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 125627793408,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 125627924992,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 2.2828343785,
+            "read_seconds": 1.1839638744999998
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.9902751800000003,
+            "trace_seconds_min_max": [
+              2.9837437700000002,
+              2.991805769
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 88545054720,
+            "metadata_h2d_bytes": 271360,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 88545326080,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.8092062145,
+            "read_seconds": 1.1806867905
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.9911885485,
+            "trace_seconds_min_max": [
+              2.98654742,
+              3.003239352
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.6953125,
+            "reuse_gpu_hit_rate": 0.8240740740740741,
+            "requests": 128,
+            "hits": 89,
+            "misses": 39,
+            "evictions": 26,
+            "reuse_requests": 108,
+            "reuse_hits": 89,
+            "reuse_misses": 19,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 88545054720,
+            "metadata_h2d_bytes": 271360,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 88545326080,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 1.8079762824999999,
+            "read_seconds": 1.182858205
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.7731375954999997,
+            "trace_seconds_min_max": [
+              2.7693184100000003,
+              2.787470626
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.7890625,
+            "reuse_gpu_hit_rate": 0.9351851851851852,
+            "requests": 128,
+            "hits": 101,
+            "misses": 27,
+            "evictions": 9,
+            "reuse_requests": 108,
+            "reuse_hits": 101,
+            "reuse_misses": 7,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 61300408320,
+            "metadata_h2d_bytes": 228352,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 61300636672,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 1.2207417294999998,
+            "read_seconds": 1.552051365
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 2.7817359575,
+            "trace_seconds_min_max": [
+              2.779455463,
+              2.7872104419999997
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.7890625,
+            "reuse_gpu_hit_rate": 0.9351851851851852,
+            "requests": 128,
+            "hits": 101,
+            "misses": 27,
+            "evictions": 9,
+            "reuse_requests": 108,
+            "reuse_hits": 101,
+            "reuse_misses": 7,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 61300408320,
+            "metadata_h2d_bytes": 228352,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 61300636672,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 1.2244186584999999,
+            "read_seconds": 1.55699276
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 6.083804207499999,
+            "trace_seconds_min_max": [
+              6.072374285,
+              6.088896063
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.7890625,
+            "reuse_gpu_hit_rate": 0.9351851851851852,
+            "requests": 128,
+            "hits": 101,
+            "misses": 27,
+            "evictions": 9,
+            "reuse_requests": 108,
+            "reuse_hits": 101,
+            "reuse_misses": 7,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 61300408320,
+            "metadata_h2d_bytes": 228352,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 61300636672,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 1.221110198,
+            "read_seconds": 4.862223767
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w20-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 6.0775172355,
+            "trace_seconds_min_max": [
+              6.059751467,
+              6.088015274
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.7890625,
+            "reuse_gpu_hit_rate": 0.9351851851851852,
+            "requests": 128,
+            "hits": 101,
+            "misses": 27,
+            "evictions": 9,
+            "reuse_requests": 108,
+            "reuse_hits": 101,
+            "reuse_misses": 7,
+            "initial_touch_misses": 20,
+            "payload_h2d_bytes": 61300408320,
+            "metadata_h2d_bytes": 228352,
+            "host_raw_history_bytes": 64424509440,
+            "host_compressed_history_bytes": 45407715328,
+            "h2d_total_bytes": 61300636672,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 1.2193675645000002,
+            "read_seconds": 4.857657516000001
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 13.680566125505699,
+        "R": 13.730937048617232
+      },
+      "fastest_by_direction": {
+        "F": "gather_fa3",
+        "R": "gather_fa3"
+      }
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "arms": {
+        "raw_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 6.0501080394999995,
+            "trace_seconds_min_max": [
+              6.047745575,
+              6.052634502
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 270582939648,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 270583071232,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 4.92047236,
+            "read_seconds": 1.1289724595
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 6.047871511,
+            "trace_seconds_min_max": [
+              6.047087201999999,
+              6.050053227
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 270582939648,
+            "metadata_h2d_bytes": 131584,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 270583071232,
+            "physical_blocks": 3539,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452992,
+            "gpu_timed_peak_bytes": 44631595520,
+            "restore_policy_seconds": 4.920734202999999,
+            "read_seconds": 1.1263821770000002
+          }
+        },
+        "native_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 4.9964772625,
+            "trace_seconds_min_max": [
+              4.993800869,
+              4.999883059999999
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 190712467456,
+            "metadata_h2d_bytes": 432640,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 190712900096,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 3.8696894615,
+            "read_seconds": 1.1269489705
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 4.997449267,
+            "trace_seconds_min_max": [
+              4.989749175,
+              5.001288295
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.34375,
+            "reuse_gpu_hit_rate": 0.4888888888888889,
+            "requests": 128,
+            "hits": 44,
+            "misses": 84,
+            "evictions": 71,
+            "reuse_requests": 90,
+            "reuse_hits": 44,
+            "reuse_misses": 46,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 190712467456,
+            "metadata_h2d_bytes": 432640,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 190712900096,
+            "physical_blocks": 3536,
+            "whole_session_capacity": 13,
+            "physical_token_capacity": 452608,
+            "gpu_timed_peak_bytes": 44644218880,
+            "restore_policy_seconds": 3.8713394675000004,
+            "read_seconds": 1.1258520385
+          }
+        },
+        "gather_fa3": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 4.8312153515,
+            "trace_seconds_min_max": [
+              4.825698273,
+              4.833055798
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.421875,
+            "reuse_gpu_hit_rate": 0.6,
+            "requests": 128,
+            "hits": 54,
+            "misses": 74,
+            "evictions": 56,
+            "reuse_requests": 90,
+            "reuse_hits": 54,
+            "reuse_misses": 36,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 168008593408,
+            "metadata_h2d_bytes": 396800,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 168008990208,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 3.349278029,
+            "read_seconds": 1.4810138975
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 4.831491176,
+            "trace_seconds_min_max": [
+              4.829921719,
+              4.836840673
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.421875,
+            "reuse_gpu_hit_rate": 0.6,
+            "requests": 128,
+            "hits": 54,
+            "misses": 74,
+            "evictions": 56,
+            "reuse_requests": 90,
+            "reuse_hits": 54,
+            "reuse_misses": 36,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 168008593408,
+            "metadata_h2d_bytes": 396800,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 168008990208,
+            "physical_blocks": 4856,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 621568,
+            "gpu_timed_peak_bytes": 44651183616,
+            "restore_policy_seconds": 3.3482601525,
+            "read_seconds": 1.483939832
+          }
+        },
+        "fused_hbm": {
+          "F": {
+            "source_file": "history-forward-suffix-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 7.934869084,
+            "trace_seconds_min_max": [
+              7.901852627,
+              7.946668335
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.421875,
+            "reuse_gpu_hit_rate": 0.6,
+            "requests": 128,
+            "hits": 54,
+            "misses": 74,
+            "evictions": 56,
+            "reuse_requests": 90,
+            "reuse_hits": 54,
+            "reuse_misses": 36,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 168008593408,
+            "metadata_h2d_bytes": 396800,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 168008990208,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 3.3434460605,
+            "read_seconds": 4.590427806
+          },
+          "R": {
+            "source_file": "history-reverse-r6.json",
+            "source_case": "model-budget-c32768-w38-q128-k4",
+            "source_plan": "history-main-r6",
+            "trace_seconds": 7.9471907485,
+            "trace_seconds_min_max": [
+              7.931576067,
+              7.960583928
+            ],
+            "rounds": 6,
+            "overall_gpu_hit_rate": 0.421875,
+            "reuse_gpu_hit_rate": 0.6,
+            "requests": 128,
+            "hits": 54,
+            "misses": 74,
+            "evictions": 56,
+            "reuse_requests": 90,
+            "reuse_hits": 54,
+            "reuse_misses": 36,
+            "initial_touch_misses": 38,
+            "payload_h2d_bytes": 168008593408,
+            "metadata_h2d_bytes": 396800,
+            "host_raw_history_bytes": 122406567936,
+            "host_compressed_history_bytes": 86274654208,
+            "h2d_total_bytes": 168008990208,
+            "physical_blocks": 4861,
+            "whole_session_capacity": 18,
+            "physical_token_capacity": 622208,
+            "gpu_timed_peak_bytes": 44634062336,
+            "restore_policy_seconds": 3.352317721,
+            "read_seconds": 4.5940899205
+          }
+        }
+      },
+      "native_vs_raw_wall_reduction_pct": {
+        "F": 17.415073749444566,
+        "R": 17.368461649515353
+      },
+      "fastest_by_direction": {
+        "F": "gather_fa3",
+        "R": "gather_fa3"
+      }
+    }
+  ],
+  "native_vs_raw_ranges": [
+    {
+      "query_tokens": 1,
+      "by_direction_pct": {
+        "F": [
+          15.903177888954168,
+          20.340599865809338
+        ],
+        "R": [
+          15.489460727337468,
+          20.37513200169264
+        ]
+      },
+      "combined_F_R_range_pct": [
+        15.489460727337468,
+        20.37513200169264
+      ]
+    },
+    {
+      "query_tokens": 128,
+      "by_direction_pct": {
+        "F": [
+          7.6672303789922625,
+          17.415073749444566
+        ],
+        "R": [
+          7.406429112240998,
+          17.368461649515353
+        ]
+      },
+      "combined_F_R_range_pct": [
+        7.406429112240998,
+        17.415073749444566
+      ]
+    }
+  ],
+  "all_regressions_vs_raw": [
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "arm": "gather_fa3",
+      "direction": "F",
+      "slower_than_raw_pct": 15.340310521961342
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "arm": "gather_fa3",
+      "direction": "R",
+      "slower_than_raw_pct": 15.665497058978929
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "arm": "gather_fa3",
+      "direction": "F",
+      "slower_than_raw_pct": 13.416203979316244
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "arm": "gather_fa3",
+      "direction": "R",
+      "slower_than_raw_pct": 13.522174589138825
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "arm": "gather_fa3",
+      "direction": "F",
+      "slower_than_raw_pct": 8.26111065873183
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 174.23695567321437
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "arm": "gather_fa3",
+      "direction": "R",
+      "slower_than_raw_pct": 8.025472091481479
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 173.89623572365034
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "arm": "gather_fa3",
+      "direction": "F",
+      "slower_than_raw_pct": 6.983175924798868
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 168.01537653141438
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "arm": "gather_fa3",
+      "direction": "R",
+      "slower_than_raw_pct": 7.15439177658479
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 167.83273723192553
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 126.16944592070935
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 125.60124041820062
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 57.695709784157856
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 57.64704269794627
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 64.09449400800892
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 63.98686917967129
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 75.61946756842168
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 75.28206880852979
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "arm": "fused_hbm",
+      "direction": "F",
+      "slower_than_raw_pct": 31.152518801230578
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "arm": "fused_hbm",
+      "direction": "R",
+      "slower_than_raw_pct": 31.404755111702954
+    }
+  ],
+  "pairwise_wall_comparisons": [
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -18.910557485697588
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 13.300042675921597
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -23.79421660111547
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 27.088091118817125
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -4.1070021188028605
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -42.78463383595603
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -18.328436737769117
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 13.543794352944294
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -24.01608734854941
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 26.935394372991105
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -4.8066642031153295
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -43.44382386479717
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -18.967048227660243
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 11.829177409043744
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -23.69896850726485
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 25.88634928368657
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -3.977504989910652
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -40.294674442509674
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -18.92760269761542
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 11.911483054371086
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -23.997727350998098
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 25.930974014836384
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -4.263202602573224
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -40.76491652996441
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -21.150370734875757
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -23.667624887016323
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -71.60996897715992
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -2.0777931894647717
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -41.65038698289205
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -38.76709375953817
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -21.355743834647
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -24.065146726038833
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -71.38340897150832
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -2.2326119932843946
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -41.22397799730548
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -38.13985111383285
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -24.03519622047923
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -98.28367051048532
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -160.25761965834988
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -59.8608109250099
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -109.82562013747126
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -31.25519564385275
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -24.17197597850955
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -97.66298777873685
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -160.72776083780104
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -59.18486133533574
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -109.97311090783093
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -31.905200749903994
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -23.930303264759157
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -92.13823898808417
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -149.55785369294102
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -55.03733463607252
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -101.36951747773652
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -29.884532619463577
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -24.156386460847013
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -91.87993275999577
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -150.07254935451778
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -54.546969535478176
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -101.41738696090252
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -30.32761985971173
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -23.86061550971066
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -51.346558122393816
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -87.77808387538477
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -22.191026985917304
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -51.604352281507104
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -24.071591851813913
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -23.954663812516852
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -51.1196968182265
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -87.70235647220979
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -21.915297230604523
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -51.42823246740613
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -24.207737590941925
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -25.5344627646511
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -37.06453965918932
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -49.021665874327525
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -9.184790089200057
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -18.709765105467202
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -8.723719676051566
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -25.58890521755812
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -36.930073391077926
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -49.07838363944303
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -9.030390187631166
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -18.70346618691674
+    },
+    {
+      "query_tokens": 1,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": -8.871908082360424
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -8.303910313167728
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 7.630727791785796
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 63.535184470483344
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 14.712892691388058
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 66.33102588440593
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 60.52278570808753
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -7.998858928573993
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 7.429240470881815
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 63.48982316759704
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 14.285428154069034
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 66.1939235334428
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 12,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 60.55970911536199
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -8.707684199127176
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 6.527358965027852
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 62.68870790393666
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 14.014688360252414
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 65.67741059802384
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 60.08319473705298
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -8.464751079307753
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 6.676713532658162
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 62.66326475489568
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 13.959802112019515
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 65.57707930588042
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 13,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 59.99204843887469
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -11.695239376209132
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -8.85677619457821
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 55.785362787218375
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 2.5412570826501057
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 60.41493132589206
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 59.382742390102294
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -12.078794770038503
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -9.51250523495597
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 55.674002583217884
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": 2.289719068043161
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 60.45104026347759
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 14,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 59.52425951567637
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -16.26963742781078
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -49.3502344144634
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 36.58673394674303
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -28.451621350579703
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 45.46016702543788
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 57.54056476585223
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -16.3955391023487
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -49.40606196812918
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 36.56715769061315
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -28.360642615997268
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 45.50234244492033
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 18,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 57.54332757735215
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -16.372521311598852
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -35.95334007526654
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 39.059503120732785
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -16.825981376856248
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 47.633258958020654
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 55.17543236118414
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -16.65249579107755
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -36.014379199051014
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 39.01950778117755
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -16.597916124015242
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 47.72465706345677
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 19,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 55.16614303728857
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -15.848767202756232
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -24.919763722557065
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 43.058704490696734
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -7.830032842667167
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 50.848596075566576
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 54.41770476306045
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -15.916409172492529
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -24.6444094613534
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 42.9490987413918
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -7.529564063594263
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 50.78272207888007
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 20,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 54.2290733253487
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -21.087472666148233
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -25.229525063948067
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 23.75289402443278
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -3.4207109179823503
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 37.031383761894965
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "F",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 39.11411391472429
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "native_fa3",
+      "a_wall_reduction_vs_b_pct": -21.019167736955847
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -25.17608520206476
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 23.89925317771552
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "a_wall_reduction_vs_b_pct": -3.4349248493794615
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 37.116782204538765
+    },
+    {
+      "query_tokens": 128,
+      "history_sessions": 38,
+      "direction": "R",
+      "a": "gather_fa3",
+      "b": "fused_hbm",
+      "a_wall_reduction_vs_b_pct": 39.205043280080766
+    }
+  ],
+  "observed_pair_order_changes": [
+    {
+      "query_tokens": 1,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "raw_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 1,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "native_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 1,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "raw_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 1,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "native_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 128,
+      "direction": "F",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "raw_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 128,
+      "direction": "F",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        14,
+        18
+      ],
+      "previous_faster": "native_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 128,
+      "direction": "R",
+      "a": "raw_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        13,
+        14
+      ],
+      "previous_faster": "raw_fa3",
+      "next_faster": "gather_fa3"
+    },
+    {
+      "query_tokens": 128,
+      "direction": "R",
+      "a": "native_fa3",
+      "b": "gather_fa3",
+      "observed_W_interval": [
+        14,
+        18
+      ],
+      "previous_faster": "native_fa3",
+      "next_faster": "gather_fa3"
+    }
+  ],
+  "excluded_attempts": [
+    "history-main-r1",
+    "history-main-r2",
+    "history-main-r4",
+    "history-main-r5"
+  ],
+  "limits": [
+    "Every case has two F/R process observations, each median uses6 nested traces; forward segmentation is reported separately; no CI claim.",
+    "Actual model profile derives B separately; model weights are not resident during timed replay.",
+    "Repeated/rotated captured BF16 KV forms synthetic32K histories, not independent fresh model sessions.",
+    "Whole trace includes policy, pinned H2D restore and48layer attention read, not encoding or serving.",
+    "GPU hit rates refer to whole-session HBM LRU; all host histories are retained without a host capacity cap.",
+    "H2D total includes payload plus restore/read metadata; payload and metadata remain separate in JSON.",
+    "Pair ordering changes only bracket tested W points; no continuous crossover is inferred.",
+    "All slower-than-Raw medians are retained, including small differences with no significance assessment."
+  ],
+  "sources": {
+    "audit": "history-independent-audit.json",
+    "audit_sha256": "3c6fd8ec226fc83197054b9808b45eb10a76cdc219c69c964429c9cce4c78531",
+    "traces": "history-independent-traces.csv",
+    "traces_sha256": "b35ef3d6fdb45d6d7df0603a3d0294192e76d5fb9a030cb931d44183c7818126",
+    "script_sha256": "0c396665e06426a1a042191d9de9c31f190c5e9d4952a8b38d75368f4281ef4c"
+  }
+}

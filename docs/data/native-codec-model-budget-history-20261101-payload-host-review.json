@@ -1,0 +1,452 @@
+{
+  "schema": "fragpack.history-payload-host-review.v1",
+  "source_audit_sha256": "3c6fd8ec226fc83197054b9808b45eb10a76cdc219c69c964429c9cce4c78531",
+  "session_occurrences_across_28_accepted_case_processes": 536,
+  "unique_rotated_raw_compressed_hash_pairs": 24,
+  "raw_payload_bytes_values": [
+    3221225472
+  ],
+  "compressed_payload_bytes_range": [
+    2270371840,
+    2270400512
+  ],
+  "compressed_payload_bytes_distinct_values": [
+    2270371840,
+    2270375936,
+    2270380032,
+    2270384128,
+    2270388224,
+    2270392320,
+    2270396416,
+    2270400512
+  ],
+  "per_history_reduction_pct_range": [
+    29.517491658528648,
+    29.51838175455729
+  ],
+  "mean_compressed_payload_bytes_over_unique_variants": 2270385493.3333335,
+  "per_case_archive_payload": [
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w12-q1-k4",
+      "histories": 12,
+      "total_compressed_payload_bytes": 27244642304,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w13-q1-k4",
+      "histories": 13,
+      "total_compressed_payload_bytes": 29515018240,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w14-q1-k4",
+      "histories": 14,
+      "total_compressed_payload_bytes": 31785402368,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w18-q1-k4",
+      "histories": 18,
+      "total_compressed_payload_bytes": 40866942976,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w19-q1-k4",
+      "histories": 19,
+      "total_compressed_payload_bytes": 43137343488,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w20-q1-k4",
+      "histories": 20,
+      "total_compressed_payload_bytes": 45407715328,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w38-q1-k4",
+      "histories": 38,
+      "total_compressed_payload_bytes": 86274654208,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w12-q128-k4",
+      "histories": 12,
+      "total_compressed_payload_bytes": 27244642304,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w13-q128-k4",
+      "histories": 13,
+      "total_compressed_payload_bytes": 29515018240,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w14-q128-k4",
+      "histories": 14,
+      "total_compressed_payload_bytes": 31785402368,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-r3.json",
+      "case": "model-budget-c32768-w18-q128-k4",
+      "histories": 18,
+      "total_compressed_payload_bytes": 40866942976,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-suffix-r6.json",
+      "case": "model-budget-c32768-w19-q128-k4",
+      "histories": 19,
+      "total_compressed_payload_bytes": 43137343488,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-suffix-r6.json",
+      "case": "model-budget-c32768-w20-q128-k4",
+      "histories": 20,
+      "total_compressed_payload_bytes": 45407715328,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-forward-suffix-r6.json",
+      "case": "model-budget-c32768-w38-q128-k4",
+      "histories": 38,
+      "total_compressed_payload_bytes": 86274654208,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w38-q128-k4",
+      "histories": 38,
+      "total_compressed_payload_bytes": 86274654208,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w20-q128-k4",
+      "histories": 20,
+      "total_compressed_payload_bytes": 45407715328,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w19-q128-k4",
+      "histories": 19,
+      "total_compressed_payload_bytes": 43137343488,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w18-q128-k4",
+      "histories": 18,
+      "total_compressed_payload_bytes": 40866942976,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w14-q128-k4",
+      "histories": 14,
+      "total_compressed_payload_bytes": 31785402368,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w13-q128-k4",
+      "histories": 13,
+      "total_compressed_payload_bytes": 29515018240,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w12-q128-k4",
+      "histories": 12,
+      "total_compressed_payload_bytes": 27244642304,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w38-q1-k4",
+      "histories": 38,
+      "total_compressed_payload_bytes": 86274654208,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w20-q1-k4",
+      "histories": 20,
+      "total_compressed_payload_bytes": 45407715328,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w19-q1-k4",
+      "histories": 19,
+      "total_compressed_payload_bytes": 43137343488,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w18-q1-k4",
+      "histories": 18,
+      "total_compressed_payload_bytes": 40866942976,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w14-q1-k4",
+      "histories": 14,
+      "total_compressed_payload_bytes": 31785402368,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w13-q1-k4",
+      "histories": 13,
+      "total_compressed_payload_bytes": 29515018240,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "case": "model-budget-c32768-w12-q1-k4",
+      "histories": 12,
+      "total_compressed_payload_bytes": 27244642304,
+      "per_history_compressed_payload_bytes_range": [
+        2270371840,
+        2270400512
+      ]
+    }
+  ],
+  "host_sample_counts": {
+    "total": 2543,
+    "valid_process": 2068,
+    "no_owned_process": 20,
+    "invalid_process": 0,
+    "excluded_plan": 455,
+    "unassigned_plan": 0
+  },
+  "excluded_host_samples": {
+    "history-main-r4": 164,
+    "history-main-r5": 291
+  },
+  "max_sampled_rss_bytes": 216009285632,
+  "max_observed_kernel_hwm_bytes": 217571962880,
+  "missing_host_sample_classification": {
+    "before_first_process": 12,
+    "after_last_process": 5,
+    "between_processes": 3
+  },
+  "missing_host_samples": [
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:23:47.827138+00:00",
+      "classification": "before_first_process",
+      "source_line": 1
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:23:57.836490+00:00",
+      "classification": "before_first_process",
+      "source_line": 2
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:24:07.847545+00:00",
+      "classification": "before_first_process",
+      "source_line": 3
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:24:17.858627+00:00",
+      "classification": "before_first_process",
+      "source_line": 4
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:24:27.869662+00:00",
+      "classification": "before_first_process",
+      "source_line": 5
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T19:24:37.880655+00:00",
+      "classification": "before_first_process",
+      "source_line": 6
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T21:25:45.846712+00:00",
+      "classification": "after_last_process",
+      "source_line": 732
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T21:25:55.858269+00:00",
+      "classification": "after_last_process",
+      "source_line": 733
+    },
+    {
+      "plan": "history-main-r3",
+      "utc": "2026-10-31T21:26:05.869813+00:00",
+      "classification": "after_last_process",
+      "source_line": 734
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:58:22.386736+00:00",
+      "classification": "before_first_process",
+      "source_line": 1190
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:58:32.397007+00:00",
+      "classification": "before_first_process",
+      "source_line": 1191
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:58:42.408051+00:00",
+      "classification": "before_first_process",
+      "source_line": 1192
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:58:52.418608+00:00",
+      "classification": "before_first_process",
+      "source_line": 1193
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:59:02.429749+00:00",
+      "classification": "before_first_process",
+      "source_line": 1194
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T22:59:12.440780+00:00",
+      "classification": "before_first_process",
+      "source_line": 1195
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T23:45:25.516595+00:00",
+      "classification": "between_processes",
+      "source_line": 1472
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T23:45:35.527595+00:00",
+      "classification": "between_processes",
+      "source_line": 1473
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-10-31T23:45:45.537656+00:00",
+      "classification": "between_processes",
+      "source_line": 1474
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-11-01T02:43:57.439607+00:00",
+      "classification": "after_last_process",
+      "source_line": 2542
+    },
+    {
+      "plan": "history-main-r6",
+      "utc": "2026-11-01T02:44:07.450670+00:00",
+      "classification": "after_last_process",
+      "source_line": 2543
+    }
+  ],
+  "host_memory_scope": "sampled process RSS and kernel HWM, plus system NUMA/global headroom; not full-run pinned allocator counters or pure codec deployment RAM; missing process samples are retained separately, never replaced by zero"
+}

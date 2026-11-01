@@ -1,0 +1,263 @@
+{
+  "schema": "fragpack.model-budget-history-public-provenance.v1",
+  "audit_created_utc": "2026-11-01T02:45:03.259115+00:00",
+  "private_full_audit_sha256": "3c6fd8ec226fc83197054b9808b45eb10a76cdc219c69c964429c9cce4c78531",
+  "private_evidence": "Full audit and large raw results remain outside the repository; only their hashes and selected provenance are published.",
+  "original_protocol_sha256": "a855e86300eb80dd6a266a77d2afdb84d64f01a56565a9a80a7ef1bd69cffc5b",
+  "model_budget_sha256": "2fd091248059b57f11d4438fc102f6ae5eb85d4d049bd1c3e94254ce435234cc",
+  "counts": {
+    "configurations": 14,
+    "strata": 112,
+    "timed_traces": 672,
+    "timed_requests": 86016
+  },
+  "scope": "model-derived-budget, 48-layer cache/attention read replay; model is profiled separately; no model weights or new-token computation in timed replay; repeated captured BF16 KV; all external histories remain present in unconstrained host memory",
+  "budget_bytes": 44662192128,
+  "model_profile": {
+    "checkpoint_name": "Qwen3-30B-A3B-Instruct-2507-FP8",
+    "config_sha256": "002ebe91531ec67011b3d0c923234ef708c7da7d3b246045c4475d90b3d94628",
+    "index_sha256": "270f54aead2ae634567310218340069621fd8dfa2ad80001b69888ea5cc03477",
+    "weight_files_sha256_verified": false
+  },
+  "model_configuration": {
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "bfloat16",
+    "tensor_parallel_size": 1,
+    "max_model_len": 65536,
+    "max_num_seqs": 4,
+    "max_num_batched_tokens": 2048,
+    "gpu_memory_utilization": 0.9,
+    "block_size": 128,
+    "enforce_eager": true,
+    "attention_config": {
+      "backend": "FLASH_ATTN",
+      "flash_attn_version": 3
+    },
+    "async_scheduling": true,
+    "enable_prefix_caching": true,
+    "generation_config": "vllm",
+    "seed": 314
+  },
+  "replay_weights_resident": false,
+  "execution": {
+    "kind": "segmented_forward",
+    "plans": [
+      "history-main-r3",
+      "history-main-r6"
+    ],
+    "initial_planned_processes": 2,
+    "actual_processes": 3,
+    "processes_per_case": 2,
+    "direction_processes": {
+      "F": 2,
+      "R": 1
+    },
+    "evidence_verified": true,
+    "retry": {
+      "declaration": "execution-retry-r6-declaration.json",
+      "declaration_sha256": "17aa6a6931ed0383cfffe160052634db8b6d730cfa9dec8a577c89f30c11ef7b",
+      "rejected_plan": "history-main-r5",
+      "replacement_plan": "history-main-r6",
+      "evidence_verified": true,
+      "all_rejected_timing_excluded": true,
+      "benchmark_command_equivalence": true,
+      "failure_record_sha256": "f07cccac8f13493beee35f2e51089de31db8eb4519fde911d737129d4f30ef83",
+      "monitoring_policy": {
+        "query_period_seconds": 2,
+        "query_timeout_seconds": 30,
+        "query_retries": 0,
+        "timeout_behavior": "fail closed, preserve error and stop only owned child",
+        "latency_records": "query starts/ends; normal counts/max; slow or failed queries retained"
+      },
+      "prior_retries": [
+        {
+          "declaration": "execution-retry-declaration.json",
+          "declaration_sha256": "87e40e6b84197d5b708e5a91b9a0cf0bf3d7766245471c607f050e5acabbb103",
+          "rejected_plan": "history-main-r4",
+          "replacement_plan": "history-main-r5",
+          "evidence_verified": true,
+          "all_rejected_timing_excluded": true,
+          "benchmark_command_equivalence": true,
+          "failure_record_sha256": "842057b85b8af1eeacb9f45e4bf9d404030ba71b047a9d7fed5c4458b735ac92",
+          "monitoring_policy": null,
+          "prior_retries": []
+        }
+      ]
+    }
+  },
+  "accepted_raw_results": [
+    {
+      "file": "history-forward-r3.json",
+      "sha256": "e12230c306679bda2f73303a522859b6522f861d871b2fc959a3770c2d8af482",
+      "plan": "history-main-r3",
+      "direction": "F",
+      "acceptance": "amended_complete_prefix",
+      "status": "running",
+      "command_status": "failed",
+      "returncode": -15,
+      "guards_passed": true,
+      "accepted_case_names": [
+        "model-budget-c32768-w12-q1-k4",
+        "model-budget-c32768-w13-q1-k4",
+        "model-budget-c32768-w14-q1-k4",
+        "model-budget-c32768-w18-q1-k4",
+        "model-budget-c32768-w19-q1-k4",
+        "model-budget-c32768-w20-q1-k4",
+        "model-budget-c32768-w38-q1-k4",
+        "model-budget-c32768-w12-q128-k4",
+        "model-budget-c32768-w13-q128-k4",
+        "model-budget-c32768-w14-q128-k4",
+        "model-budget-c32768-w18-q128-k4"
+      ],
+      "manifest_sha256": "0e8a6d5cb6db42c53296582a4cbd27d3c2dc0e040a12dac397838abee1e29359"
+    },
+    {
+      "file": "history-forward-suffix-r6.json",
+      "sha256": "7fd0a6ce6b5b6c2868b37dd6efe664113202ddef483b7be70ae2dd9d3591484b",
+      "plan": "history-main-r6",
+      "direction": "F",
+      "acceptance": "complete_file",
+      "status": "passed",
+      "command_status": "executed",
+      "returncode": 0,
+      "guards_passed": true,
+      "accepted_case_names": [
+        "model-budget-c32768-w19-q128-k4",
+        "model-budget-c32768-w20-q128-k4",
+        "model-budget-c32768-w38-q128-k4"
+      ],
+      "manifest_sha256": "9b50c155369e7daa4dfedb3927c37635be79753aef4bcf43fe883559f9df79ed"
+    },
+    {
+      "file": "history-reverse-r6.json",
+      "sha256": "0993e5f70e14695c4bda09a0e6eebb162f1c0048cc10e3a7e08bdbc1873347ba",
+      "plan": "history-main-r6",
+      "direction": "R",
+      "acceptance": "complete_file",
+      "status": "passed",
+      "command_status": "executed",
+      "returncode": 0,
+      "guards_passed": true,
+      "accepted_case_names": [
+        "model-budget-c32768-w38-q128-k4",
+        "model-budget-c32768-w20-q128-k4",
+        "model-budget-c32768-w19-q128-k4",
+        "model-budget-c32768-w18-q128-k4",
+        "model-budget-c32768-w14-q128-k4",
+        "model-budget-c32768-w13-q128-k4",
+        "model-budget-c32768-w12-q128-k4",
+        "model-budget-c32768-w38-q1-k4",
+        "model-budget-c32768-w20-q1-k4",
+        "model-budget-c32768-w19-q1-k4",
+        "model-budget-c32768-w18-q1-k4",
+        "model-budget-c32768-w14-q1-k4",
+        "model-budget-c32768-w13-q1-k4",
+        "model-budget-c32768-w12-q1-k4"
+      ],
+      "manifest_sha256": "9b50c155369e7daa4dfedb3927c37635be79753aef4bcf43fe883559f9df79ed"
+    }
+  ],
+  "excluded_attempts": [
+    {
+      "plan": "history-main-r1",
+      "status": "failed",
+      "manifest_sha256": "3a0971d03038499670cd3156e9e6b21cdd5163295f85ada40c02b59c8545d4e6",
+      "timing_pooled": false,
+      "commands": [
+        {
+          "name": "history-forward",
+          "status": "failed",
+          "returncode": -15
+        }
+      ]
+    },
+    {
+      "plan": "history-main-r2",
+      "status": "failed",
+      "manifest_sha256": "7763d5838e6a0d7e1bf04b7d6c1ef57ba0f68250360d26486e139eff4e9cb47a",
+      "timing_pooled": false,
+      "commands": [
+        {
+          "name": "history-forward",
+          "status": "failed",
+          "returncode": -11
+        }
+      ]
+    },
+    {
+      "plan": "history-main-r4",
+      "status": "running",
+      "manifest_sha256": "9dba82452f7d9ffa125a254b3086a5b77a19ff2607f69483309ec3be9cdbbfb3",
+      "timing_pooled": false,
+      "commands": [
+        {
+          "name": "history-forward-suffix",
+          "status": "running",
+          "returncode": null
+        }
+      ]
+    },
+    {
+      "plan": "history-main-r5",
+      "status": "supervisor_error",
+      "manifest_sha256": "f5b25653d258152c59f577aca150b9bdb56bd91fd2137194ad3ff0e28a4227b8",
+      "timing_pooled": false,
+      "commands": [
+        {
+          "name": "history-forward-suffix",
+          "status": "supervisor_error",
+          "returncode": 0
+        }
+      ]
+    }
+  ],
+  "core_source_sha256": {
+    "benchmarks/native_codec_budget_bench.py": "ace561513f5610b57cd9dcbbca482d70f6023b05ae311b88cbda052c3d659370",
+    "benchmarks/native_codec_prefill_bench.py": "522bf98cb96b64b78307df02d6a080efbbbd0ba487accde436dced547075a525",
+    "benchmarks/native_codec_raw_direct.py": "ccb9f8adc5e2eac816b39e3fa6e4920812006a0c7d2d13f9d7458622e2a5b135",
+    "fragpack/compression/attn_page.py": "d8402404f3daacd9502495bf99ebd8a90c51c754203963453244c2b269df9806",
+    "fragpack/compression/attn_tables.py": "3bbf421efe74bbea173520c584a4a72bba0d4296915518a548bc6b51137d6daf",
+    "fragpack/ops/native_codec.py": "0d81c9e5542448a87b0165d54fc732f8659b620e1004fb75ec1d98c97b484850",
+    "fragpack/ops/native_codec.cu": "e024cbfe6b8a9e280c24a153f75b11b76d12df0e4610c25fcd4cd9ea18980175",
+    "fragpack/ops/native_codec_pool.py": "d91699789b6d76343013eb18616b09c744a300073cf17627cbcd46bdea6d3487",
+    "fragpack/ops/hbm_kv.py": "38b4087d4576250f6654bd5cee0a33bdbf7952ad88c5b8ca291a221d429e90c9",
+    "fragpack/ops/hbm_kv.cu": "17a51331bccc9dc925d94fe914e6eda7746823e15ff1e43964736dcdcf89c56d",
+    "fragpack/ops/fused_attn_decode.cu": "b2e85ffc7b96bf6f2aab54a6b81c35724c8cbc3572ab3ec5036f1f7b424487bc",
+    "fragpack/ops/fused_attn_prefill.cu": "cf55c15c9de76a92dbc576141edcefa71c65e22d390fd89fb7a64b11fc465787"
+  },
+  "input_fingerprints": {
+    "dump_sha256": "1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322",
+    "dump_shape": [
+      32,
+      48,
+      2,
+      128,
+      4,
+      128
+    ],
+    "calibration_range": [
+      0,
+      8
+    ],
+    "evaluation_pool_range": [
+      8,
+      32
+    ],
+    "table_sha256": "8cd2b8979b12101119104f1ed92652ce938752e49a4e2d1f5c69de47ff9d0a30",
+    "pool_sha256": "90d340536c304f6a0395b10f5c0abe9f73204ac2095b140b1c725485c175cb51",
+    "raw_fallback_records": 0,
+    "max_overflow_live_records_per_block": 0
+  },
+  "input_provenance": "Repeated/rotated historical BF16 KV captured with dequantized checkpoint weights; FP8 model-weight profiling is a separate budget measurement.",
+  "analysis_source_sha256": {
+    "auditor": "bfb35cc2ef4718a180d9ed94fa5452ddc1d463751a574be836fed8fd0f6c7b8d",
+    "summarizer": "0c396665e06426a1a042191d9de9c31f190c5e9d4952a8b38d75368f4281ef4c",
+    "exporter": "dcb713f0a0ccc1c9653740f72a14d4352529c22361a557a3409999ad10e65821"
+  },
+  "exports_sha256": {
+    "native-codec-model-budget-history-20261101-summary.json": "c323119b299921d41a0473e3c6d1be9b43cee14c4484d5e82a22833144a1db2f",
+    "native-codec-model-budget-history-20261101-traces.csv": "b35ef3d6fdb45d6d7df0603a3d0294192e76d5fb9a030cb931d44183c7818126",
+    "native-codec-model-budget-history-20261101-cases-forward.json": "15154b7d05d54c222cfd3864106e54269570817fdc27ae7d5655dc9fb98f8a03",
+    "native-codec-model-budget-history-20261101-cases-reverse.json": "44c1bbaf4c454136d22b6b4f376af588c8e8070b13b2303c63bba5f7204a23bd"
+  }
+}

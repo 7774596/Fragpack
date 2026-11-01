@@ -1,0 +1,284 @@
+{
+  "schema": "fragpack.model-budget-capacity-fixture-sensitivity.v1",
+  "status": "audited_passed",
+  "scope": "Model-derived-budget Q128 allocation sensitivity, using a separate model-free 48-layer cache/attention probe. No serving or latency result.",
+  "source": {
+    "git_head": "a5ddb75084c93bc1425d65f83f9fb5ca2352585f",
+    "files_sha256": {
+      "fragpack/__init__.py": "6365ab36a1234cb1632d96221e214c74d7b4d9647b221386ac61e3b7812c3692",
+      "fragpack/compression/__init__.py": "bb3f224a8854b404b2df77bc131d05c881eeb9e037e3d09b0ba1291dbaec8d37",
+      "fragpack/compression/attn_page.py": "d8402404f3daacd9502495bf99ebd8a90c51c754203963453244c2b269df9806",
+      "fragpack/compression/attn_tables.py": "3bbf421efe74bbea173520c584a4a72bba0d4296915518a548bc6b51137d6daf",
+      "fragpack/integrations/__init__.py": "e8475d8103a0e23eb6e8db37d906d6ea80a04975b8f33908c06d23514b184b15",
+      "fragpack/integrations/lmcache/__init__.py": "cdeaaff4fb17c1eae2c3f3e058bc179d96e1d0f07f070a7453454e5f50ccc99a",
+      "fragpack/integrations/lmcache/client.py": "5e8482f0c369a11864123c543b13a22b7816d7dc64b9846fd274798209244ebb",
+      "fragpack/integrations/lmcache/connector.py": "310a64cc4a4b9221342c52f972fb3158221c797a5eaf6bf7ccd9d60449553e1f",
+      "fragpack/integrations/lmcache/identity.py": "3e4d4ebb511ed7214bf6012a00f87667ba49f4e26e9f762a90ed80d0e2f55a72",
+      "fragpack/integrations/lmcache/protocol.py": "45f6dcba21c7c87a90aedc49e95a0e1c3e546e5e5ef9afb4a30817edc0f290bb",
+      "fragpack/integrations/lmcache/server.py": "ef7a6dfcbc83242c99231d11eabf12eb7f11d3589ff003da616c05ea221e1fb4",
+      "fragpack/integrations/lmcache/storage.py": "f5ada23204b1fc74fea6340c1a85f5bb168fa56dcd8b33fbbbe0f044cb7e7dbb",
+      "fragpack/integrations/lmcache/transfer.py": "1757a5de8620feb8abdfb348ac1e0c5102522b16332aa2b1119246693ab9e784",
+      "fragpack/integrations/vllm/__init__.py": "b941ce4b5e7227c4daab910041cf6b6c9fdad9543139d6e170a99f9c5baed3a7",
+      "fragpack/integrations/vllm/backend.py": "d9949730d4d60bc90bf45c79c3758ed1653236e8fc51525d10ead808948fdf10",
+      "fragpack/integrations/vllm/capacity.py": "589036f232d472b43ff36d5927fb448c253b1cc17c4a69f12185b1017d635ca5",
+      "fragpack/integrations/vllm/compat.py": "98f7246b89f9cf6e77df4f3eeef1aac5de74a6840b72e93d4781636d7ba8f85a",
+      "fragpack/integrations/vllm/lifecycle.py": "daac6d26576fb3c7f4ee27ccf1855ef0457161ebf20f5b88958cb442ddca5c93",
+      "fragpack/integrations/vllm/plugin.py": "19bee4d21c6c7e095dca7f413827054414eccea71144696ec9372f1000d2696d",
+      "fragpack/integrations/vllm/prefill.py": "dbfc6863e3429be70644be003e1d55c90b5644a160722dd016817a92e4d68fa5",
+      "fragpack/logging.py": "5d1e1fcadf72be79a72f24cba3ac729070dc4b5e86caa07bc0e09ce872acb51a",
+      "fragpack/ops/__init__.py": "c5f83dca7ea63405f3d89062d3afb4db4d18ae62cc03ce055db27fc15b3e0a47",
+      "fragpack/ops/fragpack_common.cuh": "7eabc2316bd672bd1f725304f61549aa481fd88a5015c453ff00c0190cf0219a",
+      "fragpack/ops/fragpack_ext.cpp": "b55800e8fb68b7142b940746420b1426ab08286bb9f795a4c2dd4cdc43fd59b0",
+      "fragpack/ops/fragpack_ext.py": "2ec8b031a8481b8c75553afc3aab2125576068f366c9f136f7d8c3dbd1a8366b",
+      "fragpack/ops/fused_attn_decode.cu": "b2e85ffc7b96bf6f2aab54a6b81c35724c8cbc3572ab3ec5036f1f7b424487bc",
+      "fragpack/ops/fused_attn_decode.py": "d4276a289e1ddaedf4a712c22c98550ab753580094c7a83d2f752427c6cc577c",
+      "fragpack/ops/fused_attn_prefill.cu": "cf55c15c9de76a92dbc576141edcefa71c65e22d390fd89fb7a64b11fc465787",
+      "fragpack/ops/fused_attn_prefill.py": "4ece6b7454987f6273414e389d54e650a5bf67bfde4742f77432e52dd95041cf",
+      "fragpack/ops/hbm_kv.cu": "17a51331bccc9dc925d94fe914e6eda7746823e15ff1e43964736dcdcf89c56d",
+      "fragpack/ops/hbm_kv.py": "38b4087d4576250f6654bd5cee0a33bdbf7952ad88c5b8ca291a221d429e90c9",
+      "fragpack/ops/native_codec.cu": "e024cbfe6b8a9e280c24a153f75b11b76d12df0e4610c25fcd4cd9ea18980175",
+      "fragpack/ops/native_codec.py": "0d81c9e5542448a87b0165d54fc732f8659b620e1004fb75ec1d98c97b484850",
+      "fragpack/ops/native_codec_ext.cpp": "5b65d4d368d33af1cc14441c0bc7232bfd6851db05688b3176fae414efaec00e",
+      "fragpack/ops/native_codec_ext.py": "21ee85d3d137e7765a4f216d12596458f2e0fce4a785a617ea6d7ba013a39e27",
+      "fragpack/ops/native_codec_pool.py": "d91699789b6d76343013eb18616b09c744a300073cf17627cbcd46bdea6d3487",
+      "benchmarks/native_codec_prefill_bench.py": "522bf98cb96b64b78307df02d6a080efbbbd0ba487accde436dced547075a525",
+      "benchmarks/native_codec_budget_bench.py": "ace561513f5610b57cd9dcbbca482d70f6023b05ae311b88cbda052c3d659370",
+      "benchmarks/native_codec_raw_direct.py": "ccb9f8adc5e2eac816b39e3fa6e4920812006a0c7d2d13f9d7458622e2a5b135"
+    },
+    "digest": "d8992c8afa79ea86281a1cc1b33a0cd0dbcc103667ab5de4ea12f946cdeb92e4"
+  },
+  "environment": {
+    "python": "3.10.20",
+    "torch": "2.13.0+cu129",
+    "numpy": "2.2.6",
+    "vllm": "0.30.0+cu129",
+    "gpu_name": "NVIDIA H800",
+    "gpu_uuid": "910de65d-2e94-591b-557e-4b29047bf2fc",
+    "sm_count": 132,
+    "gpu_memory_bytes": 85017886720
+  },
+  "model_budget_origin": {
+    "checkpoint_name": "Qwen3-30B-A3B-Instruct-2507-FP8",
+    "checkpoint_config_sha256": "002ebe91531ec67011b3d0c923234ef708c7da7d3b246045c4475d90b3d94628",
+    "checkpoint_index_sha256": "270f54aead2ae634567310218340069621fd8dfa2ad80001b69888ea5cc03477",
+    "weight_shard_sha256_verified": false,
+    "actual_weight_quantization": "fp8",
+    "actual_kv_dtype": "bfloat16",
+    "engine_configuration": {
+      "dtype": "bfloat16",
+      "kv_cache_dtype": "bfloat16",
+      "tensor_parallel_size": 1,
+      "max_model_len": 65536,
+      "max_num_seqs": 4,
+      "max_num_batched_tokens": 2048,
+      "gpu_memory_utilization": 0.9,
+      "block_size": 128,
+      "enforce_eager": true,
+      "attention_config": {
+        "backend": "FLASH_ATTN",
+        "flash_attn_version": 3
+      },
+      "async_scheduling": true,
+      "enable_prefix_caching": true,
+      "generation_config": "vllm",
+      "seed": 314
+    },
+    "requested_memory_bytes": 76516098048,
+    "profile_total_consumed_bytes": 31763464192,
+    "profile_activation_reservation_bytes": 90441728,
+    "profile_cudagraph_estimate_bytes": 0,
+    "smoke_prompt_tokens": 2048,
+    "smoke_output_token_counts": [
+      4
+    ],
+    "probe_source_sha256": "93382b7891bfbd9b123d432e2f9768a322c954c7935521a90085ef398c5536ce",
+    "scope": "Actual model startup and short smoke determine B separately; model weights are absent from the capacity probe. Utilization 0.9 is not a strict total-device allocation cap."
+  },
+  "configuration": {
+    "layers": 48,
+    "kv_heads": 4,
+    "query_heads": 32,
+    "head_dimension": 128,
+    "kv_dtype": "bfloat16",
+    "context_tokens": 32768,
+    "query_tokens": 128,
+    "page_tokens": 128,
+    "blocks_per_session": 256,
+    "working_set_sessions_in_probe": 1,
+    "seed": 314,
+    "chunk_blocks": 4,
+    "native_workspace": "decode",
+    "receive_capacity": "format-max",
+    "restore_dispatch": "graph",
+    "restore_wait": "request",
+    "raw_transfer": "native-direct",
+    "capacity_only": true,
+    "timed_traces": 0,
+    "model_weights_resident": false,
+    "host_pinned_allocator": "default; launcher unsets both allocator overrides",
+    "host_allocator_evidence": "coordinating-agent observation of launch command; no child getenv snapshot"
+  },
+  "accounting": {
+    "original_model_derived_B_bytes": 44662192128,
+    "query_bytes": 50331648,
+    "output_bytes": 50331648,
+    "common_fixture_bytes": 100663296,
+    "actual_tensor_peak_cap_Bprime_bytes": 44762855424,
+    "criterion": "actual_peak - common_fixture <= original_B",
+    "physical_fixture_removed": false,
+    "model_profile_activation_reservation_bytes": 90441728,
+    "excluded_from_tensor_cap": [
+      "CUDA context/non-Torch allocations",
+      "reserved but unallocated allocator storage"
+    ]
+  },
+  "input": {
+    "dump_sha256": "1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322",
+    "dump_shape": [
+      32,
+      48,
+      2,
+      128,
+      4,
+      128
+    ],
+    "calibration_range": [
+      0,
+      8
+    ],
+    "evaluation_pool_range": [
+      8,
+      32
+    ],
+    "table_sha256": "8cd2b8979b12101119104f1ed92652ce938752e49a4e2d1f5c69de47ff9d0a30",
+    "pool_sha256": "90d340536c304f6a0395b10f5c0abe9f73204ac2095b140b1c725485c175cb51",
+    "raw_fallback_records": 0,
+    "max_overflow_live_records_per_block": 0,
+    "scope": "disjoint positions from one historical capture; session contents rotate/repeat this pool, not new long-context model captures"
+  },
+  "fixture_identity": {
+    "query_sha256": "6f1cd6d4a7cb8ef33706e0c74e018fdde7e10a1072e1766d5a9a0e23e44948cc",
+    "raw_history_sha256": "50ef868009c3b4aab41c5729d27063564a9e08be26f2ecbc145162dfdb5ceb81",
+    "compressed_history_sha256": "dd01221d88e9c248594b5ae2013c78251f1eb0a4823182b1fa973ae6fae39a67",
+    "raw_history_bytes": 3221225472,
+    "compressed_history_bytes": 2270392320
+  },
+  "arms": [
+    {
+      "arm": "raw_fa3",
+      "original_physical_blocks": 3539,
+      "original_uniform_session_capacity": 13,
+      "original_peak_allocated_bytes": 44640067072,
+      "physical_blocks": 3547,
+      "uniform_session_capacity": 13,
+      "physical_token_capacity": 454016,
+      "actual_peak_allocated_bytes": 44740730368,
+      "peak_minus_common_fixture_bytes": 44640067072,
+      "headroom_under_actual_cap_bytes": 22125056,
+      "query_bytes": 50331648,
+      "output_bytes": 50331648,
+      "next_block": 3548,
+      "next_block_actual_peak_bytes": 44803644928,
+      "next_block_peak_minus_fixture_bytes": 44702981632,
+      "next_block_excess_over_actual_cap_bytes": 40789504,
+      "next_block_witness_attempt_indices": [
+        1,
+        6
+      ],
+      "remaining_allocated_bytes_after_release": 0
+    },
+    {
+      "arm": "native_fa3",
+      "original_physical_blocks": 3536,
+      "original_uniform_session_capacity": 13,
+      "original_peak_allocated_bytes": 44652689408,
+      "physical_blocks": 3544,
+      "uniform_session_capacity": 13,
+      "physical_token_capacity": 453632,
+      "actual_peak_allocated_bytes": 44753352704,
+      "peak_minus_common_fixture_bytes": 44652689408,
+      "headroom_under_actual_cap_bytes": 9502720,
+      "query_bytes": 50331648,
+      "output_bytes": 50331648,
+      "next_block": 3545,
+      "next_block_actual_peak_bytes": 44765935616,
+      "next_block_peak_minus_fixture_bytes": 44665272320,
+      "next_block_excess_over_actual_cap_bytes": 3080192,
+      "next_block_witness_attempt_indices": [
+        2
+      ],
+      "remaining_allocated_bytes_after_release": 0
+    },
+    {
+      "arm": "gather_fa3",
+      "original_physical_blocks": 4856,
+      "original_uniform_session_capacity": 18,
+      "original_peak_allocated_bytes": 44659653632,
+      "physical_blocks": 4867,
+      "uniform_session_capacity": 19,
+      "physical_token_capacity": 622976,
+      "actual_peak_allocated_bytes": 44760256512,
+      "peak_minus_common_fixture_bytes": 44659593216,
+      "headroom_under_actual_cap_bytes": 2598912,
+      "query_bytes": 50331648,
+      "output_bytes": 50331648,
+      "next_block": 4868,
+      "next_block_actual_peak_bytes": 44769401856,
+      "next_block_peak_minus_fixture_bytes": 44668738560,
+      "next_block_excess_over_actual_cap_bytes": 6546432,
+      "next_block_witness_attempt_indices": [
+        3
+      ],
+      "remaining_allocated_bytes_after_release": 0
+    },
+    {
+      "arm": "fused_hbm",
+      "original_physical_blocks": 4861,
+      "original_uniform_session_capacity": 18,
+      "original_peak_allocated_bytes": 44634062336,
+      "physical_blocks": 4872,
+      "uniform_session_capacity": 19,
+      "physical_token_capacity": 623616,
+      "actual_peak_allocated_bytes": 44734664704,
+      "peak_minus_common_fixture_bytes": 44634001408,
+      "headroom_under_actual_cap_bytes": 28190720,
+      "query_bytes": 50331648,
+      "output_bytes": 50331648,
+      "next_block": 4873,
+      "next_block_actual_peak_bytes": 44787359232,
+      "next_block_peak_minus_fixture_bytes": 44686695936,
+      "next_block_excess_over_actual_cap_bytes": 24503808,
+      "next_block_witness_attempt_indices": [
+        5
+      ],
+      "remaining_allocated_bytes_after_release": 0
+    }
+  ],
+  "supervision": {
+    "completed_normally": true,
+    "query_timeout_seconds": 30,
+    "query_exceptions": 0
+  },
+  "interpretation": [
+    "Under this alternative accounting, Gather and Fused capacity cross from 18 to 19 complete 32K sessions; RawDirect and NativeCodec remain at 13.",
+    "The 48-layer Q/output fixture remains physically allocated. Its 100663296 bytes are not the same allocation as the 90441728-byte model activation reservation.",
+    "This is a discrete replay-capacity accounting sensitivity, not a corrected real-model deployment capacity or a speedup measurement.",
+    "The original main-matrix capacities, hit rates and timings remain unchanged; no results are recomputed or pooled using these capacities.",
+    "The capture pool has zero raw fallback and zero live overflow records per block; no new attention-output or codec correctness validation was performed by capacity-only mode."
+  ],
+  "evidence_sha256": {
+    "capacity_result": "c053d4136087bedd0289e096e0d47687bc94f3f7862128f415b266f927d9b114",
+    "supervisor_manifest": "61ace6e6aa88ec2e09896ec4c88a34163e39311ab056aa2b5b95adadab95617c",
+    "executed_plan": "02c76b7ac0ad6fa969b665ef6a071fda218374dcc5d51ceea629ae137375d9a5",
+    "child_log": "636521afda64930ca2460a0583ba57ff93416a8d1b8403f6f278ad6b117a12e7",
+    "baseline_capacity_result": "8519d30d7977d50339d54045a6d9fec30aeb16b014d7f5e1ebf59092af0db4eb",
+    "baseline_capacity_manifest": "2011741ce4aec90956a27b083e9aff9df4cfbfaf13785d48ed718dab98a8e6f4",
+    "model_budget_result": "2fd091248059b57f11d4438fc102f6ae5eb85d4d049bd1c3e94254ce435234cc",
+    "original_predeclaration": "3d9c435405989dc0ff643a9e7f769b73a394865f8933a8ccf2d1fa9e78ed9570",
+    "supervisor_addendum": "371d1b4f489abaa7c4053096837e7157e222f12025e2cc3b9b4bd9d24d8e5f51",
+    "timeout_addendum_r2": "8893ac0b1123a9ee47072d646e6cc1a44a02979e9d82bd1ed2451f026c432b4c",
+    "case": "e14c590a782832ebe597ff50574031a937997f51a6eb85929a5b26bafdaffa0a",
+    "cpu_validation": "65906f2a53b5edb9f4b5934d62875d98ead8accf89cad1e3c3cf76c6ecceaf98",
+    "main_r6_supervisor_manifest": "9b50c155369e7daa4dfedb3927c37635be79753aef4bcf43fe883559f9df79ed"
+  }
+}

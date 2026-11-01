@@ -1,0 +1,32 @@
+{
+  "schema": "fragpack.model-budget-history-figure.v1",
+  "accepted_plans": [
+    "history-main-r3",
+    "history-main-r6"
+  ],
+  "case_configurations": 14,
+  "process_medians": 112,
+  "timed_traces": 672,
+  "timed_requests": 86016,
+  "scope": "Main matrix only; F/R separate; forward spans 2 processes and reverse spans 1; no capacity-only sensitivity values included.",
+  "plot_script_sha256": "1bfd7d5d2e394b5ef9825c3bb7d544a32c20a0e734bdd47825a8b08b459aa768",
+  "original_figure_manifest_sha256": "049454f2e995cb886ea135ea32bd4dc35494924f2aa7ea87a5aa1b3f6983348c",
+  "public_input_trace_sha256": "b35ef3d6fdb45d6d7df0603a3d0294192e76d5fb9a030cb931d44183c7818126",
+  "root_preview_checked": true,
+  "output_sha256": {
+    "figures/native-codec-model-budget-history-20261101.svg": "18bca3e0857758cb000d9a7bce2bc3e058bf06dd58739587eaab202d484fb4b9",
+    "figures/native-codec-model-budget-history-20261101.pdf": "8da0fa1e4883d0da3f6d46af93dc6fad0b299a8e7cf0b2c57742d383896ee63d",
+    "figures/native-codec-model-budget-history-20261101.png": "73206ceab4762f28aadc51f01c1ada583f419cbf5983424384d3976ba4297dbc",
+    "data/native-codec-model-budget-history-20261101-process-medians.csv": "bc544263423c59adf8c8b4087540b84f38c81c6c06dba324d6d834e309ef8761"
+  },
+  "source_output_sha256": {
+    "figures/native-codec-model-budget-history-20261101.svg": "cd382af03bb17da2c576130702d945cc4310674f3bd9ed8814d049fb8bfc1cf3",
+    "figures/native-codec-model-budget-history-20261101.pdf": "8da0fa1e4883d0da3f6d46af93dc6fad0b299a8e7cf0b2c57742d383896ee63d",
+    "figures/native-codec-model-budget-history-20261101.png": "73206ceab4762f28aadc51f01c1ada583f419cbf5983424384d3976ba4297dbc",
+    "data/native-codec-model-budget-history-20261101-process-medians.csv": "b8515e6d44e87d6efc982b5f91cf3487aa6d9c1f6758759621b5e45bcfb4b571"
+  },
+  "text_normalization": {
+    "svg": "Removed trailing line whitespace only; XML parses; numeric geometry and labels preserved.",
+    "process_medians_csv": "CRLF converted to LF; field values preserved."
+  }
+}
