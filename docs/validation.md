@@ -1,8 +1,37 @@
 # Validation and evidence boundary
 
-This document describes the checks needed for the standalone extraction.
-It does not certify that an unrun check passed. GPU execution requires separate
-authorization and an idle supported GPU.
+This document indexes implementation evidence and the checks needed for further
+validation. Each dated section retains its original version, configuration,
+test counts and scope; statements about missing integrations describe that
+snapshot. It does not certify that an unrun check passed. GPU execution requires
+separate authorization and an idle supported GPU.
+
+## Native vLLM connector and real CPU L1 on 2026-11-01
+
+The [completed integration report](validation-native-codec-serving-20261101.md)
+records the public `FragPackNativeConnector`, bounded `NativeBlockTransfer`,
+156 CPU checks, six GPU checks and real CPU-L1 model execution. The native route
+keeps BF16 GPU pages and native FA3, without the HBM CUSTOM adapter or runner
+wrapper. Compressed FPKB and matched Raw FPNR use isolated namespaces.
+
+The main comparison completed four independent Qwen3-30B-A3B-Instruct-2507-FP8
+model/L1 processes in Raw–compressed–compressed–Raw order, each with 132 serial
+requests. BF16 KV, a measured total GPU KV tensor budget and 56 GB L1 were held
+to the stated protocol as the history set grew from 12 to 18 to 24 sessions.
+The request-plus-publication window decreased by 25.43% across mode means, while
+external restores increased average and P95 TTFT. Compression required about
+100.8 MB more GPU workspace than Raw; active GPU KV capacity did not increase.
+Raw is the same byte-interface control, not stock LMCache's optimal Raw path.
+
+Two independent immutable-KV roundtrip runs provide separate bitwise evidence.
+A targeted six-session output-path control also completed: Raw and compressed
+agree on each matched cold/GPU/external path, while cold and cached outputs
+differ for these selected prompts. This diagnoses observed path differences;
+it does not replace KV bitwise tests or establish task accuracy.
+The report links functional, main, roundtrip and output-control data with hashes.
+HTTP, NVMe, concurrent serving capacity, TP>1 and full-model CUDA Graph execution
+remain outside this validation. The HBM route's scheduler connector is still
+unimplemented.
 
 ## Expanded native-codec/HBM comparison on 2026-10-31
 

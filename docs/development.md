@@ -50,7 +50,8 @@ and report the remaining tests as complete validation.
 | `tests/gpu/` | Explicit CUDA correctness and graph tests |
 | `benchmarks/` | Measured workloads and result collection |
 
-The vLLM plugin entry point is `fragpack`, calling
+For the HBM-resident compressed attention path, the vLLM plugin entry point is
+`fragpack`, calling
 `fragpack.integrations.vllm.plugin:register`. It registers
 `fragpack.integrations.vllm.backend.FragPackAttentionBackend` as `CUSTOM`.
 Set `VLLM_PLUGINS=fragpack` to select this plugin explicitly, especially when an
@@ -61,6 +62,20 @@ The optional LMCache extension has its own hash-pinned requirement file and
 factory; it is not a replacement for vLLM's KV connector configuration. Keep its
 real-service and GPU tests opt-in so CPU core development does not require
 LMCache or start services.
+
+The independent external-codec path uses
+`fragpack.integrations.vllm.native_connector.FragPackNativeConnector`, loaded by
+vLLM's `kv_connector_module_path`, rather than the CUSTOM attention plugin.
+`NativeBlockTransfer` connects native BF16 pages to the same CPU L1 byte service;
+normal attention and KV writes stay in vLLM. Both raw and compressed controls
+save complete prompt objects after normal request completion. The compressed
+arm uses FPKB; raw uses the isolated FPNR `native-raw` representation. Small-model
+functional checks and the [fixed-budget main-model comparison](validation-native-codec-serving-20261101.md)
+are complete for native FA3, TP=1, eager execution and sequential offline replay
+with a real CPU L1. The measured request-plus-publication window improved, but
+this is not a TTFT speedup: W18 external restoration had higher TTFT than raw
+recomputation. HTTP serving, NVMe, TP>1 and CUDA Graph execution remain unverified;
+the HBM-resident compressed route still needs its scheduler connector.
 
 ## Checks
 
@@ -88,7 +103,42 @@ JIT extension; it does not initialize the HBM store or an attention backend.
 Its [round-trip benchmark and report](optimization-native-codec-20261030.md)
 compare actual pinned-host transfers. Initialization and JIT belong outside the
 steady-state timing window. The [design contract](design/native-attention-external-codec.md)
-defines native-page ownership, operation ordering and the unimplemented serving boundary.
+defines native-page ownership and operation ordering. Its implemented model
+boundary is documented by [native transfer](design/native-lmcache-transfer.md),
+[the vLLM connector](design/native-codec-vllm-connector.md),
+[pre-encoding probes](design/lmcache-probe.md) and
+[the validation protocol](design/native-codec-serving-validation.md).
+
+The native full-model driver accepts a connector JSON and a fixed token trace:
+
+```bash
+VLLM_USE_V2_MODEL_RUNNER=1 python -m benchmarks.native_codec_serving_bench \
+    --model /path/to/model --connector-config /path/to/connector.json \
+    --trace /path/to/trace.json --mode compressed \
+    --l1-memory-bytes 1073741824 --kv-cache-memory-bytes 4294967296 \
+    --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 2048 \
+    --out /path/to/results/native-serving.json
+```
+
+Before an authorized GPU run, validate these inputs with the same command plus
+`--validate-only`; this does not load the model or verify GPU execution. The
+parent must select one exclusively allocated GPU through `CUDA_VISIBLE_DEVICES`
+and start a real LMCache CPU L1 server whose capacity and identity match the
+connector JSON. The driver uses the pinned V2 runner, eager execution, BF16 KV,
+128-token pages, native FA3 and prefix caching, with the CUSTOM plugin disabled.
+It requests `FragPackNativeConnector` and requires the outer connector setting
+`kv_load_failure_policy="recompute"`. Raw uses `--mode raw`, connector mode `raw`
+and identity representation `native-raw`; compressed uses representation `fpkb`.
+
+The driver runs an offline model engine, not an HTTP frontend. Its timed trace
+includes request execution and explicit draining of finish-time saves. Explicit
+model/codec initialization is separate; lazy JIT first triggered during a timed
+request remains included. `LLM.generate()` returning output alone does not
+prove that the final store metadata and publication have drained. The driver
+steps the engine and checks the connector's public `snapshot()` completion
+state before recording a completed step or resetting GPU APC. Raw and compressed
+must use the same trace, save policy, external capacity and fully accounted GPU
+budget. No throughput or TTFT improvement follows merely from a successful run.
 
 The expanded read/restore comparison accepts a JSON list of cases. Each case
 specifies `name`, per-request `contexts` and `queries`, `shared_prefix` in tokens,

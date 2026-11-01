@@ -1,8 +1,9 @@
 # 数据流程
 
-本文档覆盖当前本地 attention 路径，以及已经实现的显式 LMCache 存取 API。
-图中的“集成调用者”代表持有请求和物理 block 生命周期的调用代码；当前仓库尚未
-把该角色接入 vLLM scheduler 的外部缓存 hooks。L2/NVMe 只在
+本文档主要描述 HBM 常驻压缩 attention 和显式 LMCache 存取 API。
+下列图中的“集成调用者”持有请求和物理 block 生命周期，这条 HBM 路线尚未
+接入 vLLM scheduler 的外部缓存 hooks。已实现的原生 attention 路线另见末节。
+L2/NVMe 只在
 [后续设计](lmcache-roadmap.md)中描述，不属于下列已实现存取路径。
 
 ## 新 KV 与本地 attention
@@ -147,8 +148,9 @@ GPU 导出和 pinned-host 槽由 FragPack 持有；LMCache 的预留只接收同
 
 ## 前缀匹配、恢复与 attention 就绪
 
-下面是显式 API 已支持的顺序。将“成功恢复后跳过相应 prefill”接入真实 vLLM
-scheduler 仍属于后续工作；单独加载插件不会自动改变服务的 token 计算量。
+下面是 HBM 显式 API 已支持的顺序。将这条路径的“成功恢复后跳过相应 prefill”
+接入 vLLM scheduler 仍属于后续工作；单独加载 HBM attention 插件不会自动
+触发外部前缀恢复。
 
 ```mermaid
 sequenceDiagram
@@ -215,5 +217,26 @@ gather + FA3，decode 与实验性 fused prefill 则在各自 kernel 内读取�
 StorageManager。不能在 transfer worker 自己执行的 Future callback 中调用 close，
 以免 join 自己。已接纳的 Future 不支持通过取消跳过 buffer 寿命要求。
 
-读写预留的过期代次、L2 对象长度发现与恢复、跨 TP rank 的共同命中，以及 vLLM
-load/save 事件接线分别需要额外设计和验证，见[后续设计](lmcache-roadmap.md)。
+读写预留的过期代次、L2 对象长度发现与恢复、跨 TP rank 的共同命中，以及 HBM
+路线的 vLLM load/save 接线仍需设计和验证，见[后续设计](lmcache-roadmap.md)。
+
+## 原生 attention 的外部 codec 流程
+
+`FragPackNativeConnector` 已连接 vLLM 的公开 scheduler/worker hooks。活动 KV
+保持标准 BF16 pages，attention 不读取压缩记录，也不使用上述 gather/fused backend。
+
+1. 正常请求完成后，connector 延迟释放完整 prompt blocks，并提交有界保存批次。
+   `NativeBlockTransfer` 先做逐键存在性查询；仅对缺失对象编码、D2H 并发布到 CPU L1。
+   源页在预查期间也保持受保护，全部源读取完成后才可释放，不必等远端发布结束。
+2. 新请求先使用本地 APC；外部查询只提供连续前缀候选。worker 将外部 bytes 经
+   H2D 和 decode/scatter 恢复到独占的原生页。成功完成后 scheduler 才跳过相应
+   prefill，失败则重算；最终 prompt token 和不完整尾部仍由模型计算。
+3. raw 对照沿用相同保存时机、批次和恢复协议，使用 FPNR raw gather/scatter；
+   compressed 使用 FPKB 编解码。空 model steps 也驱动完成通知和发布排空。
+
+所有权、取消和失败细节见[原生 connector](native-codec-vllm-connector.md)、
+[传输设计](native-lmcache-transfer.md)。原生路线的
+[有限协议主模型对照](../validation-native-codec-serving-20261101.md) 已完成，范围是
+原生 FA3、TP=1、eager、真实 CPU L1 和离线串行回放。总请求及发布窗口改善不等于
+TTFT 加速，W18 外部恢复 TTFT 高于重算。HTTP、NVMe、TP>1、CUDA Graph 及
+HBM 路线的 scheduler 接线仍不属于本轮验证范围。

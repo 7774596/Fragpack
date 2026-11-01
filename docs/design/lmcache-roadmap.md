@@ -1,13 +1,18 @@
 # LMCache 接入路线与接口边界
 
-本文记录本轮暂停外部缓存接入工作时已经确定的路线，便于以后继续。当前已实现的
-CPU L1 插件、显式前缀 API 和有界传输队列见
-[FragPack 记录的 LMCache 存取](lmcache-integration.md)。下面涉及的 vLLM 调度接线、
-L2 恢复和强租约保证均未实现，不能按可用配置启动。
+本文保留 HBM 常驻压缩路线的后续接线，以及两条路线共同面对的 L2 和租约边界。
+CPU L1 插件、HBM 显式前缀 API 和有界传输见
+[FragPack 记录的 LMCache 存取](lmcache-integration.md)。独立的
+[原生 connector](native-codec-vllm-connector.md) 和
+[原生页传输](native-lmcache-transfer.md) 已实现，小模型功能与
+[有限协议主模型对照](../validation-native-codec-serving-20261101.md) 已完成：
+原生 FA3、TP=1、eager、CPU L1、离线串行回放。HTTP、NVMe、TP>1 和 CUDA Graph
+仍未验证；下文的 HBM 调度接线、L2 恢复和强租约保证仍未实现。
 
-设计目标保持为：GPU 保存和计算 FragPack 记录，LMCache 管理外部容量和驻留；
-跨层传输继续使用 FPKB，不为了适配普通 KV connector 重新构造一套全历史 BF16
-cache。固定官方 LMCache `0.5.6`，以后升级须重新核对公开接口、数据布局和验证。
+HBM 路线在 GPU 保存和计算 FragPack 记录，外部直接传输 FPKB；原生路线保留
+标准 BF16 GPU pages，只在外部保存/恢复时编解码，不增加活动 GPU KV 容量。
+LMCache 均管理外部容量和驻留，固定官方 `0.5.6`；升级须重新核对公开接口、
+数据布局和验证。当前主线是压缩与传输，缓存策略仅作辅助优化。
 
 ---
 
@@ -18,7 +23,7 @@ cache。固定官方 LMCache `0.5.6`，以后升级须重新核对公开接口�
 | 记录格式、GPU export/import、raw overflow | FragPack 核心，已存在 | 否 |
 | prefix identity、实际长度校验、有界后台传输 | FragPack integration，已实现 | 否 |
 | CPU L1 的实际长度预约和存取 | FragPack server module 调用公开 API，已实现 | 否，但沿用 stock TTL 限制 |
-| vLLM 请求/物理块生命周期与调度完成事件 | 后续 FragPack-owned adapter | 不必然；可在外部 adapter 中报告自己的完成事件 |
+| vLLM 请求/物理块生命周期与调度完成事件 | 原生 connector 已实现；HBM adapter 接线待完成 | 否；通过公开 connector hooks 报告自身完成事件 |
 | 原生 L2 prefetch 在分配前取得每对象长度 | LMCache StorageManager/controller/L2 metadata 的跨层契约 | 保持原生对象和 prefetch 流程时需要修改 |
 | 跨 TTL 的安全 buffer 生命周期、准确取消和逐对象完成 | LMCache reservation/lease 与 allocator 契约 | 需要 LMCache 提供 generation 和 pin/finish/cancel 能力 |
 | 使用 stock engine/router 的后台完成事件 | stock engine/router 的事件时机 | 若坚持使用这些内建事件，需要适配其语义；自有 adapter 可以避免这项修改 |
@@ -30,9 +35,11 @@ LMCache 原生存储流程。
 
 ---
 
-## vLLM 接线：把显式 API 绑定到真实请求
+## HBM 路线的 vLLM 接线：把显式 API 绑定到真实请求
 
-`PrefixCacheConnector` 当前是调用方 API，不是 `KVConnectorBase_V1` 实现。
+本节只描述 HBM arena 的待办。原生 BF16 路线已由 `FragPackNativeConnector`
+实现 `KVConnectorBase_V1`，不要求 HBM 的 `CUSTOM` backend 或 runner wrapper。
+`PrefixCacheConnector` 仍是 HBM 调用方 API，不是 `KVConnectorBase_V1` 实现。
 安装 LMCache server module 或把普通 `LMCacheMPConnector` 配到 FragPack arena
 上，均不会自动得到正确的 prefix reuse。后者按 dense KV layout 搬运，不能替代
 携带记录长度、overflow 和码表身份的 FPKB。
@@ -63,7 +70,7 @@ FPKB 不同 block 的实际长度不同。stock 0.5.6 可以在写入时按单�
 提供足够的逐对象尺寸信息。用 `max_blob_bytes` 代替实际大小，不能证明实际存储
 长度、I/O 长度和目的 buffer layout 一致，也会掩盖容量收益。
 
-计划中的原生恢复流程是：
+计划中的 LMCache L2 恢复流程是：
 
 ```mermaid
 sequenceDiagram
@@ -137,25 +144,28 @@ CUDA DMA 长时间使用可过期 reservation；不确定结果会停用 client/
 
 ## 后续优化与验收顺序
 
-下一阶段先补齐请求级接线和明确的失败恢复，再考虑扩大吞吐。以下阶段是继续外部
-缓存工作时的顺序，不代表已有实现或新的实验结果。
+原生路线已完成相同 KV/L1 预算下的 raw/compressed 测量，计入初次编码、
+恢复、重复使用与后台保存发布开销，协议见[验证设计](native-codec-serving-validation.md)。
+本轮总请求及发布窗口改善不等于 TTFT 加速，W18 外部恢复 TTFT 反而高于重算。
+下表保留扩大外部缓存范围时的验收要求；L2、HBM 接线及扩展范围不属于已完成能力。
 
 | 阶段 | 验收内容 | 证据要求 |
 |------|----------|----------|
-| L1 serving | 外部命中真正跳过计算，未满尾块留本地，正确处理取消/preemption、重复保存和本地 APC | 清除 GPU 本地前缀后证明实际外部读取、成功 import 和正确请求结果；不能只看 lookup 计数 |
+| L1 serving | 原生小模型功能和有限协议主模型对照已完成；HBM 接线待实现；扩大取消/preemption 等运行覆盖 | 通过实际外部读取、成功恢复和请求结果核验新增场景；不能只看 lookup 计数 |
 | L2 尺寸与租约 | 完成逐对象长度发现、原生分配、持久化和强所有权协议 | 先 CPU 故障注入，再小规模 GPU；覆盖失败清理和承诺支持的重启模式 |
 | L2 全路径 | 强制 L1 miss，确认 L2 read、L1 promotion、GPU import，下一轮 L1 reuse | 分开记录 L1/L2 命中来源、实际读写字节和完成状态 |
-| 公平对照 | 同模型、相同 serving 参数和可解释的容量预算下对比 BF16 与 FragPack | cold miss、L1 hit、L2 hit 分开；报告 TTFT、吞吐、传输字节和所有辅助内存 |
+| 公平对照扩展 | 已完成同模型、固定预算的原生 Raw/压缩 CPU L1 对照；L2 和并发性能仍需独立实验 | cold miss、L1 hit、L2 hit 分开；报告 TTFT、吞吐、传输字节和所有辅助内存 |
 | 扩展范围 | TP>1、完整模型 CUDA Graph、跨引擎共享或直接存储 DMA | 单独设计与验证，不从 TP=1 eager 功能通过推导支持 |
 
-性能探索围绕已识别的代价展开：有效 L1/L2 驻留容量、export/import 开销、RPC 与 CPU
+性能探索围绕已识别的代价展开：有效外部驻留容量、encode/decode 或 export/import 开销、RPC 与 CPU
 bytes 拷贝、保存与恢复的排队干扰，以及有限 transfer slots 的接纳策略。当前一个
 worker 处理一套 slots、一个 remote client 串行 RPC，是清晰可验证的起点，不代表
 高并发最优实现。调整 batch、分离 store/restore worker、减少重复搬运或更换传输方式
 之前，应先测量这些环节各自占比，并保留原有完成点和所有权约束。
 
-报告内存时把 arena、unfinished-block staging、scratch、overflow、attention
-workspace、GPU transfer pool、pinned transfer pool、CPU RPC copies 和 L1/L2
-实际对象占用分开。编码更快、blob 更小或单层 kernel 更快，均不能直接作为 serving
+报告内存时按路线区分 HBM 的 arena、unfinished-block staging、scratch、overflow、
+attention workspace，以及原生路线的标准 BF16 pages、encode/decode 工作区；再分别
+列出 GPU/pinned transfer pool、CPU RPC copies 和外部实际对象占用。
+编码更快、blob 更小或单层 kernel 更快，均不能直接作为 serving
 TTFT/TPOT 改善的结论。原始版本选择、候选方案和验收动机保留在
 [初始接入目标](../lmcache-integration-target-20261030.md)。

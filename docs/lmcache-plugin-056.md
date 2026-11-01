@@ -1,13 +1,18 @@
 # LMCache 0.5.6 接入与验证
 
 本页保留固定依赖、启动配置、显式调用示例及 2026-10-30 的验证记录。
+历史验证段的版本、计数与范围保持当时含义，不代表当前所有 integration 的状态。
 当前设计正文见 [LMCache 压缩记录接入](design/lmcache-integration.md)，
 未实现的系统能力与原版接口边界见 [后续接入与优化](design/lmcache-roadmap.md)。
 完整系统入口为 [FragPack 系统设计](design/README.md)。
 
-当前插件通过官方 0.5.6 公开接口保存和恢复 CPU L1 中的变长 FPKB 记录，
-由 FragPack 管理有界传输池与后台 GPU 传输。尚未接入 vLLM scheduler，
-不启用 L2 adapter；安装插件本身不会自动启用模型服务的外部前缀复用。
+本文的 HBM 显式路线通过官方 0.5.6 公开接口保存和恢复 CPU L1 中的变长 FPKB
+记录，由 FragPack 管理有界传输池与后台 GPU 传输。这条路线尚未接入 vLLM
+scheduler。独立的[原生 connector](design/native-codec-vllm-connector.md) 已通过
+公开 hooks 接入原生 BF16 pages，并完成[2026-11-01 主模型对照](validation-native-codec-serving-20261101.md)。
+其 FPKB 编解码和 FPNR Raw 对照使用[原生页传输](design/native-lmcache-transfer.md)，
+不使用下文的 HBM export/import。两条路线均不启用 L2 adapter；安装 server module
+本身不会自动配置模型 connector。原生路径配置见[开发说明](development.md)。
 
 ## Install and configure
 

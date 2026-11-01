@@ -1,12 +1,17 @@
 # FragPack 记录的 LMCache 存取
 
+本文详细描述 HBM 压缩记录的显式传输，以及两条路线共享的 CPU L1 字节服务。
 FragPack 通过官方 LMCache `0.5.6` 的外部 server module 接口，把已完成 block
 的压缩记录存入 CPU L1，命中时重新装入 GPU。传输使用现有 `FPKB` block blob，
 包含一个 TP rank 的全部层；保存时不重新编码，恢复时不先还原整块 BF16 KV。
 
-当前实现是显式的 prefix lookup、store 和 restore API，加上独立后台传输线程。
-它已经通过真实 LMCache 内存层和 RPC 的功能验证，但尚未绑定 vLLM scheduler，
-也不启用 NVMe/L2 恢复。后续设计见 [接入路线与接口边界](lmcache-roadmap.md)；
+HBM 路线是显式 prefix lookup、store 和 restore API，加上独立后台传输线程。
+它已通过真实 LMCache 内存层和 RPC 的功能验证，尚未绑定 vLLM scheduler。
+独立的[原生 connector](native-codec-vllm-connector.md) 已接入公开调度 hooks，
+通过 [`NativeBlockTransfer`](native-lmcache-transfer.md) 对标准 BF16 pages
+执行编码和恢复，已完成小模型功能和有限协议主模型对照；该路径不使用下文的
+HBM export/import。
+两条路线均不启用 NVMe/L2 恢复。后续设计见 [接入路线与接口边界](lmcache-roadmap.md)；
 安装、启动参数和验证记录见 [接入说明](../lmcache-plugin-056.md)。
 
 ---
@@ -25,8 +30,8 @@ URL 和 SHA256 固定。运行期只检查 distribution version 为 `0.5.6`，�
 | `PrefixCacheConnector` | `integrations/lmcache/connector.py` | 把完整 token 前缀映射为显式查找、分批保存和恢复操作；不接管引擎 block 分配 |
 | `BlockTransfer` | `integrations/lmcache/transfer.py` | 固定 GPU/锁页内存池、导出事件、后台 D2H/H2D、RPC、导入状态和完成 Future |
 | `RemoteBlobClient` | `integrations/lmcache/client.py` | 使用官方 `RequestClient.server_module_call` 发送有界字节消息；管理本客户端的不确定 RPC 状态 |
-| FPKB / RPC 校验 | `integrations/lmcache/protocol.py` | 检查 envelope、实际长度和身份，规范化未定义 padding；编解码 `FPLM` 消息 |
-| `FragPackServerModule` | `integrations/lmcache/server.py` | 通过官方 factory 加载，注册 `fragpack.blob.v1`，解析 `put/get/lookup` |
+| FPKB / FPNR / RPC 校验 | `integrations/lmcache/protocol.py` | 按 representation 检查 envelope、实际长度和身份，规范化未定义 padding；编解码 `FPLM` 消息 |
+| `FragPackServerModule` | `integrations/lmcache/server.py` | 通过官方 factory 加载，注册 `fragpack.blob.v1`，解析 `put/get/lookup/probe` |
 | `LMCacheL1Store` | `integrations/lmcache/storage.py` | 通过公开 StorageManager API 预约实际长度、同步 CPU 拷贝、确认发布和释放读锁 |
 | `HbmKvStore` | `ops/hbm_kv.py` | GPU 记录、arena/overflow、`export_blocks` / `import_blocks`；不依赖 LMCache |
 | LMCache `StorageManager` | LMCache server | L1 对象、分配、驻留、淘汰和原有租约机制；仍由 LMCache 所有 |
@@ -63,11 +68,15 @@ CPU bytes，再同步写入 L1；GPU DMA 不直接指向可能过期的 LMCache 
 
 ## 前缀身份与命中语义
 
-`CacheIdentity.namespace` 是以下字段的规范 JSON 的 SHA256：FPKB 格式和版本、
+`CacheIdentity.namespace` 是以下字段的规范 JSON 的 SHA256：表示格式和版本、
 128-token block、128 维 head、`model_revision`、有符号 int64 `table_digest`、
 层数、当前 rank 的 KV head 数、`rank` 和 `world_size`。`model_revision` 必须
 由调用方区分影响 KV 的模型权重、adapter、位置编码和 attention 配置，不能只用
 一个可变模型别名。
+
+默认 `representation="fpkb"` 保持原有 FPKB namespace；原生 raw 对照使用
+`representation="native-raw"` 与 FPNR 格式，生成独立 namespace。FPNR 的
+token-major raw 记录不同于 FPKB raw fallback 的内核布局，不能混用 importer。
 
 `block_keys()` 在 CPU 上处理完整的 token 序列。初始 hash 包含 namespace 和
 tenant salt，之后每个完整的 128-token block 在上一个 hash 上继续链式计算；
@@ -89,6 +98,10 @@ salt 最长 128 字符，不接受 `@`、`/`、反斜杠或 NUL。LMCache `Objec
 越过一个缺口复用更后面的块。远程 lookup 每次最多发送 32 个 key，长前缀分组查询；
 命中后会释放 L1 读锁，因此结果只是当时的可用性提示，不为后续 restore 保留驻留。
 
+`probe_many()` 则逐 key 检查存在性，遇到缺口仍继续，用于 native transfer 编码前
+跳过已存在对象；它不读取 payload，也不持有驻留租约。HBM `BlockTransfer` 的
+既有导出路径不因此自动省去 export/D2H。见[逐键查询设计](lmcache-probe.md)。
+
 `PrefixMatch.token_count = 128 * len(keys)`。调度器只有在后续 restore 成功后
 才能跳过这些 token 的计算，不能仅凭 lookup 命中提前宣布恢复成功。分片隔离的 key
 也不等于 TP 多 rank 的一致发布或一致恢复；当前验证范围为 TP=1。
@@ -97,6 +110,7 @@ salt 最长 128 字符，不接受 `@`、`/`、反斜杠或 NUL。LMCache `Objec
 
 ## Block blob 与 RPC 布局
 
+以下是 FPKB 布局；原生 raw 对照的 FPNR 约束见[原生传输](native-lmcache-transfer.md)。
 一个 FPKB blob 保存一个完整 block 的全部层，按 4 KiB 对齐。设 `L` 为层数、
 `H` 为本 rank 的 KV head 数：
 
@@ -278,9 +292,14 @@ finish/cancel 接口，详见 [后续边界](lmcache-roadmap.md)。
 
 ## 验证范围
 
-当前已有 CPU 合约测试、官方 0.5.6 的真实 CPU L1/ZMQ 测试，以及 GPU 导出 →
+HBM 显式路径已有 CPU 合约测试、官方 0.5.6 的真实 CPU L1/ZMQ 测试，以及 GPU 导出 →
 真实 RPC/L1 → GPU 导入的逐位恢复验证。具体版本、计数和日志见
 [2026-10-30 接入验证](../lmcache-plugin-056.md)。
-这些结果不代表 full-model serving、NVMe 恢复、TP>1、transfer CUDA Graph 或
-端到端性能收益。attention 如何消费导入记录仍由
+这些历史结果不代表 full-model serving、NVMe 恢复、TP>1、transfer CUDA Graph 或
+端到端性能收益。HBM attention 如何消费导入记录仍由
 [HBM 常驻压缩 KV](hbm-resident-kv.md) 中的默认 gather/FA3 或实验 fused 路径决定。
+
+原生 connector 的小模型功能与[固定预算主模型对照](../validation-native-codec-serving-20261101.md)
+已完成，范围为原生 FA3、TP=1、eager、真实 CPU L1、离线串行回放。总请求及发布
+窗口改善不等于 TTFT 加速；W18 外部恢复 TTFT 高于重算。HTTP 服务、NVMe、TP>1
+和 CUDA Graph 仍未验证。独立的验证协议见[原生 codec serving 验证](native-codec-serving-validation.md)。

@@ -1,0 +1,310 @@
+{
+  "schema": "fragpack-native-serving-functional-v1",
+  "date": "2026-11-01",
+  "git_head": "a5ddb75084c93bc1425d65f83f9fb5ca2352585f",
+  "branch": "feat/native-attention-external-codec",
+  "gpu": "NVIDIA H800 PCIe",
+  "gpu_uuid": "GPU-fb9880e5-6155-b080-837a-948d5fd08b4c",
+  "cpu_tests": {
+    "passed": 156,
+    "log": "logs/cpu-integration-final.log"
+  },
+  "small_model": {
+    "compressed": {
+      "run": "small-model-final-contract",
+      "model": "Qwen3-0.6B",
+      "scope": "functional only; borrowed table, not performance comparison",
+      "status": "complete",
+      "result_sha256": "375ef5874fdb016aa61de9d828093f717e62ead2daa1412070589cbb8371d1c3",
+      "phases": [
+        {
+          "phase": "cold",
+          "reset_gpu_cache": false,
+          "cached_tokens": [
+            0
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "gpu-hit",
+          "reset_gpu_cache": false,
+          "cached_tokens": [
+            512
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "external-hit",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            512
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 4
+        },
+        {
+          "phase": "changed-early",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            0
+          ],
+          "output_hashes": [
+            "2ef9452fe0ec6b7e88fb2367af873c2cb33b0280fc7e1ef30ac2289f2e2e80b6"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "changed-late",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            256
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 2
+        }
+      ],
+      "final_connector": {
+        "mode": "compressed",
+        "namespace": "1ef219a37270119a1920491902679fddf3b439252e0fe063610e59ae8090ab7f",
+        "pending": false,
+        "counters": {
+          "store_requests": 5,
+          "store_blocks": 20,
+          "store_failures": 0,
+          "restore_requests": 2,
+          "restore_blocks": 6,
+          "restore_failures": 0
+        },
+        "pending_map_bytes": 0,
+        "retained_finish_count": 0,
+        "memory": {
+          "gpu_encode": 117593176,
+          "gpu_decode": 58761784,
+          "pinned_transfer": 58736640,
+          "pinned_metadata": 56,
+          "gpu_maps_bound": 48
+        },
+        "transfer": {
+          "store_requests": 5,
+          "coalesced_blocks": 0,
+          "queue_wait_seconds": 0.005796925048343837,
+          "probe_seconds": 0.0223218229948543,
+          "prechecked_blocks": 20,
+          "skipped_blocks": 10,
+          "source_hold_seconds": 0.0307817860157229,
+          "encoded_blocks": 10,
+          "put_seconds": 0.543370092054829,
+          "rpc_upload_bytes": 127008768,
+          "published_blocks": 10,
+          "encode_or_gather_seconds": 0.005127609008923173,
+          "d2h_seconds": 0.002721066994126886,
+          "d2h_payload_bytes": 127008768,
+          "k_record_bytes": 53548096,
+          "v_record_bytes": 73400320,
+          "encoded_records": 4480,
+          "raw_fallback_records": 2329,
+          "cpu_pack_seconds": 0.12313383299624547,
+          "restore_requests": 2,
+          "get_seconds": 0.2720105600892566,
+          "rpc_download_bytes": 76226560,
+          "restored_blocks": 6,
+          "cpu_unpack_seconds": 0.020679178007412702,
+          "h2d_seconds": 0.0018354569911025465,
+          "h2d_payload_bytes": 76226560,
+          "decode_or_scatter_seconds": 0.003074497915804386
+        }
+      },
+      "server_closed": true,
+      "gpu_initialized_by_server": false,
+      "exact_final_source_verified": false
+    },
+    "raw": {
+      "run": "small-model-raw-wire",
+      "model": "Qwen3-0.6B",
+      "scope": "functional only; borrowed table, not performance comparison",
+      "status": "complete",
+      "result_sha256": "12eccda5fee7d5da7829052a03c85ce6affcccc5497fcb2e9323d4180a837fe9",
+      "phases": [
+        {
+          "phase": "cold",
+          "reset_gpu_cache": false,
+          "cached_tokens": [
+            0
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "gpu-hit",
+          "reset_gpu_cache": false,
+          "cached_tokens": [
+            512
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "external-hit",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            512
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 4
+        },
+        {
+          "phase": "changed-early",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            0
+          ],
+          "output_hashes": [
+            "2ef9452fe0ec6b7e88fb2367af873c2cb33b0280fc7e1ef30ac2289f2e2e80b6"
+          ],
+          "restore_blocks": 0
+        },
+        {
+          "phase": "changed-late",
+          "reset_gpu_cache": true,
+          "cached_tokens": [
+            256
+          ],
+          "output_hashes": [
+            "8f02a60034e8f4b84c6874ff10e46532e32e2e955dd59e9ebdbbc3ebd7df3c9e"
+          ],
+          "restore_blocks": 2
+        }
+      ],
+      "final_connector": {
+        "mode": "raw",
+        "namespace": "0aad4d71c611612c8876ef3ac293889453d70e05baad0aaa7d52d1f255971ba0",
+        "pending": false,
+        "counters": {
+          "store_requests": 5,
+          "store_blocks": 20,
+          "store_failures": 0,
+          "restore_requests": 2,
+          "restore_blocks": 6,
+          "restore_failures": 0
+        },
+        "pending_map_bytes": 0,
+        "retained_finish_count": 0,
+        "memory": {
+          "gpu_raw": 58720272,
+          "pinned_transfer": 58736640,
+          "pinned_metadata": 56,
+          "gpu_maps_bound": 48
+        },
+        "transfer": {
+          "store_requests": 5,
+          "coalesced_blocks": 0,
+          "queue_wait_seconds": 0.0027850660844706,
+          "probe_seconds": 0.027154409035574645,
+          "prechecked_blocks": 20,
+          "skipped_blocks": 10,
+          "source_hold_seconds": 0.03370935603743419,
+          "raw_gathered_blocks": 10,
+          "put_seconds": 0.679056401073467,
+          "rpc_upload_bytes": 146841600,
+          "published_blocks": 10,
+          "encode_or_gather_seconds": 0.003278060001321137,
+          "d2h_seconds": 0.02851731493137777,
+          "d2h_payload_bytes": 146800640,
+          "k_record_bytes": 73400320,
+          "v_record_bytes": 73400320,
+          "raw_records": 4480,
+          "cpu_pack_seconds": 0.09090120997279882,
+          "restore_requests": 2,
+          "get_seconds": 0.22723170998506248,
+          "rpc_download_bytes": 88104960,
+          "restored_blocks": 6,
+          "cpu_unpack_seconds": 0.06441897997865453,
+          "h2d_seconds": 0.00336840603267774,
+          "h2d_payload_bytes": 88080384,
+          "decode_or_scatter_seconds": 0.0021179160103201866
+        }
+      },
+      "server_closed": true,
+      "gpu_initialized_by_server": false,
+      "exact_final_source_verified": true
+    }
+  },
+  "gpu_tests": {
+    "passed": 6,
+    "status": "passed",
+    "foreign_processes_seen": false,
+    "gpu_released": true
+  },
+  "source_files_sha256": {
+    "benchmarks/native_codec_l1_server.py": "460414917f93cacc16e265a8d1a4437167d9d688b3325c5fbb63fd82035cfd3a",
+    "benchmarks/native_codec_serving_bench.py": "8d0de569a3129c30d069833982295b9cd6f863d0a4394afec50a48bd6318e134",
+    "fragpack/__init__.py": "6365ab36a1234cb1632d96221e214c74d7b4d9647b221386ac61e3b7812c3692",
+    "fragpack/compression/__init__.py": "bb3f224a8854b404b2df77bc131d05c881eeb9e037e3d09b0ba1291dbaec8d37",
+    "fragpack/compression/attn_page.py": "d8402404f3daacd9502495bf99ebd8a90c51c754203963453244c2b269df9806",
+    "fragpack/compression/attn_tables.py": "3bbf421efe74bbea173520c584a4a72bba0d4296915518a548bc6b51137d6daf",
+    "fragpack/integrations/__init__.py": "e8475d8103a0e23eb6e8db37d906d6ea80a04975b8f33908c06d23514b184b15",
+    "fragpack/integrations/lmcache/__init__.py": "cdeaaff4fb17c1eae2c3f3e058bc179d96e1d0f07f070a7453454e5f50ccc99a",
+    "fragpack/integrations/lmcache/client.py": "fe6900f3790fde0055b439ae1ca783a222650bc8d5d500dfe59421e672bae9b4",
+    "fragpack/integrations/lmcache/connector.py": "310a64cc4a4b9221342c52f972fb3158221c797a5eaf6bf7ccd9d60449553e1f",
+    "fragpack/integrations/lmcache/identity.py": "fe93d989c5f9e3de4f93e6501d7060d6823f1a0da98a2e11fd1e7d4f6f79ee21",
+    "fragpack/integrations/lmcache/native_transfer.py": "d2c61952f3665973cb5770d32c3832ab416d373d833fe2a01cc0a7f2529a7135",
+    "fragpack/integrations/lmcache/protocol.py": "030d87bca2697c9813cdd0c070ff2ec64e1f8c3ece2af08cbb0a7b8b8125c212",
+    "fragpack/integrations/lmcache/server.py": "2c0f838af131601c9f19d9f32925d5d8762b9fbd97ad94ec29375616929d68f7",
+    "fragpack/integrations/lmcache/storage.py": "ec5c09d1297b9280585112c349112806d8d4f5149f35753515bbaeed2d50ac8d",
+    "fragpack/integrations/lmcache/transfer.py": "1757a5de8620feb8abdfb348ac1e0c5102522b16332aa2b1119246693ab9e784",
+    "fragpack/integrations/vllm/__init__.py": "b941ce4b5e7227c4daab910041cf6b6c9fdad9543139d6e170a99f9c5baed3a7",
+    "fragpack/integrations/vllm/backend.py": "d9949730d4d60bc90bf45c79c3758ed1653236e8fc51525d10ead808948fdf10",
+    "fragpack/integrations/vllm/capacity.py": "589036f232d472b43ff36d5927fb448c253b1cc17c4a69f12185b1017d635ca5",
+    "fragpack/integrations/vllm/compat.py": "98f7246b89f9cf6e77df4f3eeef1aac5de74a6840b72e93d4781636d7ba8f85a",
+    "fragpack/integrations/vllm/lifecycle.py": "daac6d26576fb3c7f4ee27ccf1855ef0457161ebf20f5b88958cb442ddca5c93",
+    "fragpack/integrations/vllm/native_connector.py": "440daf44524198afa63a6856bedc1fb33bff4e8a5723a6f1cd374ef1ec2c3d10",
+    "fragpack/integrations/vllm/native_connector_state.py": "562c547f7e18d03b1dafd10f64714ed314c719a288b9706f03a714da831330f6",
+    "fragpack/integrations/vllm/plugin.py": "19bee4d21c6c7e095dca7f413827054414eccea71144696ec9372f1000d2696d",
+    "fragpack/integrations/vllm/prefill.py": "dbfc6863e3429be70644be003e1d55c90b5644a160722dd016817a92e4d68fa5",
+    "fragpack/logging.py": "5d1e1fcadf72be79a72f24cba3ac729070dc4b5e86caa07bc0e09ce872acb51a",
+    "fragpack/ops/__init__.py": "c5f83dca7ea63405f3d89062d3afb4db4d18ae62cc03ce055db27fc15b3e0a47",
+    "fragpack/ops/fragpack_common.cuh": "7eabc2316bd672bd1f725304f61549aa481fd88a5015c453ff00c0190cf0219a",
+    "fragpack/ops/fragpack_ext.cpp": "b55800e8fb68b7142b940746420b1426ab08286bb9f795a4c2dd4cdc43fd59b0",
+    "fragpack/ops/fragpack_ext.py": "2ec8b031a8481b8c75553afc3aab2125576068f366c9f136f7d8c3dbd1a8366b",
+    "fragpack/ops/fused_attn_decode.cu": "b2e85ffc7b96bf6f2aab54a6b81c35724c8cbc3572ab3ec5036f1f7b424487bc",
+    "fragpack/ops/fused_attn_decode.py": "d4276a289e1ddaedf4a712c22c98550ab753580094c7a83d2f752427c6cc577c",
+    "fragpack/ops/fused_attn_prefill.cu": "cf55c15c9de76a92dbc576141edcefa71c65e22d390fd89fb7a64b11fc465787",
+    "fragpack/ops/fused_attn_prefill.py": "4ece6b7454987f6273414e389d54e650a5bf67bfde4742f77432e52dd95041cf",
+    "fragpack/ops/hbm_kv.cu": "17a51331bccc9dc925d94fe914e6eda7746823e15ff1e43964736dcdcf89c56d",
+    "fragpack/ops/hbm_kv.py": "38b4087d4576250f6654bd5cee0a33bdbf7952ad88c5b8ca291a221d429e90c9",
+    "fragpack/ops/native_codec.cu": "e024cbfe6b8a9e280c24a153f75b11b76d12df0e4610c25fcd4cd9ea18980175",
+    "fragpack/ops/native_codec.py": "0d81c9e5542448a87b0165d54fc732f8659b620e1004fb75ec1d98c97b484850",
+    "fragpack/ops/native_codec_ext.cpp": "5b65d4d368d33af1cc14441c0bc7232bfd6851db05688b3176fae414efaec00e",
+    "fragpack/ops/native_codec_ext.py": "21ee85d3d137e7765a4f216d12596458f2e0fce4a785a617ea6d7ba013a39e27",
+    "fragpack/ops/native_codec_pool.py": "d91699789b6d76343013eb18616b09c744a300073cf17627cbcd46bdea6d3487"
+  },
+  "failures_retained": [
+    {
+      "case": "first compressed GPU test",
+      "cause": "first JIT exceeded source_ready timeout",
+      "resolution": "compile at worker initialization; rerun case and final full six-case suite passed"
+    },
+    {
+      "case": "initial Raw wire prototype",
+      "cause": "token-major Raw bytes used FPKB envelope despite distinct record layout",
+      "resolution": "FPNR native-raw format/namespace, reject cross-layout reads; old performance results excluded"
+    }
+  ],
+  "source_snapshot_scope": "Final implementation after FPNR fix. Raw small-model run captured exact before/after hashes; compressed functional run predates the Raw format change and has no per-run source hash capture. Final six GPU cases test both modes after the fix."
+}

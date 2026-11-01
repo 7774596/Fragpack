@@ -1,19 +1,31 @@
 # 原生 attention 与外部 KV 压缩：研究方案
 
-状态：**独立 codec 往返及两轮优化已验证，尚未接入模型服务**。2026-10-30 从
+状态：**独立 codec、LMCache CPU L1 传输与原生 vLLM connector 已实现；小模型功能
+和有限协议主模型对照已完成**。2026-10-30 从
 `feat/lmcache-056-plugin` 的 `9edec04` 创建研究分支
 `feat/native-attention-external-codec`。新增独立 native-page codec，已完成逐位测试和
 真实 pinned-host D2H/H2D 对比；见[实验记录](../optimization-native-codec-20261030.md)。
 另已完成与 gather＋FA3、fused prefill 的
 [48 层只读对照](../comparison-native-codec-prefill-20261031.md)，覆盖驻留读取和外部恢复后读取。
-现有 HBM 常驻压缩路径保持不变。
+现有 HBM 常驻压缩路径保持不变。2026-11-01 新增的原生模型路径使用
+`NativeBlockTransfer` 和 `FragPackNativeConnector`，通过 Qwen3-0.6B、TP=1、
+eager、原生 FA3 与真实 CPU L1 的冷请求、本地命中、外部恢复及前缀修改功能检查。
+随后完成[固定预算主模型 Raw/压缩对照](../validation-native-codec-serving-20261101.md)，
+范围为原生 FA3、TP=1、eager、真实 CPU L1 和离线串行回放。总请求及发布窗口改善
+不等于 TTFT 加速，W18 外部恢复 TTFT 反而高于重算。HTTP、NVMe、TP>1 和
+CUDA Graph 仍未验证；HBM 路线的 scheduler connector 仍待实现。
+详细接口和执行边界分别见
+[传输合同](native-lmcache-transfer.md)、[vLLM 接线](native-codec-vllm-connector.md)、
+[编码前查询](lmcache-probe.md)及[验证协议](native-codec-serving-validation.md)。
 
 ## 判断与目标
 
-如果产品目标是可接入 vLLM、LMCache 的编解码插件，优先研究这条路线：
+当前主线是可接入 vLLM、LMCache 的压缩编解码插件：
 **活跃 GPU KV 保持原生 BF16，只有迁出到外部缓存的 KV 才压缩。**
 prefill、decode、KV 写入、attention backend 和 kernel 全部由原生 vLLM 执行。
 FragPack 仅在外部保存与恢复边界工作，不接入现有 CUSTOM attention 或 runner 包装。
+缓存规则只作为测量压缩成本的固定条件，编码前去重是减少重复工作的辅助优化；
+本轮不开发新的淘汰策略或预测预取算法。
 
 这能缩小适配边界，避免在每个 decode step 解压历史 KV，但不能扩大同一时刻
 活跃请求的 GPU KV 容量，也不解决单个请求的 raw KV 放不下的问题。
@@ -23,29 +35,25 @@ FragPack 仅在外部保存与恢复边界工作，不接入现有 CUSTOM attent
 ```mermaid
 flowchart LR
     A[原生 prefill / decode / KV 写入] <--> B[原生 GPU KV pages]
-    B -->|选中的完整冷块| C[GPU encode / pack]
+    B -->|请求结束后选中的完整 prompt 块| C[GPU encode / pack]
     C -->|压缩数据传输| D[LMCache 外部字节缓存]
     D -->|需要复用时传输| E[GPU decode / scatter]
     E -->|原生目标页就绪| B
 ```
 
-## 冷数据的定义与处理
+## 当前保存规则与后续可选策略
 
 对 full attention，活跃请求的历史 KV 每个 decode step 都要使用。
 token 较早或某一步 attention 权重较小，不构成无损卸载的理由。
-首版以**无活动引用、内容完整且不可变的 APC 块**为候选。
-整个已暂停请求是后续场景，必须由引擎确认暂停和恢复，不能自行释放其页。
+当前 connector 在请求正常结束时保存**已经计算完成的完整 prompt 块**；未满尾块和
+新生成的输出 token 不作为新的外存对象。Raw 与压缩采用相同保存时机和 LMCache L1
+容量策略。vLLM 本地 APC 命中仍优先；保存前的逐对象 probe 和本地在途合并可跳过
+已有副本或正在保存的 key，不改变缓存淘汰规则。
 
-| 状态 | 建议行为 |
-| --- | --- |
-| 任一活跃请求仍引用的 KV | 留在原生 GPU cache；不加入冷块迁出候选 |
-| 无活动引用，近期可能再用，GPU 暂无压力 | 保留原生 APC 命中机会，推迟编码和传输 |
-| 接近被回收，未来复用或重算价值较高 | 保护源页，压缩并外存；源读取结束后允许 GPU 页回收 |
-| 外部已经有有效不可变副本 | 不重复编码和上传；按引擎规则回收 GPU 页 |
-| 几乎不会复用、重算很便宜 | 丢弃，不为所有冷数据支付保存成本 |
-
-冷表示当前不活跃，不等于应当永久保存。选择还要考虑预计复用、重算成本、
-可用的连续前缀、链路压力和在途预算。不能只保存任意中间块并假定能跳过前缀缺口。
+接近 GPU 回收时再保存的 lazy offload 是后续可选策略，当前未接入。它需要在保存前
+核验源页身份、保护源引用，并判断连续前缀和在途预算；不能仅依据 token 较早来卸载
+活跃请求的 KV。整个已暂停请求的可靠恢复同样是后续场景。
+不能只保存任意中间块并假定能跳过前缀缺口。
 恢复后在请求活跃期间继续使用 raw GPU KV；保留外部副本，避免再次淘汰时重新上传。
 外部存在性查询只是瞬时信息：普通缓存丢失可回退重算，可靠暂停恢复则需要租约或驻留保证。
 
@@ -53,7 +61,7 @@ token 较早或某一步 attention 权重较小，不构成无损卸载的理由
 
 - 当前安装的 vLLM `0.30.0+cu129` 提供原生 KV 张量注册、批级加载与完成通知、
   block pool 绑定及引用保护。相关 connector、scheduler、block pool 和 V2 connector
-  文件与安装包 `RECORD` 哈希一致；这是源码核验，不是本方案的运行验证。
+  文件与安装包 `RECORD` 哈希一致。接口源码核验与上述小模型运行验证分别记录。
 - `KVConnectorBase_V1.bind_kv_cache_manager` / `bind_gpu_block_pool` 可接入页生命周期；
   `request_finished` 与完成通知可实现延迟释放。
   原版 `v1/simple_kv_offload/manager.py::_prepare_lazy_store_specs` 已从 free queue
@@ -68,16 +76,17 @@ token 较早或某一步 attention 权重较小，不构成无损卸载的理由
 
 因此，冷块/延迟迁出本身是已有机制。优先利用 LMCache 的调度能力，FragPack 提供 codec；
 不重做一个缓存系统，也不将“只迁出冷块”单独当作新贡献。
-当前 FragPack LMCache 插件尚未接通这条 scheduler/worker 路径，不能只改配置就运行。
+当前 `FragPackNativeConnector` 已接通独立 codec 的 scheduler/worker 路径，使用
+公开接口在请求结束后保存，在异步恢复完成后允许原生计算；尚未接入上述 lazy 策略。
 原版 raw offload 是生命周期参考和比较基线，其固定 dense 存储不能直接承载变长 FPKB。
 
 首版采用批级保存与恢复，逐层回调不承载工作。原版逐层 Python 回调对 FULL CUDA Graph
 有额外限制；采用批级接口也仍需单独验证 graph、取消和抢占，不能据此宣称已兼容。
 
-## 需要新增的边界
+## 已实现的模块边界
 
 可复用 BF16 位级编码、码表、raw fallback、FPKB 格式校验、解码原语、
-前缀身份和现有 LMCache 字节服务/有界队列。独立原型现已提供两个 GPU 接口：
+前缀身份和现有 LMCache 字节服务/有界队列。独立 codec 提供两个 GPU 接口：
 
 1. **native pages → compressed blob**：按选中 block 的实际布局和 stride
    直接读原生 KV，编码、计算长度并紧排输出。
@@ -89,6 +98,16 @@ token 较早或某一步 attention 权重较小，不构成无损卸载的理由
 通过独立 extension 提供上述接口，不调用这些 HBM store 入口。
 不应为了使用 codec 再建立 `HbmKvStore`、prepare 状态、open-block staging 和压缩 arena。
 core 只接受布局描述、页映射、张量、码表与输出缓冲；缓存准入和 LMCache RPC 留在 integration。
+
+`NativeBlockTransfer` 在一个后台线程中管理分离的编码/恢复池、producer event、
+有效字节传输和状态检查。`FragPackNativeConnector` 负责请求身份、页映射、延迟释放和
+恢复完成通知；层内 attention 回调不做编码或 RPC。详见
+[原生页传输](native-lmcache-transfer.md)与[connector 生命周期](native-codec-vllm-connector.md)。
+
+压缩传输保持 FPKB v1。Raw 对照使用独立的 FPNR v1 token-major 原始 BF16 封装，
+以 `CacheIdentity.representation="native-raw"` 隔离；它不能交给 FPKB core importer。
+Raw 通过 native raw gather/scatter 和相同字节服务传输，CPU 封装与实际复制计入成本。
+这一对照不代表原版 LMCache 最优的 raw 传输实现。
 
 首版保留现有 BF16、128-token record、head_dim=128 的 codec 范围。
 原生物理页可能采用不同大小/布局，adapter 必须显式映射，不假定一个 record 就是一页。
@@ -103,17 +122,22 @@ CPU copies、RPC 和对齐。变长传输需要观察输出长度；采用事件
 
 ## 所有权与执行顺序
 
-1. 候选排队只保留身份元数据；真正提交前复核 hash/代次、完整性与可用前缀，取得源页引用。
-   等待源 KV 写入完成，再让 codec stream 读取。候选已被复用则放弃，不能读取旧页号。
+1. 当前 finish-time 路径在 scheduler 的 `request_finished` 中取得延迟释放责任，
+   将完整 prompt key 和物理页映射送给 worker。这些页在后台 probe 期间也被保留，
+   该等待计入开销；不声称已经实现无 pin 的冷块候选队列。
+   worker 记录 producer event，后台等待源 KV 写入完成后才能读取。
 2. 源页一直保持有效，直到编码读取完成。之后可释放 codec 自己持有的引用；
    输出 blob 由传输队列继续持有，外部数据发布成功是另一个完成点。
+   全部批次的 `source_ready` 成功后报告源释放；未完成发布通过 worker metadata
+   保持引擎空步进，finish 通知只保留已接纳保存任务的有界子集。
 3. 恢复时由引擎分配目标页，禁止覆盖仍被共享使用的页。
    压缩 H2D 完成后还需解码、校验成功；**目标 raw KV 就绪**才允许上报加载完成和跳过 prefill。
 4. 候选/在途数、源页 pin 数及 GPU/pinned 缓冲都设上限，防止后台保存反而耗尽可用页。
    首版提前选择并显式 pin；不在物理页即将覆盖时才启动编码。
    复用通知本身不会自动阻止覆盖，zero/COW 等路径也不能靠一个 attention 前的 fence 泛化处理。
 5. 格式、码表身份、范围或状态失败时不得发布可用前缀；在安全释放任务资源后走重算。
-   外部已保存的块应在编码前去重；当前服务端 `put` 去重发生在传输之后，尚不能省掉这部分工作。
+   NativeBlockTransfer 默认在编码前执行 `probe_many` 并合并同 key 在途任务。
+   原 `HbmKvStore` transfer 的服务端 `put` 去重仍是独立路径，不能混作本次提前去重。
 
 ## 成本判断与最小验证顺序
 
@@ -125,19 +149,22 @@ CPU copies、RPC 和对齐。变长传输需要观察输出长度；采用事件
 异步重叠可能隐藏延迟，但仍占用 GPU、HBM 和链路。与直接丢弃相比，还要看预期复用节省的
 prefill 是否覆盖保存与恢复成本；与 GPU 命中相比，应尽量避免迁移。
 
-按以下顺序验证，目前第 1 步已完成，后两步待接入：
+当前验证按组件、模型功能和主模型性能分层：
 
 1. 独立 codec：多层 raw pages 的逐位往返，包含 fallback、不同页映射和非法记录；
    分开测编码、紧排、实际 D2H/H2D、解码 scatter 和总耗时。
-2. 原生服务：BF16 KV、TP=1、full attention，先 eager；验证 prefill、decode、
-   APC/外部命中、源保护和失败重算。确认未加载 CUSTOM backend 或当前 runner 包装。
-3. 在相同模型、预算、请求序列和缓存规则下比较 raw/压缩 × 即时/延迟 offload，
-   另保留原生 APC 参考。用全热 GPU 命中、间歇会话复用和超出 GPU 历史容量的负载区分收益来源。
-   总预算包含 codec 与传输缓冲，不只比较 payload。
+2. 原生模型功能：Qwen3-0.6B、BF16 KV、TP=1、eager、FA3 与真实 CPU L1 已通过
+   冷请求、GPU APC、清除 GPU 前缀后的外部命中及修改前缀检查。生命周期的失败/取消
+   CPU 测试与该模型 smoke 分开报告，不推导全面故障或 HTTP 服务验证。
+3. 主模型的有限协议对照已完成。在相同模型、预算、请求序列和 finish-time 保存规则下
+   比较 Raw/压缩，覆盖 GPU 热命中、间歇复用和超过 GPU 容量的历史工作集。
+   总预算包含 codec 与传输缓冲，总请求计时包含保存发布排空。
+   关闭提前 probe 的小消融使用
+   同一份不可变 KV 的受控往返，不把独立重算的相同 token 误当作必然逐位相同的 KV。
 
 重点记录实际迁出/恢复次数与字节、重复上传、保存后未复用的数据量、连续前缀命中、
 后台资源开销、pin 等待、TTFT/TPOT 尾延迟和吞吐。热负载应尽量不触发 codec；
-压缩必须在相同 lazy 策略的 raw 基线上证明净收益。
+压缩必须在相同保存和淘汰规则的 Raw 基线上证明净收益。
 现有 LMCache 插件的 L2/NVMe 尚未打通，不将 SSD 收益列为已验证能力。
 
 ## 独立原型的实施合同
@@ -222,4 +249,5 @@ KV/host 数据不属于这些 tensor 字节。单槽顺序分块的既有 benchm
 28 组48层读取配置与12组完整往返配置，各自完成两个独立进程。Native 的驻留 prefill
 读取更快，现有 fused decode 在单 token 读取中更快；冷恢复与重复复用需要分别判断。
 当前独立 codec 仍保留编码 scratch 和最大 blob 缓冲，不能把 payload 减少直接当作
-GPU 总容量收益。外部服务接线、冷块选择和完整模型端到端验证仍属于上述后续步骤。
+GPU 总容量收益。这些 2026-10-31 结果仍是读取/恢复回放；之后完成的 CPU L1 接线、
+小模型功能和原生主模型对照不改变其计时范围。冷块选择仍是单独的可选策略。

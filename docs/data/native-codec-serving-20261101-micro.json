@@ -1,0 +1,483 @@
+{
+  "scope": "Immutable captured KV roundtrip; three rounds per process, two order-control processes; no model inference. RPC byte counts exclude transport framing.",
+  "results": [
+    {
+      "order": "forward",
+      "source_unchanged": true,
+      "expanded_input_sha256": "3f29b8753e03ed56a1b8f0cb0ad6ed46c6286d7061f2029934fd97fa99d6e7fc",
+      "arms": [
+        {
+          "arm": "raw-precheck",
+          "mode": "raw",
+          "precheck": true,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:raw-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "native-raw"
+          },
+          "namespace": "d5fb676816d1e60825623d5192a5836e55deaaab66731aaf86634d279769e998",
+          "summary": {
+            "cold_store_seconds": 3.210605514002964,
+            "repeat_store_seconds": [
+              0.03482696501305327,
+              0.03388916701078415
+            ],
+            "repeat_store_median_seconds": 0.03435806601191871,
+            "restore_seconds": [
+              2.7543725579744205,
+              2.721192856959533,
+              2.7755188529845327
+            ],
+            "restore_median_seconds": 2.7543725579744205,
+            "timed_transfer_sum_seconds": 11.530405913945287,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 10.767601365223527,
+            "probe_seconds": 0.0865111259627156,
+            "prechecked_blocks": 192,
+            "skipped_blocks": 128,
+            "source_hold_seconds": 3.1535706262802705,
+            "raw_gathered_blocks": 64,
+            "put_seconds": 2.679500927159097,
+            "rpc_upload_bytes": 805568512,
+            "published_blocks": 64,
+            "encode_or_gather_seconds": 0.004422777914442122,
+            "d2h_seconds": 0.030278460937552154,
+            "d2h_payload_bytes": 805306368,
+            "k_record_bytes": 402653184,
+            "v_record_bytes": 402653184,
+            "raw_records": 24576,
+            "cpu_pack_seconds": 0.4283800899866037,
+            "restore_requests": 48,
+            "get_seconds": 7.243391883035656,
+            "rpc_download_bytes": 2416705536,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.7609280420001596,
+            "h2d_seconds": 0.09776191506534815,
+            "h2d_payload_bytes": 2415919104,
+            "decode_or_scatter_seconds": 0.008412069117184728
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_raw": 50331664,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1660947968,
+            "torch_peak_allocated": 1677725696,
+            "torch_peak_reserved": 1681915904
+          }
+        },
+        {
+          "arm": "compressed-precheck",
+          "mode": "compressed",
+          "precheck": true,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:compressed-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "fpkb"
+          },
+          "namespace": "63c6dc84b9ddce1b72b99cf64af500a247e4a3703a2b77e347f66dc846dd4299",
+          "summary": {
+            "cold_store_seconds": 2.734347858990077,
+            "repeat_store_seconds": [
+              0.03704334300709888,
+              0.028935894020833075
+            ],
+            "repeat_store_median_seconds": 0.03298961851396598,
+            "restore_seconds": [
+              1.3840598899987526,
+              1.624151455995161,
+              1.5186665580258705
+            ],
+            "restore_median_seconds": 1.5186665580258705,
+            "timed_transfer_sum_seconds": 7.327205000037793,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 6.81752873735968,
+            "probe_seconds": 0.08279543230310082,
+            "prechecked_blocks": 192,
+            "skipped_blocks": 128,
+            "source_hold_seconds": 2.701134898175951,
+            "encoded_blocks": 64,
+            "put_seconds": 2.275926292873919,
+            "rpc_upload_bytes": 567603200,
+            "published_blocks": 64,
+            "encode_or_gather_seconds": 0.00686719489749521,
+            "d2h_seconds": 0.025504613993689418,
+            "d2h_payload_bytes": 567603200,
+            "k_record_bytes": 285175392,
+            "v_record_bytes": 282006928,
+            "encoded_records": 24576,
+            "raw_fallback_records": 0,
+            "cpu_pack_seconds": 0.37695566104957834,
+            "restore_requests": 48,
+            "get_seconds": 4.1741206963779405,
+            "rpc_download_bytes": 1702809600,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.20703476713970304,
+            "h2d_seconds": 0.08168824185850099,
+            "h2d_payload_bytes": 1702809600,
+            "decode_or_scatter_seconds": 0.00896384019870311
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_encode": 100796504,
+              "gpu_decode": 50369592,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1761784320,
+            "torch_peak_allocated": 1778562048,
+            "torch_peak_reserved": 1786773504
+          }
+        },
+        {
+          "arm": "compressed-no-precheck",
+          "mode": "compressed",
+          "precheck": false,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:compressed-no-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "fpkb"
+          },
+          "namespace": "d903f879035530bfae1526d800ca6bf3b0186e846b1904b3399e328393fb785a",
+          "summary": {
+            "cold_store_seconds": 2.4748842550325207,
+            "repeat_store_seconds": [
+              2.55756410601316,
+              2.654601526039187
+            ],
+            "repeat_store_median_seconds": 2.6060828160261735,
+            "restore_seconds": [
+              1.6898874000180513,
+              1.6700993279810064,
+              1.8001267079962417
+            ],
+            "restore_median_seconds": 1.6898874000180513,
+            "timed_transfer_sum_seconds": 12.847163323080167,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 11.989896001119632,
+            "probe_seconds": 0.0002609381335787475,
+            "prechecked_blocks": 0,
+            "skipped_blocks": 0,
+            "source_hold_seconds": 7.247243121091742,
+            "encoded_blocks": 192,
+            "put_seconds": 7.020854028000031,
+            "rpc_upload_bytes": 1702809600,
+            "published_blocks": 192,
+            "encode_or_gather_seconds": 0.037604641169309616,
+            "d2h_seconds": 0.08597034722333774,
+            "d2h_payload_bytes": 1702809600,
+            "k_record_bytes": 855526176,
+            "v_record_bytes": 846020784,
+            "encoded_records": 73728,
+            "raw_fallback_records": 0,
+            "cpu_pack_seconds": 0.4980351469712332,
+            "restore_requests": 48,
+            "get_seconds": 4.825578810239676,
+            "rpc_download_bytes": 1702809600,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.20862461405340582,
+            "h2d_seconds": 0.08095782826421782,
+            "h2d_payload_bytes": 1702809600,
+            "decode_or_scatter_seconds": 0.008953966083936393
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_encode": 100796504,
+              "gpu_decode": 50369592,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1761784320,
+            "torch_peak_allocated": 1778562048,
+            "torch_peak_reserved": 1786773504
+          }
+        }
+      ]
+    },
+    {
+      "order": "reverse",
+      "source_unchanged": true,
+      "expanded_input_sha256": "3f29b8753e03ed56a1b8f0cb0ad6ed46c6286d7061f2029934fd97fa99d6e7fc",
+      "arms": [
+        {
+          "arm": "compressed-no-precheck",
+          "mode": "compressed",
+          "precheck": false,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:compressed-no-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "fpkb"
+          },
+          "namespace": "d903f879035530bfae1526d800ca6bf3b0186e846b1904b3399e328393fb785a",
+          "summary": {
+            "cold_store_seconds": 2.444646359013859,
+            "repeat_store_seconds": [
+              3.0210329580004327,
+              2.893946774012875
+            ],
+            "repeat_store_median_seconds": 2.9574898660066538,
+            "restore_seconds": [
+              1.854796455008909,
+              1.8358776239911094,
+              1.8743356289924122
+            ],
+            "restore_median_seconds": 1.854796455008909,
+            "timed_transfer_sum_seconds": 13.924635799019597,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 13.016682225628756,
+            "probe_seconds": 0.0003363011055625975,
+            "prechecked_blocks": 0,
+            "skipped_blocks": 0,
+            "source_hold_seconds": 7.8973927040351555,
+            "encoded_blocks": 192,
+            "put_seconds": 7.584228003339376,
+            "rpc_upload_bytes": 1702809600,
+            "published_blocks": 192,
+            "encode_or_gather_seconds": 0.038276740233413875,
+            "d2h_seconds": 0.10803675482748076,
+            "d2h_payload_bytes": 1702809600,
+            "k_record_bytes": 855526176,
+            "v_record_bytes": 846020784,
+            "encoded_records": 73728,
+            "raw_fallback_records": 0,
+            "cpu_pack_seconds": 0.5664285943494178,
+            "restore_requests": 48,
+            "get_seconds": 5.227781828085426,
+            "rpc_download_bytes": 1702809600,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.20332692773081362,
+            "h2d_seconds": 0.08479821297805756,
+            "h2d_payload_bytes": 1702809600,
+            "decode_or_scatter_seconds": 0.008719347883015871
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_encode": 100796504,
+              "gpu_decode": 50369592,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1761784320,
+            "torch_peak_allocated": 1778562048,
+            "torch_peak_reserved": 1786773504
+          }
+        },
+        {
+          "arm": "compressed-precheck",
+          "mode": "compressed",
+          "precheck": true,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:compressed-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "fpkb"
+          },
+          "namespace": "63c6dc84b9ddce1b72b99cf64af500a247e4a3703a2b77e347f66dc846dd4299",
+          "summary": {
+            "cold_store_seconds": 2.8207574110128917,
+            "repeat_store_seconds": [
+              0.03394120396114886,
+              0.034616979013662785
+            ],
+            "repeat_store_median_seconds": 0.03427909148740582,
+            "restore_seconds": [
+              1.8982493479852565,
+              1.9552231770358048,
+              2.015159482951276
+            ],
+            "restore_median_seconds": 1.9552231770358048,
+            "timed_transfer_sum_seconds": 8.75794760196004,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 8.148923417378683,
+            "probe_seconds": 0.09518798388307914,
+            "prechecked_blocks": 192,
+            "skipped_blocks": 128,
+            "source_hold_seconds": 2.7924619949189946,
+            "encoded_blocks": 64,
+            "put_seconds": 2.3206515229539946,
+            "rpc_upload_bytes": 567603200,
+            "published_blocks": 64,
+            "encode_or_gather_seconds": 0.006272576923947781,
+            "d2h_seconds": 0.05589296296238899,
+            "d2h_payload_bytes": 567603200,
+            "k_record_bytes": 285175392,
+            "v_record_bytes": 282006928,
+            "encoded_records": 24576,
+            "raw_fallback_records": 0,
+            "cpu_pack_seconds": 0.3791927120182663,
+            "restore_requests": 48,
+            "get_seconds": 5.462876254692674,
+            "rpc_download_bytes": 1702809600,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.25884066987782717,
+            "h2d_seconds": 0.0814735351013951,
+            "h2d_payload_bytes": 1702809600,
+            "decode_or_scatter_seconds": 0.009032903762999922
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_encode": 100796504,
+              "gpu_decode": 50369592,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1761784320,
+            "torch_peak_allocated": 1778562048,
+            "torch_peak_reserved": 1786773504
+          }
+        },
+        {
+          "arm": "raw-precheck",
+          "mode": "raw",
+          "precheck": true,
+          "identity": {
+            "model_revision": "immutable-capture:1302f31ac929ea3f623db0edcae7fa5869e50449c4b572dcff4ac17e7ae39322:raw-precheck",
+            "table_digest": 5724744913838935152,
+            "num_layers": 48,
+            "kv_heads": 4,
+            "rank": 0,
+            "world_size": 1,
+            "representation": "native-raw"
+          },
+          "namespace": "d5fb676816d1e60825623d5192a5836e55deaaab66731aaf86634d279769e998",
+          "summary": {
+            "cold_store_seconds": 3.1048000330338255,
+            "repeat_store_seconds": [
+              0.033144350978545845,
+              0.03477321600075811
+            ],
+            "repeat_store_median_seconds": 0.03395878348965198,
+            "restore_seconds": [
+              2.546343883033842,
+              2.5250398630159907,
+              2.5606275189784355
+            ],
+            "restore_median_seconds": 2.546343883033842,
+            "timed_transfer_sum_seconds": 10.804728865041398,
+            "sum_scope": "Store plus restore wall windows; validation and setup excluded.",
+            "sample_scope": "Repeated rounds in one process and one retained L1, not independent replications."
+          },
+          "stats": {
+            "store_requests": 48,
+            "coalesced_blocks": 0,
+            "queue_wait_seconds": 10.073386218573432,
+            "probe_seconds": 0.08555450389394537,
+            "prechecked_blocks": 192,
+            "skipped_blocks": 128,
+            "source_hold_seconds": 3.0476155708311126,
+            "raw_gathered_blocks": 64,
+            "put_seconds": 2.5951914271572605,
+            "rpc_upload_bytes": 805568512,
+            "published_blocks": 64,
+            "encode_or_gather_seconds": 0.005779269034974277,
+            "d2h_seconds": 0.019937641103751957,
+            "d2h_payload_bytes": 805306368,
+            "k_record_bytes": 402653184,
+            "v_record_bytes": 402653184,
+            "raw_records": 24576,
+            "cpu_pack_seconds": 0.4185687788412906,
+            "restore_requests": 48,
+            "get_seconds": 6.465864950208925,
+            "rpc_download_bytes": 2416705536,
+            "restored_blocks": 192,
+            "cpu_unpack_seconds": 0.9260539920651354,
+            "h2d_seconds": 0.09085359674645588,
+            "h2d_payload_bytes": 2415919104,
+            "decode_or_scatter_seconds": 0.008609995769802481
+          },
+          "memory": {
+            "native_source_and_target_bytes": 1610612736,
+            "native_registration": {
+              "cache_storage": 1610612736,
+              "descriptors": 2304
+            },
+            "transfer": {
+              "gpu_raw": 50331664,
+              "pinned_transfer": 50348032,
+              "pinned_metadata": 56,
+              "gpu_maps_bound": 48
+            },
+            "torch_allocated_after_init": 1660947968,
+            "torch_peak_allocated": 1677725696,
+            "torch_peak_reserved": 1681915904
+          }
+        }
+      ]
+    }
+  ]
+}

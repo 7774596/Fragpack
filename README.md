@@ -1,19 +1,46 @@
 # FragPack
 
-FragPack is an experimental lossless BF16 KV-cache representation with a fused
-decode-attention kernel and a vLLM adapter. Completed blocks stay compressed in
-GPU memory; decode reconstructs operands inside the attention kernel. Prefill
-uses a temporary BF16 workspace by default, with direct fused prefill available
-as an experimental option. Incomplete blocks remain writable until they reach
-128 tokens.
+FragPack is an experimental lossless BF16 KV representation and GPU codec with
+two vLLM integration paths.
+
+The native-attention path keeps active GPU KV in standard BF16 pages.
+`FragPackNativeConnector` uses public scheduler/worker hooks to save complete
+prompt blocks through `NativeBlockTransfer` into LMCache CPU L1 after normal
+request completion. Recall decodes directly into native pages before prefill
+can be skipped. Attention remains native, without a CUSTOM backend, runner
+wrapper or third-party source changes. This path does not expand active GPU KV
+capacity.
+
+The HBM-resident path keeps completed blocks compressed in GPU memory using
+the CUSTOM attention adapter. Decode reconstructs operands inside its kernel;
+prefill uses a temporary BF16 workspace by default, with fused prefill as an
+experimental option. Incomplete blocks remain writable until they reach
+128 tokens. This path's external-cache API remains explicitly caller-driven.
 
 This standalone extraction comes from [DaseR](https://github.com/GentleCold/DaseR)
 via the [demo fork](https://github.com/7774596/DaseR) at revision
 `9f113cd0bc973e9d84aa538610343c7c18e9171c` under Apache-2.0. It contains
-the representation, GPU store, kernels, and vLLM integration. External cache
-services and their placement policies are outside this package.
+the representation, GPU store, kernels, and integration adapters. The optional
+LMCache adapter uses the external service's CPU L1 and placement policy; the
+service itself is not bundled, and the representation/core do not depend on it.
 
 ## Status and scope
+
+The native-attention path completed real CPU-L1 functional checks and four
+fixed-budget offline model runs on H800 PCIe with
+Qwen3-30B-A3B-Instruct-2507-FP8, BF16 KV, native FA3, TP=1 and eager execution.
+With 32,768-token histories and 56 GB L1, the request-plus-publication window
+fell by 25.43% across the two processes per mode. External restores increased
+TTFT; compression also used about 100.8 MB more GPU workspace than Raw. The
+result does not establish faster user requests or concurrent serving capacity.
+See the [2026-11-01 report](docs/validation-native-codec-serving-20261101.md).
+Raw uses a distinct FPNR envelope and the same byte service as compressed FPKB;
+it is a matched-interface control, not an optimized stock-LMCache Raw transport.
+HTTP, NVMe, TP>1 and full-model CUDA Graph execution remain unverified for this
+path.
+
+The following extraction and HBM-optimization results retain their original
+dated configurations and evidence boundaries; their test counts are historical.
 
 The initial standalone wheel passed 24 CPU tests, 18 GPU tests, and a
 seven-request TP=1 eager serving check on H800. See the
@@ -50,8 +77,9 @@ for all configurations, compilation-related reruns and evidence limits.
 | vLLM | Official `0.30.0+cu129` build |
 | PyTorch | 2.13.0+cu129 |
 | CUDA toolkit | 12.9; nvcc 12.9.86 |
-| GPU/kernel geometry | SM90, BF16 KV, head dimension 128, block size 128 |
-| Attention | GQA group 1, 2, 4, or 8; no speculative decoding |
+| GPU/kernel geometry | SM90, BF16 KV, head dimension 128; 128-token logical objects; serving validated with 128-token physical pages |
+| HBM attention | GQA group 1, 2, 4, or 8; no speculative decoding |
+| Native connector | TP=PP=1, eager, one full-attention cache group, text decoder; no LoRA, multimodal inputs or speculative decoding |
 
 Serving was validated with TP=1 and eager execution. Kernel CUDA Graph tests
 passed; full-model graph serving and TP head sharding remain unverified.
@@ -77,7 +105,16 @@ captured BF16 bit patterns as a uint16 array shaped
 python -m fragpack.compression.attn_tables /path/to/kv.npy /path/to/tables.npz
 ```
 
-After reserving an idle supported GPU, the initial serving configuration is:
+For the native-attention external codec, install the optional pinned LMCache
+dependency and use the connector configuration and offline validation entry in
+[development](docs/development.md). It selects `FragPackNativeConnector` through
+`kv_connector_module_path`, with matching tables/identity and an existing CPU L1
+endpoint; `mode` is fixed to `compressed` or `raw` at startup. Raw and compressed
+use separate identities. See the [connector contract](docs/design/native-codec-vllm-connector.md)
+for lifecycle and supported-layout constraints.
+
+The following command starts the **HBM-resident CUSTOM route**, after reserving
+an idle supported GPU:
 
 ```bash
 export VLLM_PLUGINS=fragpack
@@ -126,11 +163,13 @@ architecture, component ownership, complete data flows, HBM/attention paths and
 LMCache integration. It follows the original DaseR design-document structure;
 implemented behavior and the remaining integration roadmap are kept explicit.
 
-An optional [LMCache 0.5.6 plugin](docs/lmcache-plugin-056.md) transports existing
-compressed records through a bounded background worker into stock LMCache CPU
-L1. It includes explicit prefix lookup, store and restore APIs. It does not yet
-connect those APIs to the vLLM scheduler or enable disk-tier recovery; installing
-the plugin alone does not enable external prefix reuse in serving.
+The optional LMCache 0.5.6 integration supplies the CPU L1 byte service used by
+both routes. The [HBM explicit API](docs/lmcache-plugin-056.md) exports/imports
+existing compressed records and still needs scheduler integration. The
+[native connector](docs/design/native-codec-vllm-connector.md) already manages
+real request saves and restores through public vLLM hooks. Neither route enables
+disk-tier recovery, and installing the server module alone does not configure a
+model's connector.
 
 Start with [development](docs/development.md), [system design](docs/design/README.md),
 and [contributing](CONTRIBUTING.md). The default test suite is CPU-only; GPU tests
