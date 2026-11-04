@@ -26,6 +26,7 @@ from lmcache.v1.lossless_kv.format import (
     online_fixed_envelope_geometry,
     prefix_table_bytes,
     slot_header_bytes,
+    split_codec_tables,
 )
 from lmcache.v1.lossless_kv.kv_layout import kernel_kv_view, kv_is_layer_major
 
@@ -72,6 +73,36 @@ def _kv_bits(kv_cache: torch.Tensor) -> torch.Tensor:
     outer, inner, tokens, heads, _, head_dim = physical.shape
     bits = torch.uint8 if kv_dtype_bytes(kv_cache) == 1 else torch.uint16
     return physical.view(bits).view(outer, inner, tokens * heads, 2, head_dim)
+
+
+def _split_kv_tables(
+    kv_cache: torch.Tensor, codebooks: bytes
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
+    """Validate codec tables against a KV cache and split them.
+
+    Args:
+        kv_cache: Logical ``[blocks, layers, 2, tokens, heads, dim]`` cache.
+        codebooks: Codec tables (``format.codec_tables_bytes``).
+
+    Returns:
+        ``[planes * heads, 15]`` books and ``[planes * heads, dim]`` FP8
+        exponent offsets, row ``(2 * layer + kv) * heads + head``.
+
+    Raises:
+        ValueError: If the tables do not match the cache geometry.
+    """
+    return split_codec_tables(
+        codebooks,
+        num_layers=int(kv_cache.shape[1]),
+        num_kv_heads=int(kv_cache.shape[4]),
+        head_dim=int(kv_cache.shape[5]),
+        fp8=kv_dtype_bytes(kv_cache) == 1,
+    )
+
+
+def _device_bytes(payload: bytes, device: torch.device) -> torch.Tensor:
+    """Return ``payload`` as a uint8 tensor on ``device``."""
+    return torch.from_numpy(np.frombuffer(payload, dtype=np.uint8).copy()).to(device)
 
 
 def _fixed_envelope_geometry(
@@ -174,6 +205,8 @@ def _warm_tilelang_codec(
     num_planes = int(kv_cache.shape[1]) * 2
     plane_scalars = int(np.prod(kv_cache.shape[3:]))
     head_dim = int(kv_cache.shape[5])
+    heads = int(kv_cache.shape[4])
+    rows = num_planes * heads
     block_tokens = int(kv_cache.shape[3])
     num_blocks = int(kv_cache.shape[0])
     store = compile_store_kernels(
@@ -181,6 +214,7 @@ def _warm_tilelang_codec(
         num_planes=num_planes,
         plane_scalars=plane_scalars,
         head_dim=head_dim,
+        heads=heads,
         tile_scalars=tile_scalars,
         fp8=fp8,
         layer_major=kv_is_layer_major(kv_cache),
@@ -191,6 +225,7 @@ def _warm_tilelang_codec(
             num_planes=num_planes,
             plane_scalars=plane_scalars,
             head_dim=head_dim,
+            heads=heads,
             tile_scalars=tile_scalars,
             staging_bytes=int(kv_cache[0].nbytes),
             fanout=fanout,
@@ -214,7 +249,8 @@ def _warm_tilelang_codec(
     with torch.cuda.device(device), torch.inference_mode(False):
         ids = torch.zeros(1, dtype=torch.int32, device=device)
         logical_ids = torch.zeros(1, dtype=torch.int64, device=device)
-        lookup = torch.zeros(num_planes * 256, dtype=torch.uint8, device=device)
+        lookup = torch.zeros(rows * 256, dtype=torch.uint8, device=device)
+        shifts = torch.zeros(rows * head_dim // 2, dtype=torch.uint8, device=device)
         codebook_hash = torch.zeros(32, dtype=torch.uint8, device=device)
         scratch = torch.empty(scratch_slot_stride, dtype=torch.uint8, device=device)
         max_tiles = (plane_scalars + tile_scalars - 1) // tile_scalars
@@ -237,6 +273,7 @@ def _warm_tilelang_codec(
             bits,
             ids,
             lookup,
+            shifts,
             totals,
             raw_totals,
             scratch,
@@ -270,6 +307,7 @@ def _warm_tilelang_codec(
             slot_offsets,
             symbol_bits,
             lookup,
+            shifts,
             codebook_hash,
             scratch,
             scratch_plane_bytes,
@@ -279,7 +317,7 @@ def _warm_tilelang_codec(
         )
         codebooks = torch.from_numpy(
             np.frombuffer(
-                pack_load_codebooks(bytes(num_planes * CODEBOOK_ENTRIES), num_planes),
+                pack_load_codebooks(bytes(rows * CODEBOOK_ENTRIES), rows),
                 dtype=np.uint8,
             ).copy()
         ).to(device)
@@ -295,6 +333,7 @@ def _warm_tilelang_codec(
                 # cache block is restored after synchronized warmup.
                 torch.ones(1, dtype=torch.int32, device=device),
                 codebooks,
+                shifts,
                 bits,
                 0,
                 num_planes,
@@ -375,33 +414,37 @@ class FusedOnlineKVPacker:
             tile_scalars=self._tile_scalars,
             dtype_bytes=dtype_bytes,
         )
-        if len(codebooks) != self._num_planes * CODEBOOK_ENTRIES:
-            raise ValueError("online codebooks do not match KV geometry")
+        books, offsets = _split_kv_tables(kv_cache, codebooks)
         self._codebook_hash = digest_bytes(codebooks)
         self._kv_bits = _kv_bits(kv_cache)
         # Research switch: store every record raw inside the packed layout.
         self._force_raw = os.environ.get(_FORCE_RAW_ENV) == "1"
+        rows = len(books)
         lookup: NDArray[np.uint8] = np.full(
-            (self._num_planes, 256), CODEBOOK_ENTRIES, dtype=np.uint8
-        )
-        tables = np.frombuffer(codebooks, dtype=np.uint8).reshape(
-            self._num_planes, CODEBOOK_ENTRIES
+            (rows, 256), CODEBOOK_ENTRIES, dtype=np.uint8
         )
         # The main online wire stream represents entries 0..6. Entries 7..13
         # use three-bit secondary escape tokens; entry 14 and values outside
         # the immutable table use the raw-byte sentinel in that stream.
-        lookup[np.arange(self._num_planes)[:, None], tables] = np.arange(
+        lookup[np.arange(rows)[:, None], books] = np.arange(
             CODEBOOK_ENTRIES, dtype=np.uint8
         )
         self._lookup = torch.from_numpy(lookup.reshape(-1).copy()).to(self._device)
         # First Party
-        from lmcache.v1.lossless_kv.tilelang_kernels import compile_store_kernels
+        from lmcache.v1.lossless_kv.tilelang_kernels import (
+            compile_store_kernels,
+            pack_fp8_shifts,
+        )
 
+        self._shifts = _device_bytes(
+            pack_fp8_shifts(offsets.tobytes(), decode=False), self._device
+        )
         self._tilelang_store = compile_store_kernels(
             num_blocks=self._num_blocks,
             num_planes=self._num_planes,
             plane_scalars=self._plane_scalars,
             head_dim=self._geometry.head_dim,
+            heads=self._geometry.num_kv_heads,
             tile_scalars=self._tile_scalars,
             fp8=dtype_bytes == 1,
             layer_major=kv_is_layer_major(kv_cache),
@@ -735,6 +778,7 @@ class FusedOnlineKVPacker:
                     self._kv_bits,
                     device_ids,
                     self._lookup,
+                    self._shifts,
                     device_totals,
                     device_raw_totals,
                     scratch,
@@ -782,6 +826,7 @@ class FusedOnlineKVPacker:
                     device_slot_offsets,
                     device_symbol_bits,
                     self._lookup,
+                    self._shifts,
                     self._device_codebook_hash,
                     scratch,
                     scratch_plane_record_bytes,
@@ -908,6 +953,7 @@ class KVRestorePlan:
         destination_offsets: Absolute CSR indices into ``blocks``.
         modes: Device raw/packed tags, one per source.
         codebooks: Fixed device codebooks.
+        shifts: Fixed device FP8 exponent shifts (unused for BF16).
         destination: Registered KV tensor in the kernel's bitwise view.
         num_planes: K and V planes of one block (twice the layers).
 
@@ -929,6 +975,7 @@ class KVRestorePlan:
         destination_offsets: torch.Tensor,
         modes: torch.Tensor,
         codebooks: torch.Tensor,
+        shifts: torch.Tensor,
         destination: torch.Tensor,
         num_planes: int,
     ) -> None:
@@ -940,6 +987,7 @@ class KVRestorePlan:
         self._destination_offsets = destination_offsets
         self._modes = modes
         self._codebooks = codebooks
+        self._shifts = shifts
         self._destination = destination
         self._num_planes = num_planes
         self._destination_count = int(destination_offsets.numel()) - 1
@@ -959,6 +1007,7 @@ class KVRestorePlan:
             destination_offsets=self._destination_offsets,
             modes=self._modes,
             codebooks=self._codebooks,
+            shifts=self._shifts,
             destination=self._destination,
             num_planes=self._num_planes,
         )
@@ -999,6 +1048,7 @@ class KVRestorePlan:
                 self._destination_offsets,
                 self._modes,
                 self._codebooks,
+                self._shifts,
                 self._destination,
                 0,
                 self._num_planes,
@@ -1011,7 +1061,8 @@ class FusedCompressedKVDecoder:
     Args:
         kv_cache: Logical cross-layer view ``[blocks, layers, 2, tokens,
             heads, dim]`` over a contiguous ``BLNHC`` buffer.
-        codebooks: Plane-major static 15-entry high-byte tables.
+        codebooks: Codec tables (``format.codec_tables_bytes``) of the
+            cache's KV heads.
         tile_scalars: Codec tile size of the online packed records.
         max_slots_per_buffer: Maximum slot records of one staging buffer; the
             kernels are compiled for staging of exactly this many raw blocks.
@@ -1040,12 +1091,11 @@ class FusedCompressedKVDecoder:
         self._tile_scalars = tile_scalars
         self._tiles_per_plane = (self._plane_scalars + tile_scalars - 1) // tile_scalars
         self._staging_bytes = max_slots_per_buffer * int(kv_cache[0].nbytes)
-        expected_codebooks = self._num_planes * CODEBOOK_ENTRIES
-        if len(codebooks) != expected_codebooks:
-            raise ValueError("compressed codebooks do not match KV layer geometry")
+        books, offsets = _split_kv_tables(kv_cache, codebooks)
         # First Party
         from lmcache.v1.lossless_kv.tilelang_kernels import (
             compile_load_kernel,
+            pack_fp8_shifts,
             pack_load_codebooks,
         )
 
@@ -1057,6 +1107,7 @@ class FusedCompressedKVDecoder:
                 num_planes=self._num_planes,
                 plane_scalars=self._plane_scalars,
                 head_dim=head_dim,
+                heads=int(kv_cache.shape[4]),
                 tile_scalars=self._tile_scalars,
                 staging_bytes=self._staging_bytes,
                 fanout=fanout,
@@ -1065,12 +1116,12 @@ class FusedCompressedKVDecoder:
             )
             for fanout in (False, True)
         )
-        self._codebooks = torch.from_numpy(
-            np.frombuffer(
-                pack_load_codebooks(codebooks, self._num_planes),
-                dtype=np.uint8,
-            ).copy()
-        ).to(kv_cache.device)
+        self._codebooks = _device_bytes(
+            pack_load_codebooks(books.tobytes(), len(books)), kv_cache.device
+        )
+        self._shifts = _device_bytes(
+            pack_fp8_shifts(offsets.tobytes(), decode=True), kv_cache.device
+        )
         self._upload_stream = torch.cuda.Stream(device=kv_cache.device)
 
     def plan(
@@ -1163,6 +1214,7 @@ class FusedCompressedKVDecoder:
             destination_offsets=csr,
             modes=source_mode_tensor,
             codebooks=self._codebooks,
+            shifts=self._shifts,
             destination=self._kv_bits,
             num_planes=self._num_planes,
         )

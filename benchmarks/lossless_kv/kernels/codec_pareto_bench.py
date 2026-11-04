@@ -3,7 +3,7 @@
 """Same-card codec Pareto microbenchmark: stored ratio against restore throughput.
 
 Loads captured BF16 KV slots (``[slots, layers, 2, tokens, heads, head_dim]``
-uint16 ``.npy``), calibrates per-plane codebooks on the first slots and places
+uint16 ``.npy``), calibrates per-head tables on the first slots and places
 the remaining slots (repeated cyclically up to ``--eval-blocks``) at seeded
 random blocks of a larger paged KV pool, as a paged allocator would. Every arm
 restores into those scattered paged blocks, ``--blocks-per-call`` blocks per
@@ -21,7 +21,8 @@ codec call, on the same card:
 
 ``--fp8`` casts the captured slots to an FP8 E4M3 cache (unit scale,
 saturating, as vLLM's ``--kv-cache-dtype fp8`` stores them) and runs only the
-copy and lossless arms.
+copy and lossless arms; ``--rope-theta`` / ``--max-positions`` fit FP8 K
+across positions as the served tables are.
 
 Every restore is checked byte-exact. One JSON object per arm and call size is
 printed, then the Pareto front (lowest ratio for a given ``dec_gbs``) per call
@@ -40,8 +41,8 @@ from typing import Any, Callable
 import numpy as np
 import torch
 
-from lmcache.v1.lossless_kv.calibration import calibrate_codebooks
-from lmcache.v1.lossless_kv.format import ONLINE_TILE_SCALARS, CompressedStoreGeometry
+from lmcache.v1.lossless_kv.calibration import calibrate_codebooks, tier_codebooks
+from lmcache.v1.lossless_kv.format import ONLINE_TILE_SCALARS
 from lmcache.v1.lossless_kv.compressed_kv import (
     FusedCompressedKVDecoder,
     FusedOnlineKVPacker,
@@ -285,12 +286,10 @@ def _lossless_rows(
     modes = [int(s.mode) for s in slots]
     # Records are packed back to back; their staging offsets are cumulative.
     offsets = [s.source_offset for s in slots]
-    # One metadata ring per call so a pass prepares every call up front.
     decoder = FusedCompressedKVDecoder(
         kv_cache=kv.kv_cache,
         codebooks=books,
         tile_scalars=ONLINE_TILE_SCALARS,
-        ring_depth=count,
         max_slots_per_buffer=count,
     )
     for k in ks:
@@ -311,22 +310,23 @@ def _lossless_rows(
             torch.cuda.synchronize()
             best = min(best, time.perf_counter() - began)
 
-        def prepare(groups: list[slice] = groups) -> list[Any]:
-            return [
-                decoder.prepare(
-                    staging=staging,
-                    staging_offsets=offsets[g],
-                    block_ids=kv.block_ids[g],
-                    modes=modes[g],
-                    buffer_index=index,
-                    stream=stream,
-                )
-                for index, g in enumerate(groups)
-            ]
+        # Plans are immutable and reusable: build them once, off the timing.
+        plans = [
+            decoder.plan(
+                staging=staging,
+                staging_offsets=offsets[g],
+                block_ids=kv.block_ids[g],
+                modes=modes[g],
+            )
+            for g in groups
+        ]
+
+        def prepare(plans: list[Any] = plans) -> list[Any]:
+            return plans
 
         def run(plans: list[Any]) -> None:
             for plan in plans:
-                plan.submit()
+                plan.submit(stream)
 
         kv.clear()
         # The decoder runs on its own stream: order it after the clear, or
@@ -771,6 +771,8 @@ def main() -> None:
         action="store_true",
         help="cast the slots to an FP8 E4M3 cache; copy and lossless arms only",
     )
+    parser.add_argument("--rope-theta", type=float, default=None)
+    parser.add_argument("--max-positions", type=int, default=0)
     args = parser.parse_args()
     if args.fp8 and (
         args.nvcomp_path
@@ -781,6 +783,15 @@ def main() -> None:
         parser.error("--fp8 runs only the copy and lossless arms")
 
     slots = np.load(args.slots)
+    ncal = args.calibration_slots
+    artifact = calibrate_codebooks(
+        slots[:ncal],
+        model_id=args.model_id,
+        fp8=args.fp8,
+        rope_theta=args.rope_theta,
+        max_positions=args.max_positions,
+    )
+    books = tier_codebooks(artifact.table, artifact.offset, artifact.fp8)
     if args.fp8:
         slots = (
             torch.from_numpy(slots)
@@ -791,23 +802,6 @@ def main() -> None:
             .view(torch.uint8)
             .numpy()
         )
-    count, layers, _, tokens, heads, dim = slots.shape
-    geometry = CompressedStoreGeometry(
-        num_slots=count,
-        slot_size=slots[0].nbytes,
-        block_tokens=tokens,
-        num_layers=layers,
-        num_kv_heads=heads,
-        head_dim=dim,
-        tile_scalars=ONLINE_TILE_SCALARS,
-        dtype_bytes=1 if args.fp8 else 2,
-    )
-    ncal = args.calibration_slots
-    books = calibrate_codebooks(
-        (slots[i].tobytes() for i in range(ncal)),
-        model_id=args.model_id,
-        geometry=geometry,
-    ).codebooks
     evaluate = np.ascontiguousarray(slots[ncal:])
     ks = sorted(set(args.blocks_per_call))
     rows: list[dict[str, Any]] = []

@@ -27,11 +27,9 @@ when its services stop.
 # KV dump from real text (or --trajectories agent.parquet)
 python -m benchmarks.lossless_kv.capture_kv --model MODEL --text corpus.txt \
     --out kv.npy --tokens 4096
-# tier arm codebooks (add --fp8 for an FP8 cache)
+# tables of both arms: tier takes books/, pool books/tables.npz (for an FP8
+# cache add --fp8 --rope-theta THETA --max-positions N)
 python -m benchmarks.lossless_kv.calibrate kv.npy books/ --model-id NAME
-# pool arm tables
-python -m lmcache.v1.lossless_kv.fragpack.attn_tables kv.npy tables.npz \
-    [--fp8 --rope-theta THETA --max-positions N]
 # stored ratios of both formats and the order-0 bound
 python -m benchmarks.lossless_kv.kernels.kv_ratio kv.npy NAME
 ```

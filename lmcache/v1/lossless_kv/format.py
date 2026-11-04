@@ -8,14 +8,24 @@ from __future__ import annotations
 # Standard
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import TYPE_CHECKING
 import hashlib
 import struct
 
-# Version 1 stores one escape and one raw-escape prefix per tile.
-FORMAT_VERSION = 1
+if TYPE_CHECKING:
+    # Third Party
+    from numpy.typing import NDArray
+    import numpy as np
+
+# Version 2 codes each (layer, K/V, head) with its own codebook and FP8
+# scalars after a per-channel exponent offset; one escape and one raw-escape
+# prefix per tile.
+FORMAT_VERSION = 2
 IO_ALIGNMENT = 4096
 CODEBOOK_ENTRIES = 15
 KV_PLANES = 2
+# FP8 E4M3 symbols are sign << 4 | exponent; offsets rotate the exponent.
+FP8_EXPONENTS = 16
 # Online producers and worker startup warmup must agree before the server's
 # runtime configuration is available.
 ONLINE_TILE_SCALARS = 256
@@ -127,6 +137,119 @@ def low_stream_bytes(scalar_count: int, dtype_bytes: int) -> int:
     if dtype_bytes == 1:
         return (scalar_count * FP8_MANTISSA_BITS + 7) // 8
     return scalar_count
+
+
+def codec_table_rows(num_layers: int, num_kv_heads: int) -> int:
+    """Return the codebook rows of a geometry: one per (layer, K/V, head).
+
+    Args:
+        num_layers: Model KV layers.
+        num_kv_heads: KV heads the tables cover.
+
+    Returns:
+        ``num_layers * 2 * num_kv_heads``; row ``(2 * layer + kv) * heads +
+        head`` codes that head's plane slice.
+
+    Async/thread-safety:
+        Pure; safe from any thread.
+    """
+    return num_layers * KV_PLANES * num_kv_heads
+
+
+def codec_tables_bytes(num_layers: int, num_kv_heads: int, head_dim: int) -> int:
+    """Return the length of a codec tables payload.
+
+    The payload is ``codec_table_rows`` rows of ``CODEBOOK_ENTRIES`` codebook
+    bytes, then the same rows of ``head_dim`` FP8 exponent offsets (zero for
+    BF16), both row-major.
+
+    Args:
+        num_layers: Model KV layers.
+        num_kv_heads: KV heads the tables cover.
+        head_dim: Scalars per head.
+
+    Returns:
+        Payload length in bytes.
+
+    Async/thread-safety:
+        Pure; safe from any thread.
+    """
+    return codec_table_rows(num_layers, num_kv_heads) * (CODEBOOK_ENTRIES + head_dim)
+
+
+def split_codec_tables(
+    tables: bytes, *, num_layers: int, num_kv_heads: int, head_dim: int, fp8: bool
+) -> tuple["NDArray[np.uint8]", "NDArray[np.uint8]"]:
+    """Split and validate a codec tables payload.
+
+    Args:
+        tables: Payload laid out as ``codec_tables_bytes`` describes.
+        num_layers: Model KV layers.
+        num_kv_heads: KV heads the tables cover.
+        head_dim: Scalars per head.
+        fp8: The tables code FP8 E4M3 symbols (5-bit) instead of BF16 high
+            bytes.
+
+    Returns:
+        ``(books, offsets)``: uint8 ``[rows, CODEBOOK_ENTRIES]`` codebooks and
+        uint8 ``[rows, head_dim]`` exponent offsets.
+
+    Raises:
+        ValueError: If the length is wrong, a codebook repeats an entry, an
+            FP8 codebook holds a value above 31 or an offset above 15, or
+            BF16 tables carry offsets.
+
+    Async/thread-safety:
+        Pure; safe from any thread.
+    """
+    # Third Party
+    import numpy as np
+
+    rows = codec_table_rows(num_layers, num_kv_heads)
+    if len(tables) != codec_tables_bytes(num_layers, num_kv_heads, head_dim):
+        raise ValueError(
+            f"codec tables hold {len(tables)} bytes, expected "
+            f"{codec_tables_bytes(num_layers, num_kv_heads, head_dim)}"
+        )
+    raw = np.frombuffer(tables, dtype=np.uint8)
+    books = raw[: rows * CODEBOOK_ENTRIES].reshape(rows, CODEBOOK_ENTRIES)
+    offsets = raw[rows * CODEBOOK_ENTRIES :].reshape(rows, head_dim)
+    if any(len(np.unique(row)) != CODEBOOK_ENTRIES for row in books):
+        raise ValueError("each codebook must contain 15 distinct bytes")
+    if fp8:
+        if int(books.max(initial=0)) >= 2 * FP8_EXPONENTS:
+            raise ValueError("FP8 codebooks hold 5-bit sign+exponent symbols")
+        if int(offsets.max(initial=0)) >= FP8_EXPONENTS:
+            raise ValueError("FP8 exponent offsets must be below 16")
+    elif offsets.any():
+        raise ValueError("exponent offsets apply to FP8 tables only")
+    return books, offsets
+
+
+def shift_fp8_symbols(
+    symbols: "NDArray[np.uint8]", offsets: "NDArray[np.integer]"
+) -> "NDArray[np.uint8]":
+    """Lower the exponent of 5-bit FP8 symbols by ``offsets`` mod 16.
+
+    Encoders code shifted symbols; decoders shift by ``-offsets`` (mod 16)
+    to restore them. The sign bit passes through.
+
+    Args:
+        symbols: 5-bit ``sign << 4 | exponent`` symbols.
+        offsets: Offsets broadcast against ``symbols``.
+
+    Returns:
+        uint8 shifted symbols.
+
+    Async/thread-safety:
+        Pure; safe from any thread.
+    """
+    # Third Party
+    import numpy as np
+
+    x = np.asarray(symbols, dtype=np.int64)
+    shifted = (x & FP8_EXPONENTS) | ((x - np.asarray(offsets)) & (FP8_EXPONENTS - 1))
+    return shifted.astype(np.uint8)
 
 
 def align_up(value: int, alignment: int = IO_ALIGNMENT) -> int:
@@ -583,6 +706,7 @@ __all__ = [
     "CODEBOOK_ENTRIES",
     "ESCAPE_SYMBOL_BITS",
     "FORMAT_VERSION",
+    "FP8_EXPONENTS",
     "FP8_LAYOUT_FLAG",
     "FP8_MANTISSA_BITS",
     "IO_ALIGNMENT",
@@ -593,10 +717,14 @@ __all__ = [
     "SlotHeader",
     "SlotMode",
     "align_up",
+    "codec_table_rows",
+    "codec_tables_bytes",
     "digest_bytes",
     "low_stream_bytes",
     "online_fixed_envelope_geometry",
     "online_layout_flags",
     "prefix_table_bytes",
+    "shift_fp8_symbols",
     "slot_header_bytes",
+    "split_codec_tables",
 ]

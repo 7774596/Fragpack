@@ -12,12 +12,17 @@ single kernel because its record offsets and lengths are already known when
 the server returns a read plan.
 
 Records are plane-major: plane ``2 * layer + kv`` holds one layer's K or V
-scalars in ``[tokens, heads, head_dim]`` order. The kernels address a KV
-cache whose block holds ``[layers, tokens * heads, 2, head_dim]``, so K and V
-of one head are adjacent in memory while the record keeps them in separate
-planes. The cache is either block-outermost (vLLM's cross-layer layout and
-the codec's own scratch) or layer-outermost (vLLM's per-layer tensors laid
-back to back in one allocation), chosen when a kernel is compiled.
+scalars in ``[tokens, heads, head_dim]`` order. Each (plane, head) has its own
+codebook, and FP8 symbols are coded with their exponent lowered by a
+per-channel offset. A lane's eight scalars lie in one head (``head_dim % 8
+== 0``); when a token row divides the lane stride, a lane also stays on that
+head and its channels, so it loads its codebook row and shifts once. The
+kernels address a KV cache whose block holds ``[layers, tokens * heads, 2,
+head_dim]``, so K and V of one head are adjacent in memory while the record
+keeps them in separate planes. The cache is either block-outermost (vLLM's
+cross-layer layout and the codec's own scratch) or layer-outermost (vLLM's
+per-layer tensors laid back to back in one allocation), chosen when a kernel
+is compiled.
 """
 
 # Do not enable ``from __future__ import annotations``. TileLang inspects the
@@ -34,6 +39,7 @@ import tilelang.language as T
 
 # First Party
 from lmcache.v1.lossless_kv.format import (
+    FORMAT_VERSION,
     IO_ALIGNMENT,
     ONLINE_TILE_SCALARS,
     slot_header_bytes,
@@ -66,6 +72,11 @@ _FP8_LAYOUT_FLAG = 0x20
 # with aligned words. Every warp owns ``_GROUP_SUB`` tiles of a group; four
 # measured fastest against one, two and eight.
 _GROUP_SUB = 4
+# Every kernel's eight warps advance a lane by eight tiles per step. When a
+# token row (``heads * head_dim``) divides that stride, a lane stays on one
+# head and channel range throughout, so its codebook row and FP8 shifts are
+# loaded once instead of every step.
+_LANE_STRIDE_SCALARS = 8 * ONLINE_TILE_SCALARS
 _GROUP_TILES = _COMPACT_WARPS * _GROUP_SUB
 _GROUP_SCALARS = _GROUP_TILES * ONLINE_TILE_SCALARS
 _GROUP_SYMBOL_WORDS = _GROUP_SCALARS * 3 // 32
@@ -84,9 +95,9 @@ class TileLangStoreKernels:
 
 
 _STORE_CACHE: dict[
-    tuple[int, int, int, int, int, int, bool, bool], TileLangStoreKernels
+    tuple[int, int, int, int, int, int, int, bool, bool], TileLangStoreKernels
 ] = {}
-_LOAD_CACHE: dict[tuple[int, int, int, int, int, bool, bool, bool], Any] = {}
+_LOAD_CACHE: dict[tuple[int, int, int, int, int, int, bool, bool, bool], Any] = {}
 
 
 def _vllm_kv_shape(
@@ -163,10 +174,78 @@ def _nibbles_to_bytes(nibbles: Any) -> Any:
     return (spread | (spread << 4)) & T.cast(0x0F0F0F0F, T.uint32)
 
 
-def _validate_head_dim(num_planes: int, plane_scalars: int, head_dim: int) -> None:
-    """Reject geometries that do not split into K/V planes of whole heads."""
-    if head_dim <= 0 or num_planes % 2 or plane_scalars % head_dim:
+def _validate_head_dim(
+    num_planes: int, plane_scalars: int, head_dim: int, heads: int
+) -> None:
+    """Reject geometries the per-head kernels cannot address.
+
+    Planes must hold whole token rows of ``heads`` heads, and a head whole
+    eight-scalar lanes, so every lane codes with one head's tables.
+    """
+    if head_dim <= 0 or heads <= 0 or num_planes % 2:
         raise ValueError("KV planes must hold whole K or V heads")
+    if head_dim % 8 or plane_scalars % (heads * head_dim):
+        raise ValueError(
+            "TileLang codec kernels need head_dim % 8 == 0 and planes of whole "
+            f"token rows (head_dim={head_dim}, heads={heads})"
+        )
+
+
+def pack_fp8_shifts(offsets: bytes, *, decode: bool) -> bytes:
+    """Pack per-channel FP8 exponent shifts into one word per lane.
+
+    Args:
+        offsets (bytes): ``[rows, head_dim]`` exponent offsets of the codec
+            tables (``format.codec_tables_bytes``); ``head_dim`` is a
+            multiple of eight.
+        decode (bool): Shifts that restore stored symbols (``+offset``)
+            instead of the encoder's (``-offset``).
+
+    Returns:
+        bytes: A little-endian uint32 per eight channels: the shift mod 16
+        of channel ``c < 4`` in bits ``8c..8c+3`` and of channel ``4 + c``
+        in bits ``8c+4..8c+7``, so one register holds a lane's shifts.
+        Adding a shift to a symbol's exponent mod 16 rotates the exponent.
+
+    Raises:
+        ValueError: If the offsets are not whole eight-channel lanes.
+    """
+    if len(offsets) % 8:
+        raise ValueError("FP8 shifts need whole eight-channel lanes")
+    shifts = bytes((value if decode else -value) % 16 for value in offsets)
+    packed = bytearray(len(shifts) // 2)
+    for lane in range(len(shifts) // 8):
+        for channel in range(4):
+            packed[lane * 4 + channel] = shifts[lane * 8 + channel] | (
+                shifts[lane * 8 + 4 + channel] << 4
+            )
+    return bytes(packed)
+
+
+def _lane_rows_fixed(heads: int, head_dim: int) -> bool:
+    """Return whether a lane keeps its head and channels on every step."""
+    return _LANE_STRIDE_SCALARS % (heads * head_dim) == 0
+
+
+@T.macro
+def _shift_fp8_lane(words: Any, part: int, shift: Any, lsb: int) -> None:
+    """Rotate the exponents of a lane's two packed FP8 words in place.
+
+    Words ``words[part * 4]`` and ``words[part * 4 + 1]`` each hold four FP8
+    values whose exponent field is bits ``lsb..lsb+3`` of each byte (3 for
+    stored bytes, 0 for decoded symbols); ``shift`` is the lane's packed
+    shift word (``pack_fp8_shifts``). Each byte's exponent plus its shift
+    stays below 32, so the sum never carries into the next byte and the
+    carry out of the field is dropped by the final bit select.
+    """
+    field = T.cast(0x0F0F0F0F << lsb, T.uint32)
+    nibbles = T.cast(0x0F0F0F0F, T.uint32)
+    first = words[part * 4]
+    second = words[part * 4 + 1]
+    first_sum = (first & field) + ((shift & nibbles) << lsb)
+    second_sum = (second & field) + (((shift >> 4) & nibbles) << lsb)
+    words[part * 4] = (first_sum & field) | (first & ~field)
+    words[part * 4 + 1] = (second_sum & field) | (second & ~field)
 
 
 def _validate_tile_scalars(tile_scalars: int) -> None:
@@ -454,6 +533,7 @@ def compile_store_kernels(
     num_planes: int,
     plane_scalars: int,
     head_dim: int,
+    heads: int,
     tile_scalars: int,
     fp8: bool = False,
     layer_major: bool = False,
@@ -465,6 +545,7 @@ def compile_store_kernels(
         num_planes: Number of layer/K-or-V planes.
         plane_scalars: Scalars in one plane.
         head_dim: Scalars in one K or V head.
+        heads: KV heads in a token row; each has its own codebook.
         tile_scalars: Scalar quantum used by the packed record; must be
             ``ONLINE_TILE_SCALARS``.
         fp8: Encode an FP8 E4M3 cache (one byte per scalar) instead of BF16.
@@ -476,8 +557,8 @@ def compile_store_kernels(
 
     Raises:
         ValueError: If the geometry is not positive, the tile size is not
-            ``ONLINE_TILE_SCALARS``, a plane is not a multiple of eight
-            scalars (one lane's load), or a plane exceeds 1024 tiles.
+            ``ONLINE_TILE_SCALARS``, heads are not whole eight-scalar lanes,
+            or a plane exceeds 1024 tiles.
 
     Async/thread-safety:
         Compilation is synchronous and intended for registration-time
@@ -486,9 +567,7 @@ def compile_store_kernels(
     if min(num_blocks, num_planes, plane_scalars) <= 0:
         raise ValueError("TileLang store geometry must be positive")
     _validate_tile_scalars(tile_scalars)
-    _validate_head_dim(num_planes, plane_scalars, head_dim)
-    if plane_scalars % 8:
-        raise ValueError("TileLang store needs planes of whole eight-scalar lanes")
+    _validate_head_dim(num_planes, plane_scalars, head_dim, heads)
     tiles_per_plane = (plane_scalars + tile_scalars - 1) // tile_scalars
     if tiles_per_plane > 1024:
         raise ValueError("TileLang store supports at most 1024 tiles per plane")
@@ -497,6 +576,7 @@ def compile_store_kernels(
         num_planes,
         plane_scalars,
         head_dim,
+        heads,
         tile_scalars,
         tiles_per_plane,
         fp8,
@@ -512,6 +592,7 @@ def compile_store_kernels(
                 num_planes=num_planes,
                 plane_scalars=plane_scalars,
                 head_dim=head_dim,
+                heads=heads,
                 tile_scalars=tile_scalars,
                 tiles_per_plane=tiles_per_plane,
                 fp8=fp8,
@@ -536,6 +617,7 @@ def compile_store_kernels(
                 num_planes=num_planes,
                 plane_scalars=plane_scalars,
                 head_dim=head_dim,
+                heads=heads,
                 tile_scalars=tile_scalars,
                 max_tiles=tiles_per_plane,
                 fp8=fp8,
@@ -549,31 +631,31 @@ def compile_store_kernels(
     return kernels
 
 
-def pack_load_codebooks(codebooks: bytes, num_planes: int) -> bytes:
-    """Lay out per-plane codebooks for the load kernel.
+def pack_load_codebooks(codebooks: bytes, rows: int) -> bytes:
+    """Lay out per-(plane, head) codebooks for the load kernel.
 
     Args:
-        codebooks (bytes): ``num_planes`` rows of ``CODEBOOK_ENTRIES`` bytes:
-            seven primary entries followed by the secondary entries.
-        num_planes (int): Number of layer/K-or-V planes.
+        codebooks (bytes): ``rows`` rows of ``CODEBOOK_ENTRIES`` bytes (the
+            codebook part of the codec tables): seven primary entries
+            followed by the secondary entries.
+        rows (int): Codebook rows, ``planes * heads``.
 
     Returns:
-        bytes: ``num_planes`` rows of 16 bytes:
+        bytes: ``rows`` rows of 16 bytes:
         bytes 0-6 hold the primary entries and bytes 8-14 the first seven
         secondary entries, so each level fits one PRMT byte pair; bytes 7
         and 15 are zero. Symbol 7 is the escape at both levels, so the
         padding is never selected for a decoded scalar.
 
     Raises:
-        ValueError: If ``codebooks`` does not hold ``num_planes`` rows.
+        ValueError: If ``codebooks`` does not hold ``rows`` rows.
     """
-    if len(codebooks) != num_planes * _CODEBOOK_ENTRIES:
+    if len(codebooks) != rows * _CODEBOOK_ENTRIES:
         raise ValueError(
-            f"expected {num_planes * _CODEBOOK_ENTRIES} codebook bytes, "
-            f"got {len(codebooks)}"
+            f"expected {rows * _CODEBOOK_ENTRIES} codebook bytes, got {len(codebooks)}"
         )
-    packed = bytearray(num_planes * _PACKED_CODEBOOK_BYTES)
-    for plane in range(num_planes):
+    packed = bytearray(rows * _PACKED_CODEBOOK_BYTES)
+    for plane in range(rows):
         row = codebooks[plane * _CODEBOOK_ENTRIES : (plane + 1) * _CODEBOOK_ENTRIES]
         base = plane * _PACKED_CODEBOOK_BYTES
         packed[base : base + 7] = row[:7]
@@ -587,6 +669,7 @@ def compile_load_kernel(
     num_planes: int,
     plane_scalars: int,
     head_dim: int,
+    heads: int,
     tile_scalars: int,
     staging_bytes: int,
     fanout: bool = False,
@@ -600,6 +683,7 @@ def compile_load_kernel(
         num_planes: Number of layer/K-or-V planes.
         plane_scalars: Scalars in one plane.
         head_dim: Scalars in one K or V head.
+        heads: KV heads in a token row; each has its own codebook.
         tile_scalars: Scalar quantum encoded in each record; must be
             ``ONLINE_TILE_SCALARS``. The launch takes the staging bytes plus
             their ``int32`` view, so staging must be 4-byte aligned with a
@@ -629,7 +713,7 @@ def compile_load_kernel(
     if min(num_blocks, num_planes, plane_scalars, staging_bytes) <= 0:
         raise ValueError("TileLang load geometry must be positive")
     _validate_tile_scalars(tile_scalars)
-    _validate_head_dim(num_planes, plane_scalars, head_dim)
+    _validate_head_dim(num_planes, plane_scalars, head_dim, heads)
     tiles_per_plane = (plane_scalars + tile_scalars - 1) // tile_scalars
     if tiles_per_plane > 1024:
         raise ValueError("TileLang load supports at most 1024 tiles per plane")
@@ -641,6 +725,7 @@ def compile_load_kernel(
         num_planes,
         plane_scalars,
         head_dim,
+        heads,
         tile_scalars,
         fanout,
         fp8,
@@ -655,6 +740,7 @@ def compile_load_kernel(
             num_planes=num_planes,
             plane_scalars=plane_scalars,
             head_dim=head_dim,
+            heads=heads,
             tile_scalars=tile_scalars,
             tiles_per_plane=tiles_per_plane,
             staging_bytes=staging_bytes,
@@ -676,6 +762,7 @@ def _build_store_count_prefix(
     num_planes: int,
     plane_scalars: int,
     head_dim: int,
+    heads: int,
     tile_scalars: int,
     tiles_per_plane: int,
     fp8: bool,
@@ -687,11 +774,16 @@ def _build_store_count_prefix(
     eight scalars at once. After every tile is ready, a block scan writes the
     two ``uint32`` prefix tables to scratch and the plane totals. Compact
     reads KV again after slot layout is known.
+
+    ``lookup`` holds 256 codes per (plane, head); ``shifts`` the FP8 encode
+    shifts per (plane, head, channel) (``pack_fp8_shifts``; unread for BF16).
     """
     n_slots = T.dynamic("N", "int64")
     row_items = T.dynamic("Q", "int64")
     scratch_bytes = T.dynamic("R", "int64")
     rows = plane_scalars // head_dim
+    lane_shift_words = head_dim // 8
+    fixed_rows = _lane_rows_fixed(heads, head_dim)
     vector = head_dim % 8 == 0
     kv_words = num_blocks * num_planes * plane_scalars // 8
     kv_dtype = _kv_dtype(fp8)
@@ -706,7 +798,8 @@ def _build_store_count_prefix(
             kv_dtype,
         ),
         block_ids: T.Tensor((n_slots,), "int32"),
-        lookup: T.Tensor((num_planes * 256,), "uint8"),
+        lookup: T.Tensor((num_planes * heads * 256,), "uint8"),
+        shifts: T.Tensor((num_planes * heads * head_dim // 2,), "uint8"),
         totals: T.Tensor((row_items,), "uint32"),
         raw_totals: T.Tensor((row_items,), "uint32"),
         scratch: T.Tensor((scratch_bytes,), "uint8"),
@@ -719,10 +812,13 @@ def _build_store_count_prefix(
             raw_counts = T.alloc_shared((tiles_per_plane,), "uint32")
             warp_sums = T.alloc_shared((_COUNT_WARPS,), "uint32")
             raw_warp_sums = T.alloc_shared((_COUNT_WARPS,), "uint32")
-            lut_s = T.alloc_shared((256,), "uint8")
+            lut_s = T.alloc_shared((heads * 256,), "uint8")
             T.import_source(_LOAD_DEVICE_SOURCE)
             kv_vec = T.Tensor((T.int64(kv_words),), lane_dtype, kv_bits.data)
             scratch_words = T.Tensor((scratch_bytes // 4,), "uint32", scratch.data)
+            shift_words = T.Tensor(
+                (num_planes * heads * head_dim // 8,), "uint32", shifts.data
+            )
             for tx in T.Parallel(_COUNT_THREADS):
                 slot = bx
                 plane = by
@@ -739,10 +835,22 @@ def _build_store_count_prefix(
                     )
                     * row_scalars
                 )
-                lut_s[tx] = lookup[plane * 256 + tx]
+                for head in T.serial(heads):
+                    lut_s[head * 256 + tx] = lookup[(plane * heads + head) * 256 + tx]
                 T.sync_threads()
                 # A lane counts eight consecutive scalars of its warp's tile.
                 words = T.alloc_local((4,), "uint32")
+                # The lane's head within its token row (its codebook) and the
+                # shift words of its channels, at its first tile.
+                lane_head = T.alloc_var(T.int32, init=0)
+                lane_shift = T.alloc_var(T.uint32, init=0)
+                first_start = warp * tile_scalars + lane * 8
+                lane_head = (first_start // head_dim) % heads
+                if fp8:
+                    shift_base = (plane * heads + lane_head) * lane_shift_words + (
+                        first_start % head_dim
+                    ) // 8
+                    lane_shift = shift_words[shift_base]
                 for tile_group in T.serial(
                     (tiles_per_plane + _COUNT_WARPS - 1) // _COUNT_WARPS
                 ):
@@ -765,6 +873,15 @@ def _build_store_count_prefix(
                         num_blocks,
                         layer_major,
                     )
+                    if not fixed_rows:
+                        lane_head = (start // head_dim) % heads
+                        if fp8:
+                            shift_base = (
+                                plane * heads + lane_head
+                            ) * lane_shift_words + (start % head_dim) // 8
+                            lane_shift = shift_words[shift_base]
+                    if fp8:
+                        _shift_fp8_lane(words, 0, lane_shift, 3)
                     high_lo = _lane_symbols(
                         words[0], words[1], words[2], words[3], 0, fp8
                     )
@@ -779,7 +896,9 @@ def _build_store_count_prefix(
                         # Invalid tail scalars count as raw escapes,
                         # matching the format's canonical partial-slot fill.
                         code = T.if_then_else(
-                            start + i < valid_scalars, T.cast(lut_s[high], T.int32), 15
+                            start + i < valid_scalars,
+                            T.cast(lut_s[lane_head * 256 + high], T.int32),
+                            15,
                         )
                         counts = counts + T.cast(
                             T.if_then_else(code >= 7, 0x10000, 0)
@@ -1000,6 +1119,7 @@ def _build_store_compact(
     num_planes: int,
     plane_scalars: int,
     head_dim: int,
+    heads: int,
     tile_scalars: int,
     max_tiles: int,
     fp8: bool,
@@ -1020,9 +1140,14 @@ def _build_store_compact(
     canonical slot header, so the hot path needs no host metadata copy.
 
     FP8 records replace the low bytes with each lane's eight 3-bit mantissas,
-    staged like the primary symbols and repacked into a dense stream.
+    staged like the primary symbols and repacked into a dense stream; their
+    symbols, raw escapes included, are the exponent-shifted ones the count
+    pass coded. Codebooks and shifts are per (plane, head), as in the count
+    pass.
     """
     row_items = T.dynamic("Q", "int64")
+    lane_shift_words = head_dim // 8
+    fixed_rows = _lane_rows_fixed(heads, head_dim)
     slot_items = T.dynamic("N", "int64")
     destination_bytes = T.dynamic("S", "int64")
     scratch_bytes = T.dynamic("R", "int64")
@@ -1065,7 +1190,8 @@ def _build_store_compact(
         raw_totals: T.Tensor((row_items,), "uint32"),
         slot_offsets: T.Tensor((slot_items,), "int64"),
         symbol_bits: T.Tensor((slot_items,), "int32"),
-        lookup: T.Tensor((num_planes * 256,), "uint8"),
+        lookup: T.Tensor((num_planes * heads * 256,), "uint8"),
+        shifts: T.Tensor((num_planes * heads * head_dim // 2,), "uint8"),
         codebook_hash: T.Tensor((32,), "uint8"),
         scratch: T.Tensor((scratch_bytes,), "uint8"),
         scratch_plane_record_bytes: T.int32,
@@ -1076,7 +1202,7 @@ def _build_store_compact(
         with T.Kernel(slot_items, num_planes, threads=_COMPACT_THREADS) as (bx, by):
             T.import_source(_LOAD_DEVICE_SOURCE)
             T.annotate_min_blocks_per_sm(_COMPACT_MIN_BLOCKS)
-            lut_s = T.alloc_shared((256,), "uint8")
+            lut_s = T.alloc_shared((heads * 256,), "uint8")
             pre_s = T.alloc_shared((prefix_words + 1,), "uint32")
             low_s = T.alloc_shared((low_words,), "uint32")
             mant_s = T.alloc_shared((mant_words,), "uint32")
@@ -1089,6 +1215,9 @@ def _build_store_compact(
             )
             scratch_words = T.Tensor((scratch_bytes // 4,), "uint32", scratch.data)
             kv_vec = T.Tensor((T.int64(kv_words),), lane_dtype, kv_bits.data)
+            shift_words = T.Tensor(
+                (num_planes * heads * head_dim // 8,), "uint32", shifts.data
+            )
             for tx in T.Parallel(_COMPACT_THREADS):
                 slot = bx
                 plane = by
@@ -1185,7 +1314,7 @@ def _build_store_compact(
                             destination[header_base + 7] = 49
                             for byte in range(4):
                                 destination[header_base + 8 + byte] = T.cast(
-                                    (1 >> (byte * 8)) & 255, T.uint8
+                                    (FORMAT_VERSION >> (byte * 8)) & 255, T.uint8
                                 )
                                 destination[header_base + 12 + byte] = T.cast(
                                     (header_bytes >> (byte * 8)) & 255, T.uint8
@@ -1297,7 +1426,10 @@ def _build_store_compact(
                         symbol_base = destination_base + low_bytes
                         escape_base = destination_base + base_bytes
                         raw_stream = escape_base + (totals[row] * 3 + 7) // 8
-                        lut_s[tx] = lookup[plane * 256 + tx]
+                        for head in T.serial(heads):
+                            lut_s[head * 256 + tx] = lookup[
+                                (plane * heads + head) * 256 + tx
+                            ]
                         for k in T.serial(
                             (prefix_words + _COMPACT_THREADS - 1) // _COMPACT_THREADS
                         ):
@@ -1319,6 +1451,17 @@ def _build_store_compact(
                         secondary = T.alloc_local((_GROUP_SUB,), "uint32")
                         escapes = T.alloc_local((_GROUP_SUB,), "int32")
                         escape_rank = T.alloc_local((_GROUP_SUB,), "int32")
+                        # The lane's head (its codebook) and channel shift
+                        # words at its first tile; see the count pass.
+                        lane_head = T.alloc_var(T.int32, init=0)
+                        lane_shift = T.alloc_var(T.uint32, init=0)
+                        first_start = warp * tile_scalars + lane * 8
+                        lane_head = (first_start // head_dim) % heads
+                        if fp8:
+                            shift_base = (
+                                plane * heads + lane_head
+                            ) * lane_shift_words + (first_start % head_dim) // 8
+                            lane_shift = shift_words[shift_base]
                         for group in T.serial(group_count):
                             group_tile = group * _GROUP_TILES
                             group_scalars = T.min(
@@ -1358,6 +1501,15 @@ def _build_store_compact(
                                 # plane_scalars is a multiple of eight, so a
                                 # lane lies inside the plane as a whole.
                                 active = start < plane_scalars
+                                if not fixed_rows:
+                                    lane_head = (start // head_dim) % heads
+                                    if fp8:
+                                        shift_base = (
+                                            plane * heads + lane_head
+                                        ) * lane_shift_words + (start % head_dim) // 8
+                                        lane_shift = shift_words[shift_base]
+                                if fp8:
+                                    _shift_fp8_lane(vec, u, lane_shift, 3)
                                 high_lo = _lane_symbols(
                                     vec[u * 4],
                                     vec[u * 4 + 1],
@@ -1400,7 +1552,7 @@ def _build_store_compact(
                                     # escapes of zero, as in the count pass.
                                     valid = start + i * scalar_step < valid_scalars
                                     code = (
-                                        T.cast(lut_s[high], T.uint32)
+                                        T.cast(lut_s[lane_head * 256 + high], T.uint32)
                                         if valid
                                         else T.cast(15, T.uint32)
                                     )
@@ -1575,6 +1727,7 @@ def _build_load(
     num_planes: int,
     plane_scalars: int,
     head_dim: int,
+    heads: int,
     tile_scalars: int,
     tiles_per_plane: int,
     staging_bytes: int,
@@ -1643,6 +1796,7 @@ def _build_load(
         num_blocks, num_planes, plane_scalars, head_dim, layer_major
     )
     rows = kv_shape[2]
+    fixed_rows = _lane_rows_fixed(heads, head_dim)
     kv_words = num_blocks * num_planes * plane_scalars // 8
     kv_dtype = _kv_dtype(fp8)
     lane_dtype = _lane_vector_dtype(fp8)
@@ -1728,7 +1882,8 @@ def _build_load(
         block_ids: T.Tensor((n_destinations,), "int32"),
         destination_offsets: T.Tensor((n_slots + 1,), "int32"),
         modes: T.Tensor((n_slots,), "int32"),
-        codebooks: T.Tensor((num_planes * _PACKED_CODEBOOK_BYTES,), "uint8"),
+        codebooks: T.Tensor((num_planes * heads * _PACKED_CODEBOOK_BYTES,), "uint8"),
+        shifts: T.Tensor((num_planes * heads * head_dim // 2,), "uint8"),
         dst: T.Tensor(kv_shape, kv_dtype),
         plane_base: T.int32,
         plane_count: T.int32,
@@ -1802,9 +1957,25 @@ def _build_load(
             high_words = T.alloc_local((2,), "uint32")
             # The packed output words alias ``values`` for the vector store.
             out_words = T.view(values, (2 * scalar_bytes,), "uint32")
-            packed_books = T.view(codebooks, (num_planes * 4,), "uint32")
+            packed_books = T.view(codebooks, (num_planes * heads * 4,), "uint32")
+            shift_words = T.Tensor(
+                (num_planes * heads * head_dim // 8,), "uint32", shifts.data
+            )
+            # The lane's head (its codebook row) and channel shift words at
+            # its first tile; with fixed rows they hold for every group.
+            first_start = (bz * _LOAD_TILE_GROUPS * 8 + tx // 32) * 256 + lane * 8
+            lane_head = T.alloc_var(T.int32, init=0)
+            lane_shift = T.alloc_var(T.uint32, init=0)
+            lane_head = (first_start // head_dim) % heads
             for entry in T.unroll(4):
-                book_words[entry] = packed_books[global_plane * 4 + entry]
+                book_words[entry] = packed_books[
+                    (global_plane * heads + lane_head) * 4 + entry
+                ]
+            if fp8:
+                shift_base = (global_plane * heads + lane_head) * (head_dim // 8) + (
+                    first_start % head_dim
+                ) // 8
+                lane_shift = shift_words[shift_base]
             # ``ahead`` holds the next group's scan-independent words,
             # ``current`` the words of the group being decoded.
             ahead = T.alloc_local((5,), "uint32")
@@ -1856,6 +2027,18 @@ def _build_load(
                             lane,
                             ahead,
                         )
+                    if not fixed_rows:
+                        # head_dim % 8 == 0: a lane's scalars share one head.
+                        lane_head = (scalar_start // head_dim) % heads
+                        for entry in T.unroll(4):
+                            book_words[entry] = packed_books[
+                                (global_plane * heads + lane_head) * 4 + entry
+                            ]
+                        if fp8:
+                            shift_base = (global_plane * heads + lane_head) * (
+                                head_dim // 8
+                            ) + (scalar_start % head_dim) // 8
+                            lane_shift = shift_words[shift_base]
                     primary_word = current[0] & (
                         (T.cast(1, T.uint32) << (valid * 3)) - 1
                     )
@@ -1969,7 +2152,9 @@ def _build_load(
                         book_words[0], book_words[1], primary_codes >> 16
                     ) | _prmt(stream_low, stream_high, escape_select >> 16)
                     if fp8:
-                        # Sign+exponent above each byte's 3-bit mantissa.
+                        # Undo the channel exponent shift, then place the
+                        # sign+exponent above each byte's 3-bit mantissa.
+                        _shift_fp8_lane(high_words, 0, lane_shift, 0)
                         out_words[0] = (high_words[0] << 3) | _nibbles_to_bytes(
                             low_first
                         )

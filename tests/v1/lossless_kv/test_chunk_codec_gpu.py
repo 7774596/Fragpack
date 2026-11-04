@@ -11,7 +11,19 @@ from lmcache.v1.lossless_kv.chunk_codec import (
     KVMajorChunkCodec,
     kv_major_to_physical,
 )
-from lmcache.v1.lossless_kv.format import IO_ALIGNMENT
+from lmcache.v1.lossless_kv.calibration import (
+    calibrate_codebooks,
+    load_calibrated_codebooks,
+    write_calibration_artifact,
+)
+from lmcache.v1.lossless_kv.codec import decode_slot
+from lmcache.v1.lossless_kv.format import (
+    IO_ALIGNMENT,
+    CompressedStoreGeometry,
+    SlotHeader,
+    SlotMode,
+)
+from lmcache.v1.lossless_kv.fragpack.attn_tables import fp8_bytes
 from lmcache.v1.lossless_kv.kv_layout import layer_major_kv_view
 
 _LAYERS, _TOKENS, _HEADS, _HEAD_DIM = 4, 64, 4, 128
@@ -23,6 +35,8 @@ def _codec(
     *,
     fused_kv: bool = False,
     kv_dtype: torch.dtype = torch.bfloat16,
+    codebook_dir: str | None = None,
+    kv_head_start: int = 0,
 ) -> KVMajorChunkCodec:
     return KVMajorChunkCodec(
         num_layers=_LAYERS,
@@ -34,6 +48,8 @@ def _codec(
         capacity_ratio=capacity_ratio,
         max_chunks=max_chunks,
         fused_kv=fused_kv,
+        codebook_dir=codebook_dir,
+        kv_head_start=kv_head_start,
     )
 
 
@@ -406,3 +422,111 @@ def test_layer_major_kv_view_rejects_scattered_layers() -> None:
     assert (
         layer_major_kv_view([torch.zeros(2, 4, 2, 8) for _ in range(2)], 2, 4) is None
     )
+
+
+def _kv_dump(seed: int, slots: int, heads: int) -> np.ndarray:
+    """Return BF16 bits ``[slots, layers, 2, tokens, heads, dim]`` whose
+    heads and channels have different scales, as captured KV does."""
+    rng = np.random.default_rng(seed)
+    shape = (slots, _LAYERS, 2, _TOKENS, heads, _HEAD_DIM)
+    scale = 2.0 ** rng.integers(-6, 6, (1, _LAYERS, 2, 1, heads, _HEAD_DIM))
+    values = (rng.standard_normal(shape) * scale).astype(np.float32)
+    return (values.view(np.uint32) >> 16).astype(np.uint16)
+
+
+def _dump_chunk(slot: np.ndarray, fp8: bool) -> torch.Tensor:
+    """Return one dump slot as a CUDA uint8 kv-major chunk."""
+    kv_major = np.ascontiguousarray(slot.transpose(1, 0, 2, 3, 4))
+    data = fp8_bytes(kv_major) if fp8 else kv_major.view(np.uint8)
+    return torch.from_numpy(np.ascontiguousarray(data).reshape(-1)).cuda()
+
+
+def _reference_decode(
+    record: torch.Tensor, codebooks: bytes, fp8: bool, max_chunks: int
+) -> torch.Tensor:
+    """Decode a GPU record with the CPU reference codec, as a kv-major chunk."""
+    dtype_bytes = 1 if fp8 else 2
+    geometry = CompressedStoreGeometry(
+        num_slots=max_chunks,
+        slot_size=2 * _LAYERS * _TOKENS * _HEADS * _HEAD_DIM * dtype_bytes,
+        block_tokens=_TOKENS,
+        num_layers=_LAYERS,
+        num_kv_heads=_HEADS,
+        head_dim=_HEAD_DIM,
+        dtype_bytes=dtype_bytes,
+    )
+    payload = record.cpu().numpy().tobytes()
+    header = SlotHeader.parse(payload, expected_geometry=geometry)
+    slot = decode_slot(
+        payload,
+        mode=SlotMode.COMPRESSED,
+        slot_id=header.slot_id,
+        geometry=geometry,
+        codebooks=codebooks,
+        # The GPU packer leaves the raw digest unset; bytes are compared.
+        verify_hash=False,
+    )
+    # Records hold the physical block [layers, 2, tokens, heads, dim].
+    block = np.frombuffer(slot, dtype=np.uint8).reshape(
+        _LAYERS, 2, _TOKENS, _HEADS, _HEAD_DIM * dtype_bytes
+    )
+    return torch.from_numpy(np.ascontiguousarray(block.transpose(1, 0, 2, 3, 4)))
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.parametrize("fp8", [False, True])
+@pytest.mark.parametrize("kv_head_start", [0, _HEADS])
+def test_calibrated_chunk_codec_matches_the_reference_codec(
+    tmp_path, fp8: bool, kv_head_start: int
+) -> None:
+    """GPU records under per-head tables (and FP8 channel offsets) are the
+    reference codec's format, for any TP rank's head shard."""
+    dump = _kv_dump(seed=21, slots=6, heads=2 * _HEADS)
+    write_calibration_artifact(
+        calibrate_codebooks(dump[:4], model_id="m", fp8=fp8), tmp_path
+    )
+    kv_dtype = torch.uint8 if fp8 else torch.bfloat16
+    codec = _codec(
+        max_chunks=2,
+        capacity_ratio=None,
+        kv_dtype=kv_dtype,
+        codebook_dir=str(tmp_path),
+        kv_head_start=kv_head_start,
+    )
+    generic = _codec(max_chunks=2, capacity_ratio=None, kv_dtype=kv_dtype)
+    heads = slice(kv_head_start, kv_head_start + _HEADS)
+    originals = [_dump_chunk(dump[s][:, :, :, heads], fp8) for s in (4, 5)]
+    stream = torch.cuda.Stream()
+    chunks = [chunk.clone() for chunk in originals]
+    lengths = codec.encode(chunks, stream)
+    generic_lengths = generic.encode([c.clone() for c in originals], stream)
+    stream.synchronize()
+    assert all(length < codec.raw_bytes for length in lengths)
+    # Calibrated tables beat the generic palette on skewed heads/channels.
+    assert sum(lengths) < sum(generic_lengths)
+
+    codebooks = load_calibrated_codebooks(
+        tmp_path,
+        CompressedStoreGeometry(
+            num_slots=2,
+            slot_size=codec.raw_bytes,
+            block_tokens=_TOKENS,
+            num_layers=_LAYERS,
+            num_kv_heads=_HEADS,
+            head_dim=_HEAD_DIM,
+            dtype_bytes=1 if fp8 else 2,
+        ),
+        kv_head_start,
+    )
+    for chunk, length, original in zip(chunks, lengths, originals, strict=True):
+        reference = _reference_decode(chunk[:length], codebooks, fp8, 2)
+        assert torch.equal(reference.reshape(-1), original.cpu())
+
+    restored = [torch.full_like(chunk, 0xA5) for chunk in originals]
+    for target, chunk, length in zip(restored, chunks, lengths, strict=True):
+        target[:length].copy_(chunk[:length])
+    codec.decode(restored, lengths, stream)
+    stream.synchronize()
+    for target, original in zip(restored, originals, strict=True):
+        assert torch.equal(target, original)

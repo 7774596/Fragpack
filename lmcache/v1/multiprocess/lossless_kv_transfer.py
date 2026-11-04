@@ -73,13 +73,17 @@ def codec_byte_layout(num_bytes: int) -> MemoryLayoutDesc:
 
 
 def create_chunk_codec(
-    cache_context: BaseCacheContext, config: "LosslessKVConfig"
+    cache_context: BaseCacheContext,
+    config: "LosslessKVConfig",
+    kv_head_start: int = 0,
 ) -> KVMajorChunkCodec:
     """Build the chunk codec matching a registered KV cache.
 
     Args:
         cache_context (BaseCacheContext): The registered cache context.
         config (LosslessKVConfig): Codec options of the MP server.
+        kv_head_start (int): First of the model's KV heads the cache holds
+            (``LayoutHints.kv_head_start``).
 
     Returns:
         KVMajorChunkCodec: A codec whose raw chunk is one staged LMCache chunk
@@ -120,6 +124,7 @@ def create_chunk_codec(
         max_chunks=config.batch_size,
         capacity_ratio=config.capacity_ratio,
         codebook_dir=config.codebook_dir,
+        kv_head_start=kv_head_start,
         fused_kv=fused_kv,
     )
     shape, dtype = cache_context.get_kernel_group_shape_dtype(
@@ -454,6 +459,7 @@ class LosslessKVTransfer:
         cache_context (BaseCacheContext): The registered cache context.
         storage_manager (StorageManager): The MP server's storage manager.
         config (LosslessKVConfig): Codec options of the MP server.
+        kv_head_start (int): First of the model's KV heads the cache holds.
 
     Raises:
         ValueError: If the codec does not support the cache (see
@@ -469,10 +475,11 @@ class LosslessKVTransfer:
         cache_context: BaseCacheContext,
         storage_manager: "StorageManager",
         config: "LosslessKVConfig",
+        kv_head_start: int = 0,
     ) -> None:
         self._cache_context = cache_context
         self._storage = storage_manager
-        self._codec = create_chunk_codec(cache_context, config)
+        self._codec = create_chunk_codec(cache_context, config, kv_head_start)
         self._width = config.batch_size
         # Retrieved records are copied in on their own stream, so the copies
         # of later batches run ahead of the decodes on the context stream.

@@ -167,7 +167,7 @@ def test_three_bit_escape_stream_round_trips_the_eighth_secondary_entry() -> Non
 
 
 def test_online_codebook_is_generic_for_all_geometries() -> None:
-    """The startup default is model-independent and plane-major."""
+    """The startup default is model-independent, one row per (plane, head)."""
     geometry = CompressedStoreGeometry(
         num_slots=1,
         slot_size=36 * 2 * 128 * 8 * 128 * 2,
@@ -177,11 +177,13 @@ def test_online_codebook_is_generic_for_all_geometries() -> None:
         head_dim=128,
     )
 
-    tables = np.frombuffer(default_online_codebooks(geometry), dtype=np.uint8).reshape(
-        geometry.plane_count, CODEBOOK_ENTRIES
-    )
+    payload = np.frombuffer(default_online_codebooks(geometry), dtype=np.uint8)
+    rows = geometry.plane_count * geometry.num_kv_heads
+    tables = payload[: rows * CODEBOOK_ENTRIES].reshape(rows, CODEBOOK_ENTRIES)
 
-    assert tables.shape == (72, CODEBOOK_ENTRIES)
+    assert len(payload) == rows * (CODEBOOK_ENTRIES + geometry.head_dim)
+    assert not payload[rows * CODEBOOK_ENTRIES :].any()
+    assert tables.shape == (72 * 8, CODEBOOK_ENTRIES)
     assert all(len(np.unique(row)) == CODEBOOK_ENTRIES for row in tables)
     assert np.all(tables == tables[0])
     assert tables[0].tolist() == [
@@ -245,7 +247,7 @@ def test_slot_header_rejects_corrupt_descriptor() -> None:
 
 
 def test_unknown_format_version_is_rejected() -> None:
-    """Only version-1 records parse; other header versions are refused."""
+    """Only current-version records parse; other header versions are refused."""
     geometry = _geometry(num_slots=1)
     codebooks = default_online_codebooks(geometry)
     raw = _slot(geometry, seed=45)
@@ -253,7 +255,7 @@ def test_unknown_format_version_is_rejected() -> None:
         encode_slot(raw, slot_id=0, geometry=geometry, codebooks=codebooks).payload
     )
     assert SlotHeader.parse(payload).format_version == FORMAT_VERSION
-    payload[8] = 2
+    payload[8] = FORMAT_VERSION + 1
     with pytest.raises(ValueError, match="version"):
         SlotHeader.parse(payload, expected_geometry=geometry)
 
@@ -383,29 +385,103 @@ def test_fp8_record_does_not_parse_under_bf16_geometry() -> None:
         SlotHeader.parse(encoded.payload, expected_geometry=bf16)
 
 
-def test_fp8_calibration_fits_sign_exponent_symbols() -> None:
-    # First Party
-    from lmcache.v1.lossless_kv.calibration import calibrate_codebooks
+def _tables(
+    geometry: CompressedStoreGeometry,
+    books: np.ndarray,
+    offsets: np.ndarray | None = None,
+) -> bytes:
+    """Return a tables payload of ``[rows, 15]`` books and optional offsets."""
+    rows = geometry.plane_count * geometry.num_kv_heads
+    if offsets is None:
+        offsets = np.zeros((rows, geometry.head_dim), dtype=np.uint8)
+    return books.astype(np.uint8).tobytes() + offsets.astype(np.uint8).tobytes()
 
+
+def test_each_head_codes_with_its_own_codebook() -> None:
+    """A head whose symbols are only in its own row stays compressed."""
     geometry = _fp8_geometry()
-    raw = _fp8_slot(geometry, seed=9)
-    artifact = calibrate_codebooks([raw], model_id="fp8", geometry=geometry)
-    tables = np.frombuffer(artifact.codebooks, dtype=np.uint8).reshape(
-        geometry.plane_count, CODEBOOK_ENTRIES
+    rows = geometry.plane_count * geometry.num_kv_heads
+    generic = np.frombuffer(default_online_codebooks(geometry), dtype=np.uint8)
+    books = generic[: rows * CODEBOOK_ENTRIES].reshape(rows, CODEBOOK_ENTRIES).copy()
+    # Head h's symbols are 2 * h and 2 * h + 1; its row lists them first.
+    raw = np.empty(
+        (geometry.num_layers * 2, geometry.block_tokens, geometry.num_kv_heads, 128),
+        dtype=np.uint8,
     )
-    assert int(tables.max()) < 32
-    assert set(tables[0, :2].tolist()) == {7, 23}
+    rng = np.random.default_rng(4)
+    for head in range(geometry.num_kv_heads):
+        symbols = 2 * head + rng.integers(0, 2, raw[:, :, head].shape)
+        raw[:, :, head] = (symbols << 3) | rng.integers(0, 8, symbols.shape)
+        own = [2 * head, 2 * head + 1]
+        rest = [value for value in range(32) if value not in own]
+        books[head :: geometry.num_kv_heads] = own + rest[: CODEBOOK_ENTRIES - 2]
+    codebooks = _tables(geometry, books)
+
     encoded = encode_slot(
-        raw, slot_id=0, geometry=geometry, codebooks=artifact.codebooks
+        raw.tobytes(), slot_id=0, geometry=geometry, codebooks=codebooks
     )
+    header = SlotHeader.parse(encoded.payload, expected_geometry=geometry)
+
     assert encoded.mode is SlotMode.COMPRESSED
+    assert sum(item.escape_count for item in header.descriptors) == 0
     assert (
         decode_slot(
             encoded.payload,
             mode=encoded.mode,
             slot_id=0,
             geometry=geometry,
-            codebooks=artifact.codebooks,
+            codebooks=codebooks,
+        )
+        == raw.tobytes()
+    )
+
+
+def test_fp8_exponent_offsets_align_channels_losslessly() -> None:
+    """Per-channel offsets turn shifted channels into coded symbols."""
+    geometry = _fp8_geometry()
+    rows = geometry.plane_count * geometry.num_kv_heads
+    generic = np.frombuffer(default_online_codebooks(geometry), dtype=np.uint8)
+    books = generic[: rows * CODEBOOK_ENTRIES].reshape(rows, CODEBOOK_ENTRIES)
+    base = np.frombuffer(_fp8_slot(geometry, seed=11), dtype=np.uint8).reshape(
+        -1, geometry.head_dim
+    )
+    rng = np.random.default_rng(12)
+    channel_offset = rng.integers(0, 16, geometry.head_dim)
+    # Raise each channel's exponent by its offset (mod 16), keeping sign and
+    # mantissa, so only the offsets bring the symbols back into the table.
+    exponent = ((base >> 3) + channel_offset) & 15
+    raw = ((base & 0x87) | (exponent << 3)).astype(np.uint8).tobytes()
+    offsets = np.broadcast_to(channel_offset, (rows, geometry.head_dim))
+    plain = encode_slot(
+        raw, slot_id=0, geometry=geometry, codebooks=_tables(geometry, books)
+    )
+    codebooks = _tables(geometry, books, offsets)
+
+    encoded = encode_slot(raw, slot_id=0, geometry=geometry, codebooks=codebooks)
+
+    assert encoded.mode is SlotMode.COMPRESSED
+    assert len(encoded.payload) < len(plain.payload)
+    assert (
+        decode_slot(
+            encoded.payload,
+            mode=encoded.mode,
+            slot_id=0,
+            geometry=geometry,
+            codebooks=codebooks,
         )
         == raw
     )
+
+
+def test_bf16_tables_reject_exponent_offsets() -> None:
+    geometry = _geometry(num_slots=1)
+    rows = geometry.plane_count * geometry.num_kv_heads
+    payload = bytearray(default_online_codebooks(geometry))
+    payload[rows * CODEBOOK_ENTRIES] = 1
+    with pytest.raises(ValueError, match="offset"):
+        encode_slot(
+            _slot(geometry, seed=1),
+            slot_id=0,
+            geometry=geometry,
+            codebooks=bytes(payload),
+        )

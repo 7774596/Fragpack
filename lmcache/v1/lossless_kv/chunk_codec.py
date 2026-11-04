@@ -140,6 +140,7 @@ class KVMajorChunkCodec:
             raw bytes; None stores variable-length records.
         codebook_dir (str | Path | None): Calibration artifact directory
             for this model; the model-independent generic palette when None.
+        kv_head_start (int): First calibrated KV head this rank holds.
         fused_kv (bool): Chunks hold K and V side by side in each head,
             ``[layers, tokens, heads, 2, head_dim]``, instead of kv-major.
             This is the codec's physical block order, so no permute is needed.
@@ -174,6 +175,7 @@ class KVMajorChunkCodec:
         max_chunks: int,
         capacity_ratio: float | None = None,
         codebook_dir: str | Path | None = None,
+        kv_head_start: int = 0,
         fused_kv: bool = False,
         decode_sets: int = 4,
     ) -> None:
@@ -219,7 +221,7 @@ class KVMajorChunkCodec:
         self._codebooks = (
             default_online_codebooks(self._geometry)
             if codebook_dir is None
-            else load_calibrated_codebooks(codebook_dir, self._geometry)
+            else load_calibrated_codebooks(codebook_dir, self._geometry, kv_head_start)
         )
         with torch.cuda.device(device), torch.inference_mode(False):
             self._encode_scratch = self._scratch_cache(device)

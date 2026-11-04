@@ -10,18 +10,14 @@ symbols are high bytes; FP8 E4M3 symbols are bytes with the mantissa masked off
 :func:`attn_page.calibrate_fp8`. :func:`load_tables` derives the device-side
 forms used by the kernels.
 
-CLI::
-
-    python -m lmcache.v1.lossless_kv.fragpack.attn_tables DUMP.npy OUT.npz [--fp8]
-        [--rope-theta THETA --max-positions N]
-
-where ``DUMP.npy`` is uint16 ``[S, L, 2, 128, H, 128]`` BF16 bit patterns;
-``--fp8`` calibrates for an FP8 cache by quantizing them as an unscaled FP8
-cache write does. Captured K sits at the capture's (short) positions, but
-RoPE rotates K channel pairs with position, so FP8 K exponent offsets fitted
-there miss at long positions. ``--rope-theta`` fits FP8 K tables over the
-captured K re-rotated to positions spanning ``[0, N)`` (NeoX ``rotate_half``
-pairs).
+They are fitted by :func:`lmcache.v1.lossless_kv.calibration.calibrate_codebooks`
+(``benchmarks/lossless_kv/calibrate.py``), which also derives the tier codec's
+tables from them, and written as an artifact's ``tables.npz``. Captured K sits
+at the capture's (short) positions, but RoPE rotates K channel pairs with
+position, so FP8 K exponent offsets fitted there miss at long positions;
+:func:`calibrate` with ``rope_theta`` fits FP8 K over the captured K
+re-rotated to positions spanning ``[0, max_positions)`` (NeoX
+``rotate_half`` pairs).
 """
 
 # Future
@@ -29,7 +25,6 @@ from __future__ import annotations
 
 # Standard
 from dataclasses import dataclass
-import argparse
 
 # Third Party
 from numpy.typing import NDArray
@@ -37,10 +32,7 @@ import numpy as np
 import torch
 
 # First Party
-from lmcache.logging import init_logger
 from lmcache.v1.lossless_kv.fragpack import attn_page as ap
-
-logger = init_logger(__name__)
 
 # Positions FP8 K calibration spans when re-rotating captured K.
 ROPE_CALIBRATION_POSITIONS = 16
@@ -178,7 +170,7 @@ def load_tables(
     """Load a calibrated ``.npz`` and build the kernel tables on ``device``.
 
     Args:
-        path: File written by the CLI.
+        path: An artifact's ``tables.npz``.
         device: Target CUDA device.
         heads: KV heads this worker holds (a TP rank's contiguous shard of
             the calibrated heads); all heads by default.
@@ -252,38 +244,6 @@ def device_tables(
         ),
         fp8=fp8,
     )
-
-
-def _main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("dump", help="uint16 [S, L, 2, 128, H, 128] .npy")
-    parser.add_argument("out", help="output .npz")
-    parser.add_argument("--fp8", action="store_true", help="tables for an FP8 cache")
-    parser.add_argument(
-        "--rope-theta",
-        type=float,
-        default=None,
-        help="RoPE base (FP8 K)",
-    )
-    parser.add_argument(
-        "--max-positions", type=int, default=0, help="longest served context"
-    )
-    args = parser.parse_args()
-    dump = np.load(args.dump, mmap_mode="r")
-    table, offset = calibrate(dump, args.fp8, args.rope_theta, args.max_positions)
-    np.savez(args.out, table=table, offset=offset, fp8=args.fp8)
-    logger.info(
-        "wrote %s tables %s (fp8=%s, rope_theta=%s, max_positions=%d)",
-        args.out,
-        table.shape,
-        args.fp8,
-        args.rope_theta,
-        args.max_positions,
-    )
-
-
-if __name__ == "__main__":
-    _main()
 
 
 __all__ = [

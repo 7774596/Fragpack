@@ -59,6 +59,9 @@ class LayoutHints(TypedDict, total=False):
             mark vLLM's FragPack attention backend (BF16 / FP8 records),
             whose blocks LMCache moves as block blobs; ``num_kv_heads`` then
             gives the KV heads per layer.
+        kv_head_start: First of the model's KV heads this rank's cache
+            holds (its tensor-parallel shard); selects the rank's rows of
+            calibrated lossless KV tables. 0 when absent.
     """
 
     kv_layout: KVLayoutName
@@ -67,3 +70,4 @@ class LayoutHints(TypedDict, total=False):
     kv_list_layout: Literal["k_v", "unified"]
     head_dim: int
     kv_codec: Literal["fragpack", "fragpack-fp8"]
+    kv_head_start: int

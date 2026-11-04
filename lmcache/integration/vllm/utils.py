@@ -43,7 +43,8 @@ def is_false(value: str) -> bool:
 def vllm_layout_hints(vllm_config: "VllmConfig | None" = None) -> "LayoutHints":
     """Build layout_hints dict by querying vLLM at runtime.
 
-    Includes FragPack's page hints when its attention backend runs here.
+    Includes FragPack's page hints when its attention backend runs here, and
+    the rank's first KV head under tensor parallelism.
     """
     # First Party
     from lmcache.v1.lossless_kv.fragpack import registry as fragpack
@@ -52,7 +53,34 @@ def vllm_layout_hints(vllm_config: "VllmConfig | None" = None) -> "LayoutHints":
     kv_layout = try_get_vllm_kv_cache_layout(vllm_config)
     if kv_layout is not None:
         hints["kv_layout"] = kv_layout
+    head_start = _kv_head_start(vllm_config)
+    if head_start:
+        hints["kv_head_start"] = head_start
     return hints  # type: ignore[return-value]
+
+
+def _kv_head_start(vllm_config: "VllmConfig | None") -> int:
+    """Return the first KV head of this TP rank's cache, 0 without TP.
+
+    vLLM gives rank ``r`` of ``t`` the heads from ``r * H // t`` of the
+    model's ``H``: a contiguous shard, or one replicated head when ``H < t``.
+    """
+    try:
+        # Third Party
+        from vllm.config import get_current_vllm_config
+        from vllm.distributed import (
+            get_tensor_model_parallel_rank,
+            get_tensor_model_parallel_world_size,
+        )
+
+        config = vllm_config or get_current_vllm_config()
+        size = get_tensor_model_parallel_world_size()
+        rank = get_tensor_model_parallel_rank()
+        heads = config.model_config.get_total_num_kv_heads()
+    except Exception:
+        # No vLLM or no initialized TP group: a single unsharded rank.
+        return 0
+    return rank * heads // size
 
 
 def translate_vllm_kv_cache_layout(kv_cache_layout: str) -> KVLayoutName:

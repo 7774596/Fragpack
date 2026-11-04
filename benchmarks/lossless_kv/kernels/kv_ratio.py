@@ -26,11 +26,10 @@ import sys
 import numpy as np
 
 # First Party
-from lmcache.v1.lossless_kv.calibration import calibrate_codebooks
+from lmcache.v1.lossless_kv.calibration import calibrate_codebooks, tier_codebooks
 from lmcache.v1.lossless_kv.codec import default_online_codebooks, encode_slot
 from lmcache.v1.lossless_kv.format import CompressedStoreGeometry, SlotMode
 from lmcache.v1.lossless_kv.fragpack import attn_page as ap
-from lmcache.v1.lossless_kv.fragpack.attn_tables import calibrate
 
 
 def _entropy(hist: np.ndarray) -> float:
@@ -55,12 +54,17 @@ def main() -> None:
     )
     raw = [np.ascontiguousarray(kv[s]).tobytes() for s in range(slots)]
     ncal = min(8, slots // 4)
-    books = calibrate_codebooks(raw[:ncal], model_id=model, geometry=geometry)
+    # One fit serves both formats.
+    artifact = calibrate_codebooks(np.ascontiguousarray(kv[:ncal]), model_id=model)
+    tables = artifact.table
     evals = range(ncal, slots)
     res: dict[str, object] = {"model": model, "slots_eval": len(evals)}
     for name, codebooks in (
         ("chunk_generic", default_online_codebooks(geometry)),
-        ("chunk_calibrated", books.codebooks),
+        (
+            "chunk_calibrated",
+            tier_codebooks(artifact.table, artifact.offset, artifact.fp8),
+        ),
     ):
         ratios = []
         for s in evals:
@@ -68,7 +72,6 @@ def main() -> None:
             coded = enc.mode is SlotMode.COMPRESSED
             ratios.append(len(enc.payload) / geometry.slot_size if coded else 1.0)
         res[name] = round(float(np.mean(ratios)), 4)
-    tables, _offsets = calibrate(np.ascontiguousarray(kv[:ncal]))
     lens = []
     for s in evals:
         block = np.ascontiguousarray(kv[s])

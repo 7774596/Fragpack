@@ -1315,7 +1315,10 @@ class LMCacheDrivenTransferModule(InstanceLivenessTarget):
             )
         if self._lossless_kv.enabled:
             return LosslessKVTransfer(
-                cache_context, self._ctx.storage_manager, self._lossless_kv
+                cache_context,
+                self._ctx.storage_manager,
+                self._lossless_kv,
+                (layout_hints or {}).get("kv_head_start", 0),
             )
         return None
 
