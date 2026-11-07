@@ -41,7 +41,6 @@ from lmcache.v1.lossless_kv.fragpack.attn_tables import calibrate, device_tables
 from lmcache.logging import init_logger
 from lmcache.v1.lossless_kv.fragpack.fused_attn_decode import (
     GQA,
-    RecordTables,
     decode_attention,
     decode_units,
     workspace_elems,
@@ -131,7 +130,7 @@ def _decode_rows(
     nb = kc.shape[0]
     scale = D**-0.5
     sms = torch.cuda.get_device_properties(0).multi_processor_count
-    tables = RecordTables(*store.layer_tables(0))
+    tables = store.layer_tables(0)
     rows = []
     for lens in batches:
         b = len(lens)
@@ -334,7 +333,7 @@ def main() -> None:
     calib = layer[: args.calib_pages]
     if args.raw_records:
         calib = np.random.default_rng(0).integers(0, 1 << 16, calib.shape, np.uint16)
-    table = calibrate(calib)
+    table, offset = calibrate(calib)
     content = layer[args.calib_pages :, 0]
     idx = np.arange(args.blocks) % content.shape[0]
     kv = torch.from_numpy(content[idx].view(np.int16)).cuda().view(torch.bfloat16)
@@ -343,7 +342,7 @@ def main() -> None:
     store = HbmKvStore(
         [cache],
         heads,
-        device_tables(table, torch.device("cuda")),
+        device_tables(table, torch.device("cuda"), offset=offset),
         FILL_BLOCKS * T,
         8,
         # Raw records all live in overflow.
