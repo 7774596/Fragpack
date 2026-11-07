@@ -27,6 +27,7 @@ from lmcache.v1.lossless_kv.format import (
     codec_table_rows,
     digest_bytes,
     low_stream_bytes,
+    pack_tile_index,
     shift_fp8_symbols,
     split_codec_tables,
 )
@@ -200,11 +201,8 @@ def encode_slot(
             + np.ascontiguousarray(high[raw_mask]).tobytes()
         )
         escape_count = len(escape_codes)
-        prefix_bytes = (
-            prefixes.astype("<u4", copy=False).tobytes()
-            + _escape_prefixes(raw_mask, geometry.tile_scalars)
-            .astype("<u4", copy=False)
-            .tobytes()
+        prefix_bytes = pack_tile_index(
+            prefixes, _escape_prefixes(raw_mask, geometry.tile_scalars)
         )
         symbols = _pack_codes(np.minimum(codes, escape_code))
 

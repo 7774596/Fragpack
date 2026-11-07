@@ -17,10 +17,10 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
     import numpy as np
 
-# Version 2 codes each (layer, K/V, head) with its own codebook and FP8
-# scalars after a per-channel exponent offset; one escape and one raw-escape
-# prefix per tile.
-FORMAT_VERSION = 2
+# Version 3 codes each (layer, K/V, head) with its own codebook and FP8
+# scalars after a per-channel exponent offset, and locates each tile's escapes
+# through a grouped tile index (:func:`tile_index_bytes`).
+FORMAT_VERSION = 3
 IO_ALIGNMENT = 4096
 CODEBOOK_ENTRIES = 15
 KV_PLANES = 2
@@ -29,6 +29,11 @@ FP8_EXPONENTS = 16
 # Online producers and worker startup warmup must agree before the server's
 # runtime configuration is available.
 ONLINE_TILE_SCALARS = 256
+# Tiles per tile-index group: one restore group of eight warps.
+INDEX_GROUP_TILES = 8
+# Index words per group: escape and raw-escape prefixes of its first tile,
+# then one (escape | raw << 16) word per later tile, relative to the first.
+INDEX_GROUP_WORDS = 2 + INDEX_GROUP_TILES - 1
 SLOT_MAGIC = b"DKVSLOT1"
 
 _SLOT_HEADER = struct.Struct("<8sIIIIQIIQQ32s32s")
@@ -77,20 +82,60 @@ def slot_header_bytes(plane_count: int) -> int:
     return align_up(_SLOT_HEADER.size + plane_count * _PLANE_DESCRIPTOR.size + 1)
 
 
-def prefix_table_bytes(tile_count: int) -> int:
-    """Return the bytes of one plane's escape and raw-escape prefix tables.
+def tile_index_bytes(tile_count: int) -> int:
+    """Return the bytes of one plane's tile index.
+
+    Tiles form groups of ``INDEX_GROUP_TILES``. A group stores the escape
+    and raw-escape counts preceding its first tile as two little-endian
+    ``uint32`` words, then for each later tile ``t`` one ``uint32`` word
+    ``escapes | raw << 16`` counted from the group's first tile to ``t``.
+    Tiles past the plane in the last group repeat the plane totals.
 
     Args:
         tile_count: Tiles in the plane.
 
     Returns:
-        Two little-endian ``uint32`` tables of ``tiles + 1``
-        cumulative counts each, stored back-to-back.
+        Index length in bytes.
 
     Async/thread-safety:
         Pure and safe to call from any thread.
     """
-    return 8 * (tile_count + 1)
+    groups = (tile_count + INDEX_GROUP_TILES - 1) // INDEX_GROUP_TILES
+    return 4 * INDEX_GROUP_WORDS * groups
+
+
+def pack_tile_index(
+    escape_prefix: NDArray[np.integer], raw_prefix: NDArray[np.integer]
+) -> bytes:
+    """Serialize a plane's tile index (:func:`tile_index_bytes`).
+
+    Args:
+        escape_prefix: ``tiles + 1`` cumulative escape counts (entry ``t``
+            counts the escapes before tile ``t``).
+        raw_prefix: ``tiles + 1`` cumulative raw-escape counts.
+
+    Returns:
+        The little-endian index bytes.
+
+    Async/thread-safety:
+        Pure and safe to call from any thread.
+    """
+    # Third Party
+    import numpy as np
+
+    tiles = len(escape_prefix) - 1
+    groups = (tiles + INDEX_GROUP_TILES - 1) // INDEX_GROUP_TILES
+    starts = np.minimum(
+        np.arange(groups * INDEX_GROUP_TILES).reshape(groups, -1), tiles
+    )
+    escape = np.asarray(escape_prefix, dtype=np.int64)[starts]
+    raw = np.asarray(raw_prefix, dtype=np.int64)[starts]
+    words = np.empty((groups, INDEX_GROUP_WORDS), dtype="<u4")
+    words[:, 0] = escape[:, 0]
+    words[:, 1] = raw[:, 0]
+    # Relative counts of a group stay below 7 * ONLINE_TILE_SCALARS < 2**16.
+    words[:, 2:] = (escape[:, 1:] - escape[:, :1]) | ((raw[:, 1:] - raw[:, :1]) << 16)
+    return words.tobytes()
 
 
 def online_layout_flags(dtype_bytes: int) -> int:
@@ -300,7 +345,7 @@ def online_fixed_envelope_geometry(
     payload_base = (
         low_stream_bytes(plane_scalars, dtype_bytes)
         + (plane_scalars * 3 + 7) // 8
-        + prefix_table_bytes(max_tiles)
+        + tile_index_bytes(max_tiles)
     )
     if num_planes <= 0:
         return None
@@ -642,8 +687,7 @@ class SlotHeader:
             ):
                 raise ValueError("compressed plane tile count mismatch")
             record_end = descriptor.record_offset + descriptor.record_length
-            # Escape and raw-escape prefix tables are stored back-to-back.
-            prefix_end = descriptor.prefix_offset + prefix_table_bytes(
+            prefix_end = descriptor.prefix_offset + tile_index_bytes(
                 descriptor.tile_count
             )
             symbol_bytes = (descriptor.scalar_count * SYMBOL_BITS + 7) // 8
@@ -709,6 +753,8 @@ __all__ = [
     "FP8_EXPONENTS",
     "FP8_LAYOUT_FLAG",
     "FP8_MANTISSA_BITS",
+    "INDEX_GROUP_TILES",
+    "INDEX_GROUP_WORDS",
     "IO_ALIGNMENT",
     "KV_PLANES",
     "SYMBOL_BITS",
@@ -723,8 +769,9 @@ __all__ = [
     "low_stream_bytes",
     "online_fixed_envelope_geometry",
     "online_layout_flags",
-    "prefix_table_bytes",
+    "pack_tile_index",
     "shift_fp8_symbols",
     "slot_header_bytes",
     "split_codec_tables",
+    "tile_index_bytes",
 ]

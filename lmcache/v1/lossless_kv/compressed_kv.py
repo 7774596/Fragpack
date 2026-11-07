@@ -17,16 +17,18 @@ import torch
 from lmcache.logging import init_logger
 from lmcache.v1.lossless_kv.format import (
     CODEBOOK_ENTRIES,
+    ESCAPE_SYMBOL_BITS,
     IO_ALIGNMENT,
     ONLINE_TILE_SCALARS,
+    SYMBOL_BITS,
     CompressedStoreGeometry,
     SlotMode,
     digest_bytes,
     low_stream_bytes,
     online_fixed_envelope_geometry,
-    prefix_table_bytes,
     slot_header_bytes,
     split_codec_tables,
+    tile_index_bytes,
 )
 from lmcache.v1.lossless_kv.kv_layout import kernel_kv_view, kv_is_layer_major
 
@@ -851,7 +853,7 @@ class FusedOnlineKVPacker:
         raw_totals_host = host.raw_totals[:row_count].numpy()
         symbol_bits_host = host.symbol_bits[:slot_count].numpy().copy()
         compressed = overflow_host == 0
-        if not np.isin(symbol_bits_host[compressed], (3, 4, 5)).all():
+        if not (symbol_bits_host[compressed] == 5).all():
             raise RuntimeError("device returned invalid compressed symbol width")
         # Rebuild the device layout in bulk from the completed pinned
         # metadata. A Python loop over every slot/plane holds the GIL
@@ -865,16 +867,9 @@ class FusedOnlineKVPacker:
         plane_raw_totals = raw_totals_host.reshape(slot_count, self._num_planes).astype(
             np.int64
         )
-        main_bits = np.where(symbol_bits_host == 4, 4, 3)
-        secondary_bits = np.where(symbol_bits_host == 5, 3, 4)
-        symbol_lengths = (self._plane_scalars * main_bits + 7) // 8
-        prefix_entries = prefix_table_bytes(max_tiles) // 8
-        prefix_lengths = np.where(symbol_bits_host == 4, 4, 8) * prefix_entries
-        escape_lengths = np.where(
-            symbol_bits_host[:, None] == 4,
-            plane_raw_totals,
-            (plane_totals * secondary_bits[:, None] + 7) // 8 + plane_raw_totals,
-        )
+        symbol_lengths = (self._plane_scalars * SYMBOL_BITS + 7) // 8
+        prefix_lengths = tile_index_bytes(max_tiles)
+        escape_lengths = (plane_totals * ESCAPE_SYMBOL_BITS + 7) // 8 + plane_raw_totals
         lengths = (
             slot_header_bytes(self._num_planes)
             + self._num_planes

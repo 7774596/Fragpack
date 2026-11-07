@@ -40,9 +40,12 @@ import tilelang.language as T
 # First Party
 from lmcache.v1.lossless_kv.format import (
     FORMAT_VERSION,
+    INDEX_GROUP_TILES,
+    INDEX_GROUP_WORDS,
     IO_ALIGNMENT,
     ONLINE_TILE_SCALARS,
     slot_header_bytes,
+    tile_index_bytes,
 )
 
 _COUNT_THREADS = 256
@@ -1016,11 +1019,10 @@ def _build_store_layout(
         scratch_slot_stride: T.int32,
     ):
         header_bytes = slot_header_bytes(num_planes)
-        prefix_bytes_3 = 8 * (max_tiles + 1)
         payload_base_3 = (
             _low_stream_bytes(plane_scalars, fp8)
             + (plane_scalars * 3 + 7) // 8
-            + prefix_bytes_3
+            + tile_index_bytes(max_tiles)
         )
         plane_groups = (num_planes + 31) // 32
         # A warp sizes one slot from its plane lengths; one block scan per
@@ -1135,9 +1137,10 @@ def _build_store_compact(
     classifies eight scalars per tile: low bytes and 3-bit primary symbols
     land in shared memory, raw high bytes go straight to the record, and
     secondary escape codes are OR-ed into a shared bit stream at ranks taken
-    from the count pass's prefix tables. Each stream of the group is then
-    written with aligned words. The plane-zero CTA also serializes the
-    canonical slot header, so the hot path needs no host metadata copy.
+    from the count pass's prefix tables, which the record keeps as its grouped
+    tile index. Each stream of the group is then written with aligned words.
+    The plane-zero CTA also serializes the canonical slot header, so the hot
+    path needs no host metadata copy.
 
     FP8 records replace the low bytes with each lane's eight 3-bit mantissas,
     staged like the primary symbols and repacked into a dense stream; their
@@ -1158,6 +1161,8 @@ def _build_store_compact(
     scalar_step = 0 if vector else 1
     kv_words = num_blocks * num_planes * plane_scalars // 8
     prefix_words = 2 * (max_tiles + 1)
+    index_bytes = tile_index_bytes(max_tiles)
+    index_words = index_bytes // 4
     group_count = (max_tiles + _GROUP_TILES - 1) // _GROUP_TILES
     kv_dtype = _kv_dtype(fp8)
     lane_dtype = _lane_vector_dtype(fp8)
@@ -1204,6 +1209,7 @@ def _build_store_compact(
             T.annotate_min_blocks_per_sm(_COMPACT_MIN_BLOCKS)
             lut_s = T.alloc_shared((heads * 256,), "uint8")
             pre_s = T.alloc_shared((prefix_words + 1,), "uint32")
+            idx_s = T.alloc_shared((index_words + 1,), "uint32")
             low_s = T.alloc_shared((low_words,), "uint32")
             mant_s = T.alloc_shared((mant_words,), "uint32")
             pw_s = T.alloc_shared((_GROUP_SCALARS // 8 + 1,), "uint32")
@@ -1291,7 +1297,7 @@ def _build_store_compact(
                     # tensor caused the generated kernel to select the legacy
                     # 4-bit symbol width for header offsets even though the
                     # layout planner had reserved the 3-bit payload.
-                    prefix_bytes = 8 * (max_tiles + 1)
+                    prefix_bytes = index_bytes
                     symbol_bytes = (plane_scalars * 3 + 7) // 8
                     base_bytes = low_bytes + symbol_bytes + prefix_bytes
                     # Deep models spill descriptors past one 4 KiB page.
@@ -1437,14 +1443,38 @@ def _build_store_compact(
                             if w < prefix_words:
                                 pre_s[w] = scratch_words[scratch_prefix_base // 4 + w]
                         T.sync_threads()
+                        # Tile index (``tile_index_bytes``): per eight-tile
+                        # group the first tile's escape and raw prefixes, then
+                        # each later tile's counts relative to them.
+                        for k in T.serial(
+                            (index_words + _COMPACT_THREADS - 1) // _COMPACT_THREADS
+                        ):
+                            w = k * _COMPACT_THREADS + tx
+                            if w < index_words:
+                                first = w // INDEX_GROUP_WORDS * INDEX_GROUP_TILES
+                                part = w % INDEX_GROUP_WORDS
+                                if part == 0:
+                                    idx_s[w] = pre_s[first]
+                                elif part == 1:
+                                    idx_s[w] = pre_s[max_tiles + 1 + first]
+                                else:
+                                    later = T.min(first + part - 1, max_tiles)
+                                    idx_s[w] = (pre_s[later] - pre_s[first]) | (
+                                        (
+                                            pre_s[max_tiles + 1 + later]
+                                            - pre_s[max_tiles + 1 + first]
+                                        )
+                                        << 16
+                                    )
+                        T.sync_threads()
                         _flush_bytes(
-                            pre_s,
+                            idx_s,
                             destination,
                             dst_words,
                             symbol_base + symbol_bytes,
                             prefix_bytes,
                             tx,
-                            prefix_words,
+                            index_words,
                         )
                         carry = T.alloc_var(T.uint32, init=0)
                         vec = T.alloc_local((_GROUP_SUB * 4,), "uint32")
@@ -1744,10 +1774,12 @@ def _build_load(
     Record fields are read through an ``int32`` view of the staging tensor
     with funnel shifts (``_record_word``); raw records keep byte reads. Each
     CTA reads the plane descriptor once and decodes ``_LOAD_TILE_GROUPS``
-    consecutive eight-tile groups. The five words of a group that do not
-    depend on the scans (primary symbols, two low-byte words, two tile
-    prefixes) are fetched one group ahead, overlapping the next group's loads
-    with the current group's dependent reads. When the descriptor offsets
+    consecutive eight-tile groups, one tile index group each. The four
+    words per lane that do not depend on the scans (primary symbols, two
+    low-byte words, and one word of the group's tile index, from which each
+    warp shuffles its tile's prefixes) are fetched one group ahead,
+    overlapping the next group's loads with the current group's dependent
+    reads. When the descriptor offsets
     keep every scan-independent read of the CTA inside the staging tensor,
     those reads skip their clamps; reads addressed by scanned ranks are
     always clamped.
@@ -1850,18 +1882,23 @@ def _build_load(
                 out,
                 1,
             )
+        # Tile index (``tile_index_bytes``): the eight warps of a CTA decode
+        # one index group, so lane ``l`` fetches the group's word ``l``
+        # (lanes past the group repeat its last word) and the decode step
+        # shuffles out the words its tile needs.
         out[3] = _record_word(
             words,
             word_base,
             lead,
-            descriptor[2] + T.cast(tile * 4, T.uint32),
-            last,
-        )
-        out[4] = _record_word(
-            words,
-            word_base,
-            lead,
-            descriptor[2] + T.cast((tiles_per_plane + 1 + tile) * 4, T.uint32),
+            descriptor[2]
+            + T.cast(
+                (
+                    tile // INDEX_GROUP_TILES * INDEX_GROUP_WORDS
+                    + T.min(lane, INDEX_GROUP_WORDS - 1)
+                )
+                * 4,
+                T.uint32,
+            ),
             last,
         )
 
@@ -1947,9 +1984,7 @@ def _build_load(
                 + grid_tiles * low_tile_reach
                 + low_read_slack
                 <= room
-                and T.cast(descriptor[2], T.int64)
-                + (tiles_per_plane + 1 + grid_tiles) * 4
-                + 8
+                and T.cast(descriptor[2], T.int64) + tile_index_bytes(grid_tiles) + 8
                 <= room
             ):
                 unclamped = 1
@@ -1978,8 +2013,8 @@ def _build_load(
                 lane_shift = shift_words[shift_base]
             # ``ahead`` holds the next group's scan-independent words,
             # ``current`` the words of the group being decoded.
-            ahead = T.alloc_local((5,), "uint32")
-            current = T.alloc_local((5,), "uint32")
+            ahead = T.alloc_local((4,), "uint32")
+            current = T.alloc_local((4,), "uint32")
             if mode != 0:
                 fetch_group_checked(
                     words,
@@ -2013,7 +2048,7 @@ def _build_load(
                                 else 0
                             )
                 else:
-                    for entry in T.unroll(5):
+                    for entry in T.unroll(4):
                         current[entry] = ahead[entry]
                     if group + 1 < _LOAD_TILE_GROUPS:
                         fetch_group_checked(
@@ -2054,13 +2089,27 @@ def _build_load(
                         prior = T.shfl_up(primary_scan, 1 << step)
                         if lane >= (1 << step):
                             primary_scan = primary_scan + prior
+                    # The group's first-tile escape and raw prefixes (index
+                    # words 0 and 1) and this tile's relative counts (word
+                    # tile % 8 + 1; the first tile's are zero).
+                    group_escapes = T.shfl_sync(current[3], 0)
+                    group_raws = T.shfl_sync(current[3], 1)
+                    relative = T.alloc_var(
+                        T.uint32,
+                        init=T.shfl_sync(
+                            current[3], T.max(tile % INDEX_GROUP_TILES, 1) + 1
+                        ),
+                    )
                     prefix = T.alloc_var(T.uint32, init=0)
                     raw_prefix = T.alloc_var(T.uint32, init=0)
                     # All lanes, including an inactive final warp, participate
-                    # in the warp scans. Only real tiles use prefix tables.
+                    # in the warp scans and shuffles. Only real tiles use the
+                    # tile index.
                     if tile < tiles_per_plane:
-                        prefix = current[3]
-                        raw_prefix = current[4]
+                        if tile % INDEX_GROUP_TILES == 0:
+                            relative = 0
+                        prefix = group_escapes + (relative & 0xFFFF)
+                        raw_prefix = group_raws + (relative >> 16)
                     secondary_start = (
                         T.cast(prefix, T.int32) + primary_scan - primary_count
                     )

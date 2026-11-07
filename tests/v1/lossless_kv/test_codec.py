@@ -15,11 +15,15 @@ from lmcache.v1.lossless_kv import (
 from lmcache.v1.lossless_kv.format import (
     CODEBOOK_ENTRIES,
     FORMAT_VERSION,
+    INDEX_GROUP_TILES,
+    INDEX_GROUP_WORDS,
     IO_ALIGNMENT,
     ONLINE_TILE_SCALARS,
     SlotHeader,
     digest_bytes,
+    pack_tile_index,
     slot_header_bytes,
+    tile_index_bytes,
 )
 
 
@@ -95,6 +99,26 @@ def test_reference_codec_is_byte_exact_with_escapes_and_tail_tile() -> None:
         )
         == evaluation
     )
+
+
+def test_tile_index_recovers_every_tile_prefix() -> None:
+    """Each tile's prefixes are its group's base plus its relative counts."""
+    rng = np.random.default_rng(7)
+    tiles = 2 * INDEX_GROUP_TILES + 3
+    escapes = rng.integers(0, ONLINE_TILE_SCALARS + 1, tiles)
+    raws = rng.integers(0, 64, tiles)
+    escape_prefix = np.concatenate([[0], np.cumsum(escapes)])
+    raw_prefix = np.concatenate([[0], np.cumsum(raws)])
+
+    index = pack_tile_index(escape_prefix, raw_prefix)
+
+    assert len(index) == tile_index_bytes(tiles) == 3 * INDEX_GROUP_WORDS * 4
+    words = np.frombuffer(index, dtype="<u4").reshape(-1, INDEX_GROUP_WORDS)
+    for tile in range(tiles):
+        group, offset = divmod(tile, INDEX_GROUP_TILES)
+        relative = int(words[group, offset + 1]) if offset else 0
+        assert int(words[group, 0]) + (relative & 0xFFFF) == escape_prefix[tile]
+        assert int(words[group, 1]) + (relative >> 16) == raw_prefix[tile]
 
 
 def test_three_bit_codec_treats_unrepresentable_symbols_as_escapes() -> None:
