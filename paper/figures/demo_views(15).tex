@@ -1,0 +1,170 @@
+% Workflow-led recomposition of saved console evidence, native size 178 x 154 mm.
+% Layout reference: KVFold_Fig3_Workflow_Comparison.pdf (author supplied).
+% Preserve the version-15 prompt, response and reuse cards; link the controls.
+% Functional evidence: live-run.json; archive evidence: paper-evidence.json.
+% Arrows denote action order. Edit early and Restore use the original prompt.
+% Prefix strips share a 656-token scale; white marks indicate 128-token units.
+% The Inspector is an independent After Build check, not Restore verification.
+% The Inspector and response are separate cards with a 3.5 mm gutter.
+% Both cards are contained by panel (a), with aligned top and bottom edges.
+% Its window placement is a recomposition, not an implemented modal.
+% All content, including the recorded zero, is editable vector geometry/text.
+\begingroup
+\definecolor{viewInk}{HTML}{222222}
+\definecolor{viewRaw}{HTML}{707070}
+\begin{tikzpicture}[x=1cm,y=1cm,text=viewInk,
+  font=\fontsize{10.5}{12}\selectfont,line cap=round,line join=round,
+  every node/.style={inner sep=0pt},
+  title/.style={font=\fontsize{12.5}{14.5}\selectfont\bfseries},
+  note/.style={font=\fontsize{9.5}{11}\selectfont},
+  label/.style={font=\fontsize{10.5}{12}\selectfont\bfseries},
+  metric/.style={font=\fontsize{11.5}{13}\selectfont\bfseries},
+  card/.style={draw=viewInk!28,fill=white,rounded corners=1.5pt,line width=.5pt},
+  status/.style={draw=viewInk!20,fill=white,rounded corners=2pt,
+    inner xsep=4pt,inner ysep=1pt,minimum height=.38cm,
+    font=\fontsize{9}{10.5}\selectfont,text=viewInk!75},
+  control/.style={draw=viewInk!45,fill=white,rounded corners=1.5pt,
+    minimum height=.58cm,minimum width=3.50cm,
+    font=\fontsize{10.5}{12}\selectfont},
+  flow/.style={-{Stealth[length=1.7mm,width=1.3mm]},line width=.75pt}]
+  \path[use as bounding box] (0,0) rectangle (17.8,15.4);
+
+  % (a) Original prompt / reuse / response layout, with a small action flow.
+  \draw[viewInk!55,fill=white,rounded corners=2pt,line width=.65pt]
+    (.05,7.10) rectangle (17.75,15.35);
+  \fill[fpBlue!6,rounded corners=2pt] (.07,14.70) rectangle (17.73,15.33);
+  \draw[viewInk!25,line width=.5pt] (.05,14.70) -- (17.75,14.70);
+  \node[title,anchor=west] at (.35,15.025) {(a) Prefix reuse};
+  \node[status,anchor=east] at (17.45,15.025)
+    {Saved interaction $\cdot$ Qwen3-4B};
+  \foreach \x/\lab in {2.15/{1. Build},6.50/{2. Append},10.85/{3. Edit early}} {
+    \node[control] at (\x,14.20) {\lab};
+  }
+  \node[control,draw=fpBlue,fill=fpBlue,text=white,
+    font=\fontsize{10.5}{12}\selectfont\bfseries]
+    at (15.20,14.20) {4. Restore};
+  \foreach \x in {3.90,8.25,12.60} {
+    \draw[flow,viewInk!65] (\x+.15,14.20) -- +(.55,0);
+  }
+
+  % Exact prompt excerpts. Cards share 2.5 mm padding and title offsets.
+  \draw[card] (.40,10.62) rectangle (7.55,13.70);
+  \node[label,anchor=west] at (.65,13.36) {Prompt excerpt};
+  \node[anchor=north west,align=left,font=\fontsize{9.5}{11.3}\selectfont\ttfamily]
+    at (.65,12.98) {You are maintaining a Python\\
+      repository. Diagnose the timeout\\
+      failure below.};
+  \node[anchor=north west,align=left,font=\fontsize{9}{11}\selectfont\ttfamily]
+    at (.65,11.67) {deadline = monotonic() + timeout\\
+      connection = await client.acquire()};
+
+  \draw[card] (7.90,10.62) rectangle (17.40,13.70);
+  \node[label,anchor=west] at (8.15,13.36) {Prefix reuse};
+  \node[note,anchor=east,text=viewInk!75] at (17.15,13.36) {Reused / prompt tokens};
+  \foreach \x/\col/\lab in {8.15/fpTeal/Reused,10.90/fpBlue/Restored,13.95/fpOrange/Computed} {
+    \fill[\col!85] (\x,12.82) rectangle +(.16,.16);
+    \node[note,anchor=west] at (\x+.24,12.90) {\lab};
+  }
+  % One common scale, including the unused tail after a 534-token prompt.
+  \foreach \y/\lab/\total/\reuse/\col in {
+    12.42/Build/534/0/fpTeal,
+    11.94/Append/656/512/fpTeal,
+    11.46/{Edit early}/534/0/fpTeal,
+    10.98/Restore/534/512/fpBlue} {
+    \node[note,anchor=west] at (8.15,\y) {\lab};
+    \fill[viewInk!5] (10.30,\y-.13) rectangle +(4.75,.26);
+    \draw[fpOrange!80,fill=fpOrange!70,line width=.4pt]
+      (10.30,\y-.13) rectangle +({4.75*\total/656},.26);
+    \ifnum\reuse>0
+      \draw[\col,fill=\col!85,line width=.4pt]
+        (10.30,\y-.13) rectangle +({4.75*\reuse/656},.26);
+    \fi
+    \foreach \k in {1,2,3,4,5} {
+      \pgfmathtruncatemacro{\breakToken}{128*\k}
+      \ifnum\breakToken<\total
+        \draw[white,line width=.65pt]
+          ({10.30+4.75*128*\k/656},\y-.13) -- +(0,.26);
+      \fi
+    }
+    \node[label,anchor=east] at (17.15,\y) {\reuse\,/\,\total};
+  }
+
+  % Verbatim Restore response; the 3.5 mm gutter matches the row above.
+  % Stop this card before the Inspector instead of drawing underneath it.
+  \draw[card] (.40,7.30) rectangle (10.43,10.25);
+  \node[label,anchor=west] at (.65,9.91) {Model response};
+  \node[note,anchor=east,text=fpBlue] at (10.18,9.91) {Restore};
+  \node[anchor=north west,text width=9.53cm,align=left,
+    font=\fontsize{10.5}{13}\selectfont] at (.65,9.48)
+    {The root cause is that the \texttt{timeout} parameter is only used to
+    set a deadline for the function's execution, but it is not enforced
+    during the \texttt{client.acquire()} call.};
+  \draw[viewInk!15,line width=.4pt] (.65,8.05) -- (10.18,8.05);
+  \node[anchor=west,text=fpBlue] at (.65,7.72) {\textbf{512} restored tokens};
+  \node[anchor=west] at (4.60,7.72) {TTFT \textbf{47.3 ms}};
+  \node[note,anchor=east] at (10.18,7.72) {DRAM $\rightarrow$ GPU};
+
+  % Only the Inspector has a shadow; its check remains independent of Restore.
+  \fill[viewInk!9,rounded corners=2pt] (10.86,7.22) rectangle (17.48,10.17);
+  \draw[viewInk!45,fill=white,rounded corners=2pt,line width=.6pt]
+    (10.78,7.30) rectangle (17.40,10.25);
+  \fill[fpTeal!6,rounded corners=2pt] (10.80,9.70) rectangle (17.38,10.23);
+  \draw[viewInk!20,line width=.5pt] (10.78,9.70) -- (17.40,9.70);
+  \node[label,anchor=west] at (11.03,9.975) {KV Inspector};
+  \node[status,anchor=east] at (17.15,9.975) {After Build};
+  \node[note,anchor=west] at (11.03,9.36) {Independent export/import check};
+  \node[note,anchor=west] at (11.03,8.94) {Block 1 $\cdot$ 128 tokens $\cdot$ 36 layers};
+  \node[note] at (12.22,8.54) {BF16};
+  \node[note] at (15.24,8.54) {Encoded blob};
+  \node[metric] at (12.22,8.15) {18.00 MiB};
+  \draw[flow,fpTeal] (13.35,8.15) -- (14.05,8.15);
+  \node[metric] at (15.24,8.15) {12.73 MiB};
+  \node[anchor=west] at (11.03,7.66)
+    {\textcolor{fpTeal}{\textbf{0}} BF16 mismatches};
+  \node[note,anchor=east] at (17.15,7.66) {576 records};
+
+  % (b)(c) Full-width archive rows, aligned metric / Raw / mode columns.
+  \foreach \bottom/\top/\col in {3.52/6.62/fpBlue,.05/3.15/fpTeal} {
+    \draw[viewInk!55,fill=white,rounded corners=2pt,line width=.6pt]
+      (.05,\bottom) rectangle (17.75,\top);
+    \fill[\col!6,rounded corners=2pt]
+      (.07,\top-.60) rectangle (17.73,\top-.02);
+    \fill[viewInk!3,rounded corners=1.5pt]
+      (5.65,\bottom+.16) rectangle (11.40,\top-.75);
+    \fill[\col!4,rounded corners=1.5pt]
+      (11.70,\bottom+.16) rectangle (17.45,\top-.75);
+    \node[label] at (8.525,\top-.94) {Raw};
+  }
+  \node[title,anchor=west] at (.35,6.32) {(b) GPU capacity};
+  \node[status,anchor=east] at (17.45,6.32)
+    {Recorded $\cdot$ $P=64$ $\cdot$ $S=12$ $\cdot$ NVMe 2 TiB};
+  \node[label,anchor=west] at (.35,5.68) {54 GiB KV / GPU};
+  \node[label,text=fpBlue] at (14.575,5.68) {Pool mode};
+  \node[title,anchor=west] at (.35,2.85) {(c) History retention};
+  \node[status,anchor=east] at (17.45,2.85)
+    {Recorded $\cdot$ $P=64$ $\cdot$ $S=8$ $\cdot$ NVMe 640 GiB};
+  \node[label,anchor=west] at (.35,2.21) {400 GiB DRAM};
+  \node[label,text=fpTeal] at (14.575,2.21) {Tier mode};
+
+  % Each pair has the same zero origin and maximum; TTFT is 7 s in both panels.
+  % Raw's 100% stored/raw is the normalized baseline, not a new measurement.
+  \foreach \y/\lab/\dir/\raw/\compressed/\maximum/\rawText/\compressedText/\col in {
+    5.10/{KV tokens per GPU}/\uparrow/1.18/1.59/1.6/1.18M/1.59M/fpBlue,
+    4.50/{Waiting requests (mean)}/\downarrow/1.5/.4/2.0/1.5/0.4/fpBlue,
+    3.90/{Engine TTFT (s)}/\downarrow/5.16/1.94/7.0/5.16/1.94/fpBlue,
+    1.63/{Cached tokens (GPU + ext.)}/\uparrow/55/91/100/{55\%}/{91\%}/fpTeal,
+    1.03/{Stored / raw bytes}/\downarrow/100/71.6/100/{100\%}/{71.6\%}/fpTeal,
+    .43/{Engine TTFT (s)}/\downarrow/6.76/2.34/7.0/6.76/2.34/fpTeal} {
+    \node[anchor=west] at (.35,\y) {\lab};
+    \node[text=viewInk!70] at (5.23,\y) {$\dir$};
+    \fill[viewInk!6] (5.90,\y-.125) rectangle +(3.80,.25);
+    \fill[\col!9] (11.95,\y-.125) rectangle +(3.80,.25);
+    \draw[viewRaw,fill=viewRaw!70,line width=.4pt]
+      (5.90,\y-.125) rectangle +({3.80*\raw/\maximum},.25);
+    \draw[\col,fill=\col!78,line width=.4pt]
+      (11.95,\y-.125) rectangle +({3.80*\compressed/\maximum},.25);
+    \node[metric,anchor=east] at (11.15,\y) {\rawText};
+    \node[metric,anchor=east] at (17.20,\y) {\compressedText};
+  }
+\end{tikzpicture}
+\endgroup

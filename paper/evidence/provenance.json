@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "packaged_at": "2026-11-10T08:46:28.892678+00:00",
+  "current_manuscript": 16,
+  "retained_manuscripts": [
+    8,
+    14,
+    15,
+    16
+  ],
+  "evidence_copies": "Byte-for-byte copies; no fields removed or rewritten. Original source identifiers are preserved.",
+  "source_mapping": {
+    "paper-evidence.json:sources.industry.document": "materials/main(11).pdf",
+    "paper-evidence.json:sources.manuscript.document": "Historical version 3 identifier; retired. Current tables retain its recorded data.",
+    "evidence.json:sources": "Historical source identifiers under docs/data; their summarized records are embedded in evidence.json."
+  },
+  "functional_capture": {
+    "source": "live-run.json",
+    "recorded_at": "2026-11-08T10:05:10.177660+00:00",
+    "scope": "Saved Qwen3-4B interaction and an independent model-block export/import check; not a repeated latency benchmark."
+  },
+  "archived_performance": {
+    "source": "paper-evidence.json",
+    "source_document": "materials/main(11).pdf",
+    "report_date": "2026-11-04",
+    "run_revision": null,
+    "measurement_scope": {
+      "evidence_type": "Published aggregate table transcription",
+      "new_run": false,
+      "live_prompt_results": false,
+      "time_series_available": false,
+      "replicate_samples_available": false,
+      "engine_ttft": "Mean time to first token, excluding FIFO proxy wait.",
+      "goodput": "Requests per minute with engine TTFT <= 2 s and ITL <= 40 ms.",
+      "cached_token_share": "Share of prompt tokens served by GPU prefix cache or LMCache; not an external-only hit ratio.",
+      "waiting_requests": "Mean number of requests waiting in vLLM, not a queue snapshot.",
+      "exclusion": "Requests without a first token by the profiling window's end are excluded.",
+      "capacity_precision": "KV capacities retain rounded published labels; numeric token counts are chart conversions.",
+      "codec_revision": "The recorded runs predate shared per-head calibration and grouped tile indices. Tier results used per-plane codebooks and the earlier index; exact run commits are unspecified.",
+      "control": "Raw and compressed use matching workload and budgets; LMCache LRU, write-through, and prefetch policies are unchanged."
+    }
+  },
+  "comparison_scales": {
+    "gpu_tokens_millions": {
+      "maximum": 1.6,
+      "raw": 1.18,
+      "pool": 1.59
+    },
+    "mean_waiting_requests": {
+      "maximum": 2.0,
+      "raw": 1.5,
+      "pool": 0.4
+    },
+    "gpu_engine_ttft_seconds": {
+      "maximum": 7.0,
+      "raw": 5.16,
+      "pool": 1.94
+    },
+    "combined_cached_token_percent": {
+      "maximum": 100,
+      "raw": 55,
+      "tier": 91
+    },
+    "stored_raw_byte_percent": {
+      "maximum": 100,
+      "raw": 100,
+      "tier": 71.6,
+      "raw_value_scope": "Normalized raw/raw baseline, not an additional measurement."
+    },
+    "history_engine_ttft_seconds": {
+      "maximum": 7.0,
+      "raw": 6.76,
+      "tier": 2.34
+    }
+  },
+  "inspector_scope": {
+    "timing": "After Build",
+    "operation": "Independent export/import of one already-encoded model block through host memory and an independent GPU scratch store.",
+    "block": 1,
+    "tokens": 128,
+    "layers": 36,
+    "records": 576,
+    "raw_bytes": 18874368,
+    "encoded_blob_bytes": 13344768,
+    "bf16_mismatches": 0,
+    "display": "18.00 MiB -> 12.73 MiB",
+    "presentation": "Recomposed all-vector window; not a native modal screenshot and not a verification of the Restore request."
+  },
+  "layout_mm": {
+    "version_15": {
+      "width": 178,
+      "height": 154,
+      "horizontal_card_padding": 2.5,
+      "response_inspector_gutter": 3.5
+    },
+    "version_16": {
+      "width": 178,
+      "height": 158.4,
+      "standalone_height": 180
+    },
+    "panel_outer_left": 0.5,
+    "panel_outer_right": 177.5,
+    "panel_outer_width": 177
+  },
+  "dataflow_semantics": {
+    "copy": "GPU records remain resident when completed blocks are copied to LMCache DRAM.",
+    "restore": "GPU prefix cache is reset and the original Build prompt is replayed; 512 tokens are restored.",
+    "append_hit_source": "The GPU-hit interpretation is based on source code and continuous run logs; the saved summary combines GPU and external reuse.",
+    "inspector": "Independent After Build check, not verification of the Restore request."
+  },
+  "console_captures": {
+    "captured_at": "2026-11-09T06:02:34.338Z",
+    "source_record_sha256": "1220e38f02af976accacb4d72b2429f013f619bf76632d7d79519ae7836c5533",
+    "inspector_source_record_sha256": "df8898870c8d299794b24a34515b2602cb0f95e3cec3171d4ca45a36760aec64",
+    "scope": "Original PNG bytes restored from the verified pre-edit archive. These are saved functional and historical-result views; no new capture or inference was run."
+  },
+  "sha256": {
+    "evidence/evidence.json": "8c6858cb8b59bcc0065dd7c7573d8a971c1fa3320e96d0a298502521aeaf956c",
+    "evidence/live-run.json": "ec3e0cfaff75656663804b0221b64f493d9bcc4139d735db26ed6210951a7f12",
+    "evidence/paper-evidence.json": "1527a7fd80f49becb7c9ef3ab583c2af8a4917ff18149986c16cf18e83c0866e",
+    "evidence/record-example.json": "4bc5f84bf717e062b16ee299f296935e1a02c5f93ad9f1c32278396902a32e07",
+    "figures/architecture(5).tex": "58dc65f9325a3e255bb3700298158c3422204418bfd557c7086df853ef71fcc6",
+    "figures/demo_views(14).tex": "e027c977865a38ef4098435a4cb3f82cf32fb12c329b3a04715018a4999f11b9",
+    "figures/demo_views(15).tex": "4942f9fa733f1a804cbbc8bb45f22e4ea2363aae477f7c117aac6aa9243fd05c",
+    "figures/demo_views(16).tex": "0d4156a90e94b5bced65adcbf44b725cea7f5f3ef76abf75120736e63fc09098",
+    "figures/demo_views(8).tex": "3e173528a73c20bde4ae664b9a9d04a8f031543bd1152221469340128770a6b7",
+    "figures/demo_views_dataflow.tex": "40da46de5fc4706e6882d1d9ba20e432502f1212499b506d9a721cdb99503bcb",
+    "figures/record_layout(10).tex": "25b6115ee5957c4b2204c3dcdae4ff18f4e0150a9eadbcb3ff31575c1e4bf9f4",
+    "figures/record_layout(5).tex": "df37a23098350b3c4c8d71b5812195872947b9505561b0183d22742cee8fc81d",
+    "fragpack_demo(14).pdf": "839f85a8e0e003c36befb7a29b7153c5bd8430b0311fc38bee0524565b023689",
+    "fragpack_demo(14).tex": "a11b9e439ff8a145dc88f2c1db3a59238083f8dac67a0ede5d643282ab656814",
+    "fragpack_demo(15).pdf": "96a882a34d9cc70e52989c27d33d74e8f60d57a59a8fa44a99b1ba614ea5ff5f",
+    "fragpack_demo(15).tex": "b4ce9649d03ab86164e8876d23486b43f8fb308052e13477306425b6f1fb15fb",
+    "fragpack_demo(16).pdf": "bfda56791d5481f7c2cfbec8273c2b05156a17d5701530564c9fe6d5a898f2cb",
+    "fragpack_demo(16).tex": "0ca8b96ec34360f71e9a29791eae9f3a6b8f4014b5445b297d3d3633ee8fdc76",
+    "fragpack_demo(8).pdf": "75034e8af5f449e5637fc779f097db675b5139bdb1cfae1e1cce89e88d8310ed",
+    "fragpack_demo(8).tex": "a209a5521ea5b5060ce2c65937f760b72fb4f6da97b341c65ba7a0222673ab21",
+    "images/console-gpu(8).png": "18d34297b2c5b6b597786443c0ffd53cbbf4014f5ccd2fa994b16559505a8d87",
+    "images/console-gpu-full(8).png": "473dded3e0931f6ebcb95b45ee0f346cdb23ae0345c9498dea85ba6e72207115",
+    "images/console-inspector-recorded(9).png": "1e1a45ea3faee7372d3ddbb68fa0862e884e07ec59f5ff0398627b824a1db371",
+    "images/console-prefix(8).png": "151a391da3d72837244225f4ee7458ac44db62ce22592e3e90329c6a966022e7",
+    "images/console-prefix-full(8).png": "1dc14858814f6896cec8b14f4dcb3f0f8f9a3f0b6578df647b35901ff06535f6",
+    "images/console-tier(8).png": "29832b7b4a5422fd4a187dfd62fc0d42a48ae2e1b51c3145165afe00348f10fc",
+    "images/console-tier-full(8).png": "529df210850f5235d86dbd567426395444d13f1340a66bc3a1a457f216e51bba",
+    "images/figure1(14).pdf": "8cd7ef15615cab97d769e12a9bf09bc4e160976c2cf9ed9036a2c0bb48a533fd",
+    "images/figure1(14).png": "74a60d86f445f510ea916304af0795712682c0401221659355623edf56c10c6b",
+    "images/figure1(15).pdf": "a972df20973853f51a029e3170cdb2972cc6442736acc5df6f45f788a17b7f01",
+    "images/figure1(15).png": "74a60d86f445f510ea916304af0795712682c0401221659355623edf56c10c6b",
+    "images/figure1(16).pdf": "1b76eead7f56bdb280954f2862d57e5d70ecceef81b6e1c0ffcfa2b1cc384d20",
+    "images/figure1(16).png": "74a60d86f445f510ea916304af0795712682c0401221659355623edf56c10c6b",
+    "images/figure2(14).pdf": "51acf9f26488aee5a2ed4ee94519edff9606fd73d136d7b3ba297a7d0296aa0b",
+    "images/figure2(14).png": "e0aa2356c14a95b608adcf3d6c6a99613d4fc268ba1f92cfc5a0b778579de414",
+    "images/figure2(15).pdf": "325ece4886a9ddf5b61fee8d0e419a6d464f1929724805d777af03055c6155fd",
+    "images/figure2(15).png": "e0aa2356c14a95b608adcf3d6c6a99613d4fc268ba1f92cfc5a0b778579de414",
+    "images/figure2(16).pdf": "cc44dd77f7b33ae9a60d17a56fb404afe997edc3f0bf2ad52d5e751aeb507eb8",
+    "images/figure2(16).png": "e0aa2356c14a95b608adcf3d6c6a99613d4fc268ba1f92cfc5a0b778579de414",
+    "images/figure3(14).pdf": "90078cc8fe359f31e917d43eb3b4a24dcb5b22fa33af2edc92b87dc0646bd7e6",
+    "images/figure3(14).png": "bb5441022f9ecfa5e7f79f7e0b3307f6143d90005b59f81633bcdf22a5a70256",
+    "images/figure3(15)-caption.txt": "02631410cd00b322f85b601a99ff708e9e85b038c326e5ffaa6a2413a3964e9b",
+    "images/figure3(15).pdf": "140e14cc82aea06180cf285a2641007c92aaa27d84aa0cc85e22639a96438b4a",
+    "images/figure3(15).png": "4ea1bd9152c85d7265aff10b46b0a945a88b398bdc832aac98b41b3f5cb4cc5d",
+    "images/figure3(16).pdf": "b12d1af6caa7da7a927314b572da95c0fbd258aefb8c944d9afa3fd598904e51",
+    "images/figure3(16).png": "3a6e802d05152112e208bd38391a5c2a26a958dcd628782b9098a91c1f2723fd",
+    "images/figure3-dataflow-caption.txt": "9948b4400e22ca06c5a7085abfa870aba394bb6b9af3a536d076af87bda7cdd6",
+    "images/figure3-dataflow.pdf": "f915326c6c843273d31cf00cf17f411b08148715c563702a724a2bf8ec30a7dd",
+    "images/figure3-dataflow.png": "7e0d977b1d5995c90888ba23d6ba5b30446bebe3378b5d26581eeffb7f2973d9",
+    "kvfold-demo-introduction.pdf": "21ccd8f314ab30018b572c11dcb96faaaef57b9d3bfddf084d483df2baa036f9",
+    "kvfold-demo-introduction.tex": "8dc9e5a42dea402c3d3ea3eeed6a7764cdf6c3a02f1ee683a0ecc0abc8446ee0",
+    "materials/KVFold_Fig3_Workflow_Comparison.pdf": "ca6655c72c8f0aa634127da45f0260760d836f649578b5f7423e83c6a7297bc7",
+    "materials/industry.pdf": "6d484e8e50d5f13c4fa731f9a5e6089baed915b1561fbf46b498480d8ba28eee",
+    "materials/lmcache-lossless-kv.pdf": "a7dd569ee061a3b76e48daa5f5f58f0eb77db953fc47cb390ef7ed1600a60754",
+    "materials/main(11).pdf": "52d4d916b307753554243c43e755dad62cf99d520514227c0d0e24dcbbfe5095",
+    "references.bib": "c2cc332eae1cf9c2780a8a8f73849b1538356e1930ceeca88af5471fbcc217cb"
+  },
+  "package_validation": {
+    "date": "2026-11-10",
+    "isolated_directory": true,
+    "manuscripts": [
+      8,
+      14,
+      15,
+      16
+    ],
+    "chinese_introduction": true,
+    "pages_per_document": 4,
+    "total_rendered_pages_compared": 20,
+    "all_page_pixels_and_text_unchanged": true,
+    "standalone_figure_renderings_unchanged": true,
+    "final_latex_warnings_or_box_errors": false,
+    "ruff_check_and_format_passed": true,
+    "new_experiment_run": false
+  }
+}

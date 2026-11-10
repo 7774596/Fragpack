@@ -1,0 +1,215 @@
+{
+  "schema": "exactkv.paper-demo.v1",
+  "kind": "recorded_results",
+  "sources": {
+    "industry": {
+      "document": "industry.pdf",
+      "title": "Lossless KV Cache Compression for LLM Serving: Exponent Coding in the Cache Tiers and in Attention",
+      "report_date": "2026-11-04",
+      "sha256": "52d4d916b307753554243c43e755dad62cf99d520514227c0d0e24dcbbfe5095",
+      "gpu_table": "Table V, page 10",
+      "tier_table": "Table III, page 9",
+      "dram_table": "Table IV, page 10",
+      "exactness": "Section VIII-E, page 11",
+      "run_revision": null
+    },
+    "manuscript": {
+      "document": "fragpack_demo(3).tex",
+      "sha256": "7a14f45ef70594ea13aedc4141da0ce46562c09b722600ad62bc3984e52d6a0c",
+      "tables": [
+        "I",
+        "II"
+      ]
+    }
+  },
+  "configuration": {
+    "model": "Qwen3-30B-A3B-Instruct",
+    "weight_dtype": "FP8",
+    "kv_dtype": "BF16",
+    "tensor_parallel_size": 2,
+    "gpu": "2 NVIDIA H800 SXM GPUs, connected over PCIe",
+    "vllm_version": "0.30",
+    "lmcache_version": "0.5.6",
+    "block_tokens": 128,
+    "chunked_prefill_tokens": 8192,
+    "agentx_harness_version": "1.0.7",
+    "dataset": "cc_traces_weka_062126_256k",
+    "seed": 42,
+    "profiling_window_seconds": 1800,
+    "warmup_requests": 10
+  },
+  "measurement_scope": {
+    "evidence_type": "Published aggregate table transcription",
+    "new_run": false,
+    "live_prompt_results": false,
+    "time_series_available": false,
+    "replicate_samples_available": false,
+    "engine_ttft": "Mean time to first token, excluding FIFO proxy wait.",
+    "goodput": "Requests per minute with engine TTFT <= 2 s and ITL <= 40 ms.",
+    "cached_token_share": "Share of prompt tokens served by GPU prefix cache or LMCache; not an external-only hit ratio.",
+    "waiting_requests": "Mean number of requests waiting in vLLM, not a queue snapshot.",
+    "exclusion": "Requests without a first token by the profiling window's end are excluded.",
+    "capacity_precision": "KV capacities retain rounded published labels; numeric token counts are chart conversions.",
+    "codec_revision": "The recorded runs predate shared per-head calibration and grouped tile indices. Tier results used per-plane codebooks and the earlier index; exact run commits are unspecified.",
+    "control": "Raw and compressed use matching workload and budgets; LMCache LRU, write-through, and prefetch policies are unchanged."
+  },
+  "gpu": {
+    "kv_budget_gib_per_gpu": 54,
+    "pool_auxiliary_gib_per_gpu": 1.3,
+    "codec_buffers_outside_kv_budget_gib_per_gpu": 1.0,
+    "cuda_context_budget_note": "Cache-server CUDA contexts are outside the vLLM KV budget and separately accounted.",
+    "dram_gib": 400,
+    "nvme_gib": 2048,
+    "root_sessions": 64,
+    "cached_token_share": 0.94,
+    "rows": [
+      {
+        "admission_cap": 8,
+        "mode": "raw",
+        "kv_tokens": 1180000,
+        "kv_tokens_label": "1.18M",
+        "waiting_requests": 0.3,
+        "engine_ttft_seconds": 1.69,
+        "goodput_rpm": 15.1
+      },
+      {
+        "admission_cap": 8,
+        "mode": "pool",
+        "kv_tokens": 1590000,
+        "kv_tokens_label": "1.59M",
+        "waiting_requests": 0.2,
+        "engine_ttft_seconds": 1.34,
+        "goodput_rpm": 16.2
+      },
+      {
+        "admission_cap": 12,
+        "mode": "raw",
+        "kv_tokens": 1180000,
+        "kv_tokens_label": "1.18M",
+        "waiting_requests": 1.5,
+        "engine_ttft_seconds": 5.16,
+        "goodput_rpm": 10.6
+      },
+      {
+        "admission_cap": 12,
+        "mode": "pool",
+        "kv_tokens": 1590000,
+        "kv_tokens_label": "1.59M",
+        "waiting_requests": 0.4,
+        "engine_ttft_seconds": 1.94,
+        "goodput_rpm": 14.9
+      }
+    ]
+  },
+  "tier": {
+    "dram_gib": 400,
+    "root_sessions": 64,
+    "admission_cap": 8,
+    "native_attention": "Native BF16 GPU pages and unchanged FA3",
+    "stored_ratio": 0.716,
+    "stored_ratio_definition": "Stored bytes / raw KV bytes",
+    "rows": [
+      {
+        "nvme_gib": 640,
+        "mode": "raw",
+        "cached_token_share": 0.55,
+        "engine_ttft_seconds": 6.76,
+        "goodput_rpm": 4.6
+      },
+      {
+        "nvme_gib": 640,
+        "mode": "tier",
+        "cached_token_share": 0.91,
+        "engine_ttft_seconds": 2.34,
+        "goodput_rpm": 13.5
+      },
+      {
+        "nvme_gib": 2048,
+        "mode": "raw",
+        "cached_token_share": 0.94,
+        "engine_ttft_seconds": 1.69,
+        "goodput_rpm": 15.1
+      },
+      {
+        "nvme_gib": 2048,
+        "mode": "tier",
+        "cached_token_share": 0.94,
+        "engine_ttft_seconds": 1.85,
+        "goodput_rpm": 15.4
+      }
+    ],
+    "no_pressure_throughput": {
+      "nvme_gib": 2048,
+      "raw_input_tokens_per_second": 27500,
+      "tier_input_tokens_per_second": 26900,
+      "cost_percent": 2.2
+    }
+  },
+  "dram": {
+    "raw_gib": 261,
+    "compressed_gib": 188,
+    "budget_gib": 220,
+    "budgets_gib": [
+      220,
+      400
+    ],
+    "trace_prompts": 48,
+    "requests_in_flight": 1,
+    "output_tokens": 64,
+    "scope": "Separate repeat trace: 12 prompts at each of 8K, 32K, 64K and 128K tokens, then repeated. This is not the AgentX trace.",
+    "warm_ttft_rows": [
+      {
+        "dram_gib": 220,
+        "prompt_tokens": 8192,
+        "raw_mean_ms": 93,
+        "raw_to_tier_ratio": 1.63
+      },
+      {
+        "dram_gib": 220,
+        "prompt_tokens": 32768,
+        "raw_mean_ms": 190,
+        "raw_to_tier_ratio": 1.64
+      },
+      {
+        "dram_gib": 220,
+        "prompt_tokens": 65536,
+        "raw_mean_ms": 318,
+        "raw_to_tier_ratio": 1.68
+      },
+      {
+        "dram_gib": 220,
+        "prompt_tokens": 131072,
+        "raw_mean_ms": 586,
+        "raw_to_tier_ratio": 1.67
+      },
+      {
+        "dram_gib": 400,
+        "prompt_tokens": 8192,
+        "raw_mean_ms": 58,
+        "raw_to_tier_ratio": 1.0
+      },
+      {
+        "dram_gib": 400,
+        "prompt_tokens": 32768,
+        "raw_mean_ms": 125,
+        "raw_to_tier_ratio": 1.06
+      },
+      {
+        "dram_gib": 400,
+        "prompt_tokens": 65536,
+        "raw_mean_ms": 211,
+        "raw_to_tier_ratio": 1.11
+      },
+      {
+        "dram_gib": 400,
+        "prompt_tokens": 131072,
+        "raw_mean_ms": 376,
+        "raw_to_tier_ratio": 1.05
+      }
+    ]
+  },
+  "exactness": {
+    "recorded_matching_tier_outputs": 192,
+    "scope": "Repeat-trace raw/tier greedy outputs under matching execution paths. Output equality is distinct from KV bit equality and from pool-versus-FA3 reduction order."
+  }
+}

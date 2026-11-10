@@ -1,0 +1,55 @@
+{
+  "kind": "synthetic illustration; not a measured KV distribution",
+  "record": "K, one block/layer/head, 128 tokens x 128 dimensions",
+  "table_hex": [
+    "3C",
+    "BC",
+    "3B",
+    "BB",
+    "3A",
+    "BA",
+    "3D",
+    "BD",
+    "39",
+    "B9",
+    "38",
+    "B8",
+    "3E",
+    "BE",
+    "37",
+    "B7",
+    "3F",
+    "BF",
+    "36",
+    "B6",
+    "40",
+    "C0"
+  ],
+  "default_scalar": "3C00",
+  "overrides": {
+    "(0,0)": "3C12",
+    "(0,1)": "3956",
+    "(0,8)": "4178"
+  },
+  "raw_bytes": 32768,
+  "low_bytes": 16384,
+  "primary_bytes": 6144,
+  "dense_bytes": 22528,
+  "variable_bytes": 64,
+  "encoded_bytes": 22592,
+  "header_bytes": 48,
+  "escape_count": 2,
+  "raw_count": 1,
+  "escape_byte_hex": "F1",
+  "raw_offset_in_variable": 52,
+  "raw_patch_u32_hex": "00410001",
+  "raw_patch_fields": {
+    "escape_ordinal": 1,
+    "high_byte_hex": "41"
+  },
+  "alignment_bytes": [
+    3,
+    8
+  ],
+  "bitwise_roundtrip": true
+}

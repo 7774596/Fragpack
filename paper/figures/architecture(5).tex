@@ -1,0 +1,187 @@
+% KVFold architecture, manuscript version 5.
+% Topology: industry.pdf, Sections III--VI, and manuscript version 3.
+% Native vector primitives; oblique depth denotes pages, chips and devices,
+% not measured capacity. Blue = FragPack payload; orange = BF16/attention;
+% teal = external-cache devices and tier payload. The lanes are alternatives.
+\begin{tikzpicture}[x=1cm,y=1cm,text=fpInk,
+    font=\fontsize{9}{10.5}\selectfont,
+    line join=round,line cap=round,
+    flow/.style={-{Stealth[length=1.6mm,width=1.25mm]},line width=.8pt,draw=fpInk},
+    transfer/.style={{Stealth[length=1.6mm,width=1.25mm]}-{Stealth[length=1.6mm,width=1.25mm]},line width=.8pt,draw=fpBlue},
+    smalltext/.style={font=\fontsize{8}{9}\selectfont},
+    pics/packed/.style={code={
+      \foreach \z in {0,.15,.30} {
+        \begin{scope}[shift={(.5*\z,\z)}]
+          \draw[fpBlue!80,line width=.65pt,fill=fpBlue!32]
+            (-.91,-.13) rectangle (.80,.20);
+          \draw[fpBlue!80,line width=.65pt,fill=fpBlue!16]
+            (-.91,.20) -- (-.67,.41) -- (1.04,.41) -- (.80,.20) -- cycle;
+          \draw[fpBlue!80,line width=.65pt,fill=fpBlue!58]
+            (.80,-.13) -- (1.04,.08) -- (1.04,.41) -- (.80,.20) -- cycle;
+          \foreach \x in {-.79,-.25,.29} {
+            \fill[fpBlue!88] (\x,-.06) rectangle +( .35,.17);
+            \fill[fpOrange!94] (\x+.35,-.06) rectangle +(.07,.17);
+          }
+        \end{scope}
+      }
+    }},
+    pics/native/.style={code={
+      \foreach \z in {0,.13,.26} {
+        \begin{scope}[shift={(.45*\z,\z)}]
+          \draw[fpOrange!85,line width=.6pt,fill=fpOrange!32]
+            (-.83,-.21) rectangle (.67,.12);
+          \draw[fpOrange!85,line width=.6pt,fill=fpOrange!17]
+            (-.83,.12) -- (-.61,.31) -- (.89,.31) -- (.67,.12) -- cycle;
+          \draw[fpOrange!85,line width=.6pt,fill=fpOrange!58]
+            (.67,-.21) -- (.89,-.02) -- (.89,.31) -- (.67,.12) -- cycle;
+          \foreach \x in {-.70,-.39,-.08,.23} {
+            \draw[fpOrange!65,fill=white,line width=.4pt]
+              (\x,-.14) rectangle +(.24,.18);
+          }
+        \end{scope}
+      }
+    }},
+    pics/chip/.style={code={
+      \foreach \x in {-.45,-.15,.15,.45} {
+        \draw[fpOrange!85,line width=.9pt] (\x,-.46) -- (\x,-.34);
+        \draw[fpOrange!85,line width=.9pt] (\x,.34) -- (\x,.47);
+      }
+      \foreach \y in {-.20,0,.20} {
+        \draw[fpOrange!85,line width=.9pt] (-.79,\y) -- (-.65,\y);
+        \draw[fpOrange!85,line width=.9pt] (.65,\y) -- (.80,\y);
+      }
+      \fill[fpOrange!35] (-.60,-.41) rectangle (.73,.30);
+      \draw[fpOrange,line width=.7pt,fill=fpOrange!16,rounded corners=1pt]
+        (-.67,-.33) rectangle (.65,.35);
+    }},
+    pics/dram/.style={code={
+      \foreach \z in {0,.16} {
+        \begin{scope}[shift={(.40*\z,\z)}]
+          \draw[fpTeal!85,line width=.65pt,fill=fpTeal!28]
+            (-.84,-.25) rectangle (.84,.31);
+          \draw[fpTeal!85,line width=.6pt,fill=fpTeal!14]
+            (-.84,.31) -- (-.68,.44) -- (1.0,.44) -- (.84,.31) -- cycle;
+          \draw[fpTeal!85,line width=.6pt,fill=fpTeal!54]
+            (.84,-.25) -- (1.0,-.12) -- (1.0,.44) -- (.84,.31) -- cycle;
+          \foreach \x in {-.69,-.19,.31} {
+            \draw[fpPayload!85,line width=.4pt,fill=fpPayload!90]
+              (\x,-.08) rectangle +(.35,.26);
+          }
+          \foreach \x in {-.65,-.43,-.21,.01,.23,.45,.67} {
+            \fill[fpOrange!88] (\x,-.25) rectangle +(.10,.08);
+          }
+        \end{scope}
+      }
+    }},
+    pics/nvme/.style={code={
+      \draw[fpTeal!85,line width=.65pt,fill=fpTeal!34]
+        (-.72,-.24) -- (.65,-.24) -- (.93,.01) -- (.93,.61)
+        -- (-.44,.61) -- (-.72,.36) -- cycle;
+      \draw[fpTeal!85,line width=.65pt,fill=fpTeal!16]
+        (-.72,.36) -- (-.44,.61) -- (.93,.61) -- (.65,.36) -- cycle;
+      \draw[fpTeal!85,line width=.65pt,fill=fpTeal!62]
+        (.65,-.24) -- (.93,.01) -- (.93,.61) -- (.65,.36) -- cycle;
+      \draw[fpTeal!75,line width=.5pt,fill=white]
+        (-.55,-.04) rectangle (.46,.23);
+      \foreach \x in {-.44,-.16,.12} {
+        \fill[fpPayload!90] (\x,.025) rectangle +(.20,.14);
+      }
+      \fill[fpTeal!85] (-.51,-.16) circle (.025);
+      \foreach \x in {-.27,-.09,.09,.27,.45} {
+        \draw[fpTeal!80,line width=.55pt] (\x,-.15) -- +( .08,0);
+      }
+    }}]
+  \path[use as bounding box] (0,0) rectangle (17.8,6.35);
+  \colorlet{fpPayload}{fpBlue}
+
+  % Raised host regions: the main reader path stays inside the vLLM worker.
+  \fill[fpBlue!20] (.16,2.55) -- (10.78,2.55) -- (10.94,2.71)
+    -- (10.94,6.20) -- (.16,6.20) -- cycle;
+  \fill[fpBlue!7,draw=fpBlue!40,line width=.6pt,rounded corners=2pt]
+    (0,2.70) rectangle (10.78,6.35);
+  \fill[fpTeal!20] (11.23,2.55) -- (17.64,2.55) -- (17.80,2.71)
+    -- (17.80,6.20) -- (11.23,6.20) -- cycle;
+  \fill[fpTeal!7,draw=fpTeal!40,line width=.6pt,rounded corners=2pt]
+    (11.07,2.70) rectangle (17.64,6.35);
+  \node[anchor=west,font=\fontsize{10}{11}\selectfont\bfseries,text=fpBlue]
+    at (.22,6.05) {(a) Pool mode};
+  \node[anchor=east,smalltext] at (10.53,6.05) {vLLM worker / GPU};
+  \node[anchor=west,font=\fontsize{10}{11}\selectfont\bfseries,text=fpTeal]
+    at (11.30,6.05) {LMCache cache server};
+
+  % Persistent compressed records and writable, still-open BF16 storage.
+  \pic at (2.10,4.70) {packed};
+  \node[font=\fontsize{9}{10}\selectfont\bfseries,text=fpBlue]
+    at (2.18,4.16) {FragPack pool};
+  \node[smalltext] at (2.18,3.84) {Closed GPU blocks};
+  \pic[scale=.58] at (.83,3.30) {native};
+  \node[smalltext,anchor=west] at (1.51,3.23) {Open BF16};
+  \draw[flow,draw=fpOrange] (.85,3.72) -- (.85,4.72) -- (1.13,4.72);
+  \node[smalltext,rotate=90,fill=fpBlue!7,inner sep=2pt]
+    at (.46,4.27) {Encode};
+
+  % Prefill explicitly materializes BF16 before unchanged FA3.
+  \node[smalltext,text=fpBlue,anchor=west] at (4.05,5.70) {Prefill};
+  \draw[flow] (3.27,5.15) -- (4.04,5.15);
+  \node[draw=fpBlue!75,fill=white,line width=.65pt,rounded corners=1pt,
+    minimum width=1.70cm,minimum height=.64cm,align=center]
+    (gather) at (4.93,5.15) {Gather +\\decode};
+  \draw[flow] (gather.east) -- (6.15,5.15);
+  \draw[fpOrange!85,fill=fpOrange!19,line width=.55pt]
+    (6.23,4.87) rectangle (7.35,5.43);
+  \foreach \x in {6.51,6.79,7.07}
+    \draw[fpOrange!55,line width=.45pt] (\x,4.87) -- (\x,5.43);
+  \draw[fpOrange!55,line width=.45pt] (6.23,5.15) -- (7.35,5.15);
+  \node[smalltext] at (6.79,4.63) {BF16 workspace};
+  \draw[flow] (7.43,5.15) -- (8.28,5.15);
+  \pic at (9.14,5.15) {chip};
+  \node[font=\fontsize{9}{10}\selectfont\bfseries] at (9.14,5.15) {FA3};
+
+  % The decode alternative reconstructs operands inside the attention kernel.
+  \draw[flow] (3.33,4.93) -- (3.80,4.93) -- (3.80,3.92) -- (5.05,3.92);
+  \node[smalltext,anchor=west,text=fpBlue] at (4.05,4.19) {Decode};
+  \fill[fpOrange!34] (5.22,3.46) rectangle (10.28,4.15);
+  \draw[fpOrange,line width=.7pt,fill=fpOrange!17,rounded corners=1pt]
+    (5.12,3.55) rectangle (10.18,4.24);
+  \foreach \x in {5.44,5.84,6.24,6.64,7.04,7.44,7.84,8.24,8.64,9.04,9.44,9.84}
+    \draw[fpOrange!75,line width=.7pt] (\x,3.43) -- (\x,3.55);
+  \node at (6.49,3.90) {Decode in registers};
+  \draw[flow,draw=fpOrange] (7.84,3.90) -- (8.24,3.90);
+  \node[font=\fontsize{9}{10}\selectfont\bfseries] at (9.11,3.90) {Attention};
+
+  % Pool export/import carries the same encoded attention records.
+  \draw[transfer] (3.04,4.69) -- (3.47,4.69) -- (3.47,2.99)
+    -- (12.47,2.99) -- (12.47,4.69) -- (12.78,4.69);
+  \node[smalltext,fill=fpBlue!7,inner sep=3pt]
+    at (7.17,2.99) {Export / import \quad CUDA IPC};
+  \pic at (13.73,4.69) {dram};
+  \pic at (16.25,4.69) {nvme};
+  \node[font=\fontsize{9}{10}\selectfont\bfseries] at (13.82,4.19) {DRAM};
+  \node[font=\fontsize{9}{10}\selectfont\bfseries] at (16.36,4.19) {NVMe};
+  \draw[transfer,draw=fpTeal] (14.88,4.91) -- (15.48,4.91);
+  \node[smalltext] at (15.12,5.56) {Write-through / prefetch};
+  \node[smalltext,text=fpBlue] at (15.02,3.63) {Same encoded FragPack records};
+  \node[smalltext] at (15.02,3.24) {Exact-length objects \quad LRU};
+
+  % Alternative deployment, aligned with the main path's storage devices.
+  \colorlet{fpPayload}{fpTeal}
+  \draw[fpInk!15,line width=.55pt] (0,2.29) -- (17.8,2.29);
+  \node[anchor=west,font=\fontsize{10}{11}\selectfont\bfseries,text=fpTeal]
+    at (.22,1.99) {(b) Tier mode};
+  \node[smalltext,anchor=west] at (3.10,1.99)
+    {Native GPU attention; compression at the external-cache boundary};
+  \pic at (1.60,.81) {native};
+  \node[smalltext] at (1.68,.20) {Native BF16 / stock FA3};
+  \draw[transfer,draw=fpOrange] (2.75,1.04) -- (5.02,1.04);
+  \node[smalltext] at (3.86,1.31) {CUDA IPC};
+  \pic[xscale=1.35] at (6.14,1.04) {chip};
+  \node[align=center] at (6.14,1.04) {Encode /\\restore};
+  \node[smalltext] at (6.14,.20) {Server GPU codec};
+  \draw[transfer,draw=fpTeal] (7.36,1.04) -- (12.73,1.04);
+  \node[smalltext,fill=white,inner sep=3pt] at (10.00,1.04) {Tier-format records};
+  \pic at (13.73,.82) {dram};
+  \pic at (16.25,.82) {nvme};
+  \node[smalltext] at (13.82,.20) {DRAM};
+  \node[smalltext] at (16.36,.20) {NVMe};
+  \draw[transfer,draw=fpTeal] (14.88,1.04) -- (15.48,1.04);
+\end{tikzpicture}

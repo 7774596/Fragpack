@@ -1,0 +1,86 @@
+% Worked, synthetic K record; all dimensions are schematic, not to scale.
+% Source: fragpack/compression/attn_page.py, encode_record/decode_record.
+% Table in hex (7 primary + 15 extended entries):
+%   3C BC 3B BB 3A BA 3D | BD 39 B9 38 B8 3E BE 37 B7 3F BF 36 B6 40 C0
+% Token-major uint16[128,128] is filled with 3C00, with overrides:
+%   [0,0] = 3C12, [0,1] = 3956, [0,8] = 4178.
+% These are the first three scalars in K fragment order.
+% Dense = 16384 low bytes + 6144 primary bytes. Variable = 64 B:
+%   48-byte header, F1 packed escape byte, 3 B alignment,
+%   u32 raw patch 00410001 (ordinal=1, high=41), 8 B alignment.
+% A public CPU encode_record/decode_record round trip verifies all shown fields.
+% P and E denote the direct and extended portions of this illustrative table.
+% Compact layout follows below.
+\begin{tikzpicture}[x=1cm,y=1cm,text=fpInk,
+    font=\fontsize{9}{10.5}\selectfont,line cap=round,line join=round,
+    arrow/.style={-{Stealth[length=1.3mm,width=1mm]},line width=.7pt},
+    bits/.style={font=\fontsize{9}{10}\selectfont\ttfamily\bfseries},
+    note/.style={font=\fontsize{8.5}{10}\selectfont}]
+  \path[use as bounding box] (0,0) rectangle (8.5,5.02);
+  \node[anchor=west,font=\fontsize{10}{11}\selectfont\bfseries]
+    at (0,4.78) {Example K record: $128\times128$ BF16};
+
+  % Three worked scalars: direct, extended-table and raw escape.
+  \node[anchor=west,align=left] at (0,4.15) {BF16 (hex)\\high $\mid$ low};
+  \foreach \x/\hi/\lo in {2.70/3C/12,4.85/39/56,7.00/41/78} {
+    \draw[fpTeal,fill=fpTeal!29,line width=.7pt]
+      (\x-.62,3.91) rectangle (\x,4.39);
+    \draw[fpBlue,fill=fpBlue!29,line width=.7pt]
+      (\x,3.91) rectangle (\x+.62,4.39);
+    \node[bits] at (\x-.31,4.15) {\hi};
+    \node[bits] at (\x+.31,4.15) {\lo};
+    \draw[arrow,draw=fpTeal] (\x-.31,3.85) -- (\x-.31,3.46);
+  }
+  \node[bits] at (8.16,4.15) {$\cdots$};
+
+  \node[anchor=west] at (0,3.23) {3-bit code};
+  \foreach \x/\code in {2.70/000,4.85/111,7.00/111} {
+    \node[draw=fpTeal,fill=fpTeal!20,line width=.65pt,
+      rounded corners=.7pt,minimum width=.93cm,
+      minimum height=.38cm,inner sep=1pt,bits] at (\x,3.23) {\code};
+  }
+  \node[note,text=fpTeal] at (2.70,2.81) {$P[0]\to\mathtt{3C}$};
+
+  \node[anchor=west] at (0,2.46) {4-bit escape};
+  \foreach \x/\nibble in {4.85/0001,7.00/1111} {
+    \draw[arrow,draw=fpOrange] (\x,2.98) -- (\x,2.72);
+    \node[draw=fpOrange,fill=fpOrange!25,line width=.65pt,
+      rounded corners=.7pt,minimum width=1.04cm,
+      minimum height=.38cm,inner sep=1pt,bits] at (\x,2.46) {\nibble};
+  }
+  \node[note,text=fpOrange!80!black] at (4.85,2.05) {$E[1]\to\mathtt{39}$};
+  \node[note,text=fpOrange!80!black] at (7.00,2.05) {Raw $\to\mathtt{41}$};
+
+  % Fixed streams show both size and corresponding example data in one band.
+  \draw[fpBlue,fill=fpBlue!24,line width=.7pt]
+    (0,1.08) rectangle (3.45,1.75);
+  \draw[fpTeal,fill=fpTeal!24,line width=.7pt]
+    (3.45,1.08) rectangle (6.45,1.75);
+  \draw[fpOrange,fill=fpOrange!27,line width=.7pt]
+    (6.45,1.08) rectangle (8.50,1.75);
+  \node[note] at (1.725,1.57) {Low: 16,384 B};
+  \node[note] at (4.95,1.57) {Codes: 6,144 B};
+  \node[note,align=center] at (7.475,1.415) {Variable\\64 B};
+  \node[bits] at (1.725,1.25) {12 56 78 \ldots};
+  \node[bits] at (4.95,1.25) {000 111 111 \ldots};
+
+  % Variable-detail pads retain their real byte counts without repeated prose.
+  \draw[fpOrange,line width=.6pt] (7.475,1.06) -- (7.475,.92) -- (8.13,.92)
+    -- (8.13,.79);
+  \draw[fpOrange,fill=fpOrange!12,line width=.65pt]
+    (0,.34) rectangle (8.50,.79);
+  \fill[fpInk!15] (3.28,.35) rectangle (3.93,.78);
+  \fill[fpInk!15] (7.35,.35) rectangle (8.49,.78);
+  \foreach \x in {2.20,3.28,3.93,7.35}
+    \draw[fpOrange,line width=.5pt] (\x,.34) -- (\x,.79);
+  \node[note] at (1.10,.565) {Header: 48 B};
+  \node[bits] at (2.74,.565) {F1};
+  \node[note] at (3.605,.565) {3 B};
+  \node[note] at (5.64,.565) {Raw $(1,\mathtt{41})$};
+  \node[note] at (7.925,.565) {8 B};
+
+  \node[anchor=west,note] at (0,.06)
+    {Decode $\to$ \texttt{3C12 3956 4178} $\ldots$};
+  \fill[fpInk!15,draw=fpInk!35,line width=.4pt] (6.75,-.01) rectangle (6.94,.13);
+  \node[anchor=west,note] at (7.03,.06) {padding};
+\end{tikzpicture}

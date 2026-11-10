@@ -1,0 +1,761 @@
+{
+  "available": true,
+  "ready": true,
+  "mode": "live",
+  "reason": null,
+  "backend": "FragPack pool + LMCache MP",
+  "model": "Qwen3-4B-Instruct-2507",
+  "gpu": "NVIDIA H800 PCIe",
+  "kv_dtype": "BF16",
+  "block_tokens": 128,
+  "lmcache_source": "d096273c4fdd740fe3a7561f224dc19389d7fa38",
+  "runtime_config": {
+    "tp": 1,
+    "gpu_kv_gib": 4,
+    "external": "CPU DRAM",
+    "max_model_len": 8192,
+    "eager": true,
+    "timing": "engine first-token latency"
+  },
+  "session": {
+    "current": {
+      "action": "restore",
+      "timestamp": "2026-11-08T10:05:10.177660+00:00",
+      "prompt_text": "You are maintaining a Python repository. Diagnose the timeout failure below.\nThe service must preserve request deadlines and release resources on all paths.\nRepository context follows. Explain the root cause and a minimal patch.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\nDiagnosis:\n",
+      "prompt_tokens": 534,
+      "cached_tokens": 512,
+      "computed_tokens": 22,
+      "shared_input_tokens": 534,
+      "shared_full_blocks": 4,
+      "ttft_ms": 47.27458953857422,
+      "timing_scope": "engine first-token latency; functional run, not a benchmark",
+      "duration_ms": 1536.1871339846402,
+      "output_text": "The root cause is that the `timeout` parameter is only used to set a deadline for the function's execution, but it is not enforced during the `client.acquire()` call. The `acquire()` method may block indefinitely, and if the request deadline is exceeded, the service fails to terminate the waiting operation, violating the requirement to preserve request deadlines and release resources on all paths.\n\nThe minimal patch is to add a timeout to the `acquire()` call using the provided `",
+      "output_tokens": 96,
+      "source": "CPU DRAM \u2192 GPU",
+      "cache_source": "CPU DRAM \u2192 GPU",
+      "gpu_reset_succeeded": true,
+      "reused_ranges": [
+        {
+          "start": 0,
+          "end": 512,
+          "source": "CPU DRAM \u2192 GPU"
+        }
+      ],
+      "raw_bytes": null,
+      "encoded_bytes": null,
+      "verification": {
+        "scope": "resident model KV block export/import round trip",
+        "synthetic": false,
+        "executor": "GPU",
+        "dtype": "bfloat16",
+        "physical_block": 1,
+        "block_tokens": 128,
+        "layers": 36,
+        "kv_heads": 8,
+        "head_dim": 128,
+        "records": 576,
+        "scalars": 9437184,
+        "raw_bytes": 18874368,
+        "encoded_bytes": 13344768,
+        "encoded_size_includes": "blob header and 4096-byte alignment",
+        "original_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+        "restored_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+        "encoded_sha256": "1fb82078d66e3bcfa4b0011b1f373ab97354779d2176eb7e36f43d3011ca2d45",
+        "mismatches": 0,
+        "mismatch_bytes": 0,
+        "preview": [
+          {
+            "index": 0,
+            "before": "0xC0B1",
+            "after": "0xC0B1"
+          },
+          {
+            "index": 1,
+            "before": "0x4004",
+            "after": "0x4004"
+          },
+          {
+            "index": 2,
+            "before": "0x3FA3",
+            "after": "0x3FA3"
+          },
+          {
+            "index": 3,
+            "before": "0x4043",
+            "after": "0x4043"
+          },
+          {
+            "index": 4,
+            "before": "0xC081",
+            "after": "0xC081"
+          },
+          {
+            "index": 5,
+            "before": "0x3CD7",
+            "after": "0x3CD7"
+          },
+          {
+            "index": 6,
+            "before": "0x3EFB",
+            "after": "0x3EFB"
+          },
+          {
+            "index": 7,
+            "before": "0x4031",
+            "after": "0x4031"
+          }
+        ],
+        "bit_preview": [
+          {
+            "index": 0,
+            "before": "1100000010110001",
+            "after": "1100000010110001"
+          },
+          {
+            "index": 1,
+            "before": "0100000000000100",
+            "after": "0100000000000100"
+          },
+          {
+            "index": 2,
+            "before": "0011111110100011",
+            "after": "0011111110100011"
+          },
+          {
+            "index": 3,
+            "before": "0100000001000011",
+            "after": "0100000001000011"
+          },
+          {
+            "index": 4,
+            "before": "1100000010000001",
+            "after": "1100000010000001"
+          },
+          {
+            "index": 5,
+            "before": "0011110011010111",
+            "after": "0011110011010111"
+          },
+          {
+            "index": 6,
+            "before": "0011111011111011",
+            "after": "0011111011111011"
+          },
+          {
+            "index": 7,
+            "before": "0100000000110001",
+            "after": "0100000000110001"
+          }
+        ],
+        "transfer_route": [
+          "resident GPU block",
+          "exported GPU blob",
+          "host memory",
+          "imported GPU blob",
+          "private GPU scratch store",
+          "decoded BF16"
+        ]
+      },
+      "external_before_restore": {
+        "is_healthy": true,
+        "total_object_count": 18,
+        "write_locked_count": 0,
+        "read_locked_count": 0,
+        "temporary_count": 0,
+        "staging_object_count": 0,
+        "staging_bytes": 0,
+        "memory_used_bytes": 239763456,
+        "memory_total_bytes": 1073741824,
+        "memory_configured_bytes": 1073741824,
+        "capacity_bytes_by_backend": {
+          "dram": 1073741824
+        },
+        "memory_usage_ratio": 0.223297119140625,
+        "write_ttl_seconds": 600,
+        "read_ttl_seconds": 300
+      }
+    },
+    "history": [
+      {
+        "action": "build",
+        "timestamp": "2026-11-08T10:05:05.444790+00:00",
+        "prompt_text": "You are maintaining a Python repository. Diagnose the timeout failure below.\nThe service must preserve request deadlines and release resources on all paths.\nRepository context follows. Explain the root cause and a minimal patch.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\nDiagnosis:\n",
+        "prompt_tokens": 534,
+        "cached_tokens": 0,
+        "computed_tokens": 534,
+        "shared_input_tokens": 534,
+        "shared_full_blocks": 4,
+        "ttft_ms": 43.17283630371094,
+        "timing_scope": "engine first-token latency; functional run, not a benchmark",
+        "duration_ms": 1536.214438965544,
+        "output_text": "The root cause is that the `timeout` parameter is only used to compute a deadline for the entire function, but it is not enforced during the `client.acquire()` call. The `acquire()` method may block indefinitely, and if the request deadline is exceeded, the service should terminate the operation and return a timeout error.\n\nThe minimal patch is to add a timeout to the `acquire()` call using the computed deadline:\n\n```python\nasync def execute(client, request, timeout",
+        "output_tokens": 96,
+        "source": "computed",
+        "cache_source": "computed",
+        "gpu_reset_succeeded": false,
+        "reused_ranges": [],
+        "raw_bytes": null,
+        "encoded_bytes": null,
+        "verification": {
+          "scope": "resident model KV block export/import round trip",
+          "synthetic": false,
+          "executor": "GPU",
+          "dtype": "bfloat16",
+          "physical_block": 1,
+          "block_tokens": 128,
+          "layers": 36,
+          "kv_heads": 8,
+          "head_dim": 128,
+          "records": 576,
+          "scalars": 9437184,
+          "raw_bytes": 18874368,
+          "encoded_bytes": 13344768,
+          "encoded_size_includes": "blob header and 4096-byte alignment",
+          "original_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "restored_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "encoded_sha256": "1fb82078d66e3bcfa4b0011b1f373ab97354779d2176eb7e36f43d3011ca2d45",
+          "mismatches": 0,
+          "mismatch_bytes": 0,
+          "preview": [
+            {
+              "index": 0,
+              "before": "0xC0B1",
+              "after": "0xC0B1"
+            },
+            {
+              "index": 1,
+              "before": "0x4004",
+              "after": "0x4004"
+            },
+            {
+              "index": 2,
+              "before": "0x3FA3",
+              "after": "0x3FA3"
+            },
+            {
+              "index": 3,
+              "before": "0x4043",
+              "after": "0x4043"
+            },
+            {
+              "index": 4,
+              "before": "0xC081",
+              "after": "0xC081"
+            },
+            {
+              "index": 5,
+              "before": "0x3CD7",
+              "after": "0x3CD7"
+            },
+            {
+              "index": 6,
+              "before": "0x3EFB",
+              "after": "0x3EFB"
+            },
+            {
+              "index": 7,
+              "before": "0x4031",
+              "after": "0x4031"
+            }
+          ],
+          "bit_preview": [
+            {
+              "index": 0,
+              "before": "1100000010110001",
+              "after": "1100000010110001"
+            },
+            {
+              "index": 1,
+              "before": "0100000000000100",
+              "after": "0100000000000100"
+            },
+            {
+              "index": 2,
+              "before": "0011111110100011",
+              "after": "0011111110100011"
+            },
+            {
+              "index": 3,
+              "before": "0100000001000011",
+              "after": "0100000001000011"
+            },
+            {
+              "index": 4,
+              "before": "1100000010000001",
+              "after": "1100000010000001"
+            },
+            {
+              "index": 5,
+              "before": "0011110011010111",
+              "after": "0011110011010111"
+            },
+            {
+              "index": 6,
+              "before": "0011111011111011",
+              "after": "0011111011111011"
+            },
+            {
+              "index": 7,
+              "before": "0100000000110001",
+              "after": "0100000000110001"
+            }
+          ],
+          "transfer_route": [
+            "resident GPU block",
+            "exported GPU blob",
+            "host memory",
+            "imported GPU blob",
+            "private GPU scratch store",
+            "decoded BF16"
+          ]
+        },
+        "external_before_restore": null
+      },
+      {
+        "action": "append",
+        "timestamp": "2026-11-08T10:05:07.021141+00:00",
+        "prompt_text": "You are maintaining a Python repository. Diagnose the timeout failure below.\nThe service must preserve request deadlines and release resources on all paths.\nRepository context follows. Explain the root cause and a minimal patch.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\nDiagnosis:\nThe root cause is that the `timeout` parameter is only used to compute a deadline for the entire function, but it is not enforced during the `client.acquire()` call. The `acquire()` method may block indefinitely, and if the request deadline is exceeded, the service should terminate the operation and return a timeout error.\n\nThe minimal patch is to add a timeout to the `acquire()` call using the computed deadline:\n\n```python\nasync def execute(client, request, timeout\nUser: Write a regression test for the acquisition timeout. Use a fake connection pool and verify that no resources leak.\nAssistant:\n",
+        "prompt_tokens": 656,
+        "cached_tokens": 512,
+        "computed_tokens": 144,
+        "shared_input_tokens": 534,
+        "shared_full_blocks": 4,
+        "ttft_ms": 43.87474060058594,
+        "timing_scope": "engine first-token latency; functional run, not a benchmark",
+        "duration_ms": 1536.1870810156688,
+        "output_text": "# regression_test.py\nimport asyncio\nfrom unittest.mock import AsyncMock, MagicMock\nfrom datetime import datetime, timedelta\nimport pytest\n\n# Mock the connection pool and client\nclass FakeConnectionPool:\n    def __init__(self):\n        self._connections = []\n        self._acquire_lock = asyncio.Lock()\n\n    async def acquire(self):\n        # Simulate a slow or blocking acquisition\n        await asyncio.sleep(0.1)\n        return MagicMock()\n\n    async def release",
+        "output_tokens": 96,
+        "source": "GPU prefix / external cache",
+        "cache_source": "GPU prefix / external cache",
+        "gpu_reset_succeeded": false,
+        "reused_ranges": [
+          {
+            "start": 0,
+            "end": 512,
+            "source": "GPU prefix / external cache"
+          }
+        ],
+        "raw_bytes": null,
+        "encoded_bytes": null,
+        "verification": {
+          "scope": "resident model KV block export/import round trip",
+          "synthetic": false,
+          "executor": "GPU",
+          "dtype": "bfloat16",
+          "physical_block": 1,
+          "block_tokens": 128,
+          "layers": 36,
+          "kv_heads": 8,
+          "head_dim": 128,
+          "records": 576,
+          "scalars": 9437184,
+          "raw_bytes": 18874368,
+          "encoded_bytes": 13344768,
+          "encoded_size_includes": "blob header and 4096-byte alignment",
+          "original_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "restored_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "encoded_sha256": "1fb82078d66e3bcfa4b0011b1f373ab97354779d2176eb7e36f43d3011ca2d45",
+          "mismatches": 0,
+          "mismatch_bytes": 0,
+          "preview": [
+            {
+              "index": 0,
+              "before": "0xC0B1",
+              "after": "0xC0B1"
+            },
+            {
+              "index": 1,
+              "before": "0x4004",
+              "after": "0x4004"
+            },
+            {
+              "index": 2,
+              "before": "0x3FA3",
+              "after": "0x3FA3"
+            },
+            {
+              "index": 3,
+              "before": "0x4043",
+              "after": "0x4043"
+            },
+            {
+              "index": 4,
+              "before": "0xC081",
+              "after": "0xC081"
+            },
+            {
+              "index": 5,
+              "before": "0x3CD7",
+              "after": "0x3CD7"
+            },
+            {
+              "index": 6,
+              "before": "0x3EFB",
+              "after": "0x3EFB"
+            },
+            {
+              "index": 7,
+              "before": "0x4031",
+              "after": "0x4031"
+            }
+          ],
+          "bit_preview": [
+            {
+              "index": 0,
+              "before": "1100000010110001",
+              "after": "1100000010110001"
+            },
+            {
+              "index": 1,
+              "before": "0100000000000100",
+              "after": "0100000000000100"
+            },
+            {
+              "index": 2,
+              "before": "0011111110100011",
+              "after": "0011111110100011"
+            },
+            {
+              "index": 3,
+              "before": "0100000001000011",
+              "after": "0100000001000011"
+            },
+            {
+              "index": 4,
+              "before": "1100000010000001",
+              "after": "1100000010000001"
+            },
+            {
+              "index": 5,
+              "before": "0011110011010111",
+              "after": "0011110011010111"
+            },
+            {
+              "index": 6,
+              "before": "0011111011111011",
+              "after": "0011111011111011"
+            },
+            {
+              "index": 7,
+              "before": "0100000000110001",
+              "after": "0100000000110001"
+            }
+          ],
+          "transfer_route": [
+            "resident GPU block",
+            "exported GPU blob",
+            "host memory",
+            "imported GPU blob",
+            "private GPU scratch store",
+            "decoded BF16"
+          ]
+        },
+        "external_before_restore": null
+      },
+      {
+        "action": "edit",
+        "timestamp": "2026-11-08T10:05:08.597348+00:00",
+        "prompt_text": "You are maintaining a TypeScript repository. Diagnose the timeout failure below.\nThe service must preserve request deadlines and release resources on all paths.\nRepository context follows. Explain the root cause and a minimal patch.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\nDiagnosis:\n",
+        "prompt_tokens": 534,
+        "cached_tokens": 0,
+        "computed_tokens": 534,
+        "shared_input_tokens": 4,
+        "shared_full_blocks": 0,
+        "ttft_ms": 41.51344299316406,
+        "timing_scope": "engine first-token latency; functional run, not a benchmark",
+        "duration_ms": 1531.6988709382713,
+        "output_text": "The root cause is that the `timeout` parameter is only used to set a deadline for the entire function, but it is not enforced during the `client.acquire()` call. The `acquire()` method may block indefinitely, and if the request deadline is exceeded, the service should cancel the operation and release resources.\n\nThe minimal patch is to add a timeout to the `acquire()` call using the provided `timeout` parameter:\n\n```python\nasync def execute(client, request,",
+        "output_tokens": 96,
+        "source": "computed",
+        "cache_source": "computed",
+        "gpu_reset_succeeded": false,
+        "reused_ranges": [],
+        "raw_bytes": null,
+        "encoded_bytes": null,
+        "verification": {
+          "scope": "resident model KV block export/import round trip",
+          "synthetic": false,
+          "executor": "GPU",
+          "dtype": "bfloat16",
+          "physical_block": 1,
+          "block_tokens": 128,
+          "layers": 36,
+          "kv_heads": 8,
+          "head_dim": 128,
+          "records": 576,
+          "scalars": 9437184,
+          "raw_bytes": 18874368,
+          "encoded_bytes": 13344768,
+          "encoded_size_includes": "blob header and 4096-byte alignment",
+          "original_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "restored_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "encoded_sha256": "1fb82078d66e3bcfa4b0011b1f373ab97354779d2176eb7e36f43d3011ca2d45",
+          "mismatches": 0,
+          "mismatch_bytes": 0,
+          "preview": [
+            {
+              "index": 0,
+              "before": "0xC0B1",
+              "after": "0xC0B1"
+            },
+            {
+              "index": 1,
+              "before": "0x4004",
+              "after": "0x4004"
+            },
+            {
+              "index": 2,
+              "before": "0x3FA3",
+              "after": "0x3FA3"
+            },
+            {
+              "index": 3,
+              "before": "0x4043",
+              "after": "0x4043"
+            },
+            {
+              "index": 4,
+              "before": "0xC081",
+              "after": "0xC081"
+            },
+            {
+              "index": 5,
+              "before": "0x3CD7",
+              "after": "0x3CD7"
+            },
+            {
+              "index": 6,
+              "before": "0x3EFB",
+              "after": "0x3EFB"
+            },
+            {
+              "index": 7,
+              "before": "0x4031",
+              "after": "0x4031"
+            }
+          ],
+          "bit_preview": [
+            {
+              "index": 0,
+              "before": "1100000010110001",
+              "after": "1100000010110001"
+            },
+            {
+              "index": 1,
+              "before": "0100000000000100",
+              "after": "0100000000000100"
+            },
+            {
+              "index": 2,
+              "before": "0011111110100011",
+              "after": "0011111110100011"
+            },
+            {
+              "index": 3,
+              "before": "0100000001000011",
+              "after": "0100000001000011"
+            },
+            {
+              "index": 4,
+              "before": "1100000010000001",
+              "after": "1100000010000001"
+            },
+            {
+              "index": 5,
+              "before": "0011110011010111",
+              "after": "0011110011010111"
+            },
+            {
+              "index": 6,
+              "before": "0011111011111011",
+              "after": "0011111011111011"
+            },
+            {
+              "index": 7,
+              "before": "0100000000110001",
+              "after": "0100000000110001"
+            }
+          ],
+          "transfer_route": [
+            "resident GPU block",
+            "exported GPU blob",
+            "host memory",
+            "imported GPU blob",
+            "private GPU scratch store",
+            "decoded BF16"
+          ]
+        },
+        "external_before_restore": null
+      },
+      {
+        "action": "restore",
+        "timestamp": "2026-11-08T10:05:10.177660+00:00",
+        "prompt_text": "You are maintaining a Python repository. Diagnose the timeout failure below.\nThe service must preserve request deadlines and release resources on all paths.\nRepository context follows. Explain the root cause and a minimal patch.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\n# repository/service.py\nasync def execute(client, request, timeout):\n    deadline = monotonic() + timeout\n    connection = await client.acquire()\n    try:\n        result = await connection.send(request)\n        return await result.read()\n    finally:\n        await client.release(connection)\n# Bug report: concurrent requests wait past their deadlines during connection\n# acquisition. The timeout is passed by callers but no operation consumes it.\n# Tests should cover acquisition timeout, read timeout, and resource release.\n\nDiagnosis:\n",
+        "prompt_tokens": 534,
+        "cached_tokens": 512,
+        "computed_tokens": 22,
+        "shared_input_tokens": 534,
+        "shared_full_blocks": 4,
+        "ttft_ms": 47.27458953857422,
+        "timing_scope": "engine first-token latency; functional run, not a benchmark",
+        "duration_ms": 1536.1871339846402,
+        "output_text": "The root cause is that the `timeout` parameter is only used to set a deadline for the function's execution, but it is not enforced during the `client.acquire()` call. The `acquire()` method may block indefinitely, and if the request deadline is exceeded, the service fails to terminate the waiting operation, violating the requirement to preserve request deadlines and release resources on all paths.\n\nThe minimal patch is to add a timeout to the `acquire()` call using the provided `",
+        "output_tokens": 96,
+        "source": "CPU DRAM \u2192 GPU",
+        "cache_source": "CPU DRAM \u2192 GPU",
+        "gpu_reset_succeeded": true,
+        "reused_ranges": [
+          {
+            "start": 0,
+            "end": 512,
+            "source": "CPU DRAM \u2192 GPU"
+          }
+        ],
+        "raw_bytes": null,
+        "encoded_bytes": null,
+        "verification": {
+          "scope": "resident model KV block export/import round trip",
+          "synthetic": false,
+          "executor": "GPU",
+          "dtype": "bfloat16",
+          "physical_block": 1,
+          "block_tokens": 128,
+          "layers": 36,
+          "kv_heads": 8,
+          "head_dim": 128,
+          "records": 576,
+          "scalars": 9437184,
+          "raw_bytes": 18874368,
+          "encoded_bytes": 13344768,
+          "encoded_size_includes": "blob header and 4096-byte alignment",
+          "original_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "restored_sha256": "c54e7ce900f4971fa3944217c4e5dcbba3625d3ac378a3bffc31498ea35d9acf",
+          "encoded_sha256": "1fb82078d66e3bcfa4b0011b1f373ab97354779d2176eb7e36f43d3011ca2d45",
+          "mismatches": 0,
+          "mismatch_bytes": 0,
+          "preview": [
+            {
+              "index": 0,
+              "before": "0xC0B1",
+              "after": "0xC0B1"
+            },
+            {
+              "index": 1,
+              "before": "0x4004",
+              "after": "0x4004"
+            },
+            {
+              "index": 2,
+              "before": "0x3FA3",
+              "after": "0x3FA3"
+            },
+            {
+              "index": 3,
+              "before": "0x4043",
+              "after": "0x4043"
+            },
+            {
+              "index": 4,
+              "before": "0xC081",
+              "after": "0xC081"
+            },
+            {
+              "index": 5,
+              "before": "0x3CD7",
+              "after": "0x3CD7"
+            },
+            {
+              "index": 6,
+              "before": "0x3EFB",
+              "after": "0x3EFB"
+            },
+            {
+              "index": 7,
+              "before": "0x4031",
+              "after": "0x4031"
+            }
+          ],
+          "bit_preview": [
+            {
+              "index": 0,
+              "before": "1100000010110001",
+              "after": "1100000010110001"
+            },
+            {
+              "index": 1,
+              "before": "0100000000000100",
+              "after": "0100000000000100"
+            },
+            {
+              "index": 2,
+              "before": "0011111110100011",
+              "after": "0011111110100011"
+            },
+            {
+              "index": 3,
+              "before": "0100000001000011",
+              "after": "0100000001000011"
+            },
+            {
+              "index": 4,
+              "before": "1100000010000001",
+              "after": "1100000010000001"
+            },
+            {
+              "index": 5,
+              "before": "0011110011010111",
+              "after": "0011110011010111"
+            },
+            {
+              "index": 6,
+              "before": "0011111011111011",
+              "after": "0011111011111011"
+            },
+            {
+              "index": 7,
+              "before": "0100000000110001",
+              "after": "0100000000110001"
+            }
+          ],
+          "transfer_route": [
+            "resident GPU block",
+            "exported GPU blob",
+            "host memory",
+            "imported GPU blob",
+            "private GPU scratch store",
+            "decoded BF16"
+          ]
+        },
+        "external_before_restore": {
+          "is_healthy": true,
+          "total_object_count": 18,
+          "write_locked_count": 0,
+          "read_locked_count": 0,
+          "temporary_count": 0,
+          "staging_object_count": 0,
+          "staging_bytes": 0,
+          "memory_used_bytes": 239763456,
+          "memory_total_bytes": 1073741824,
+          "memory_configured_bytes": 1073741824,
+          "capacity_bytes_by_backend": {
+            "dram": 1073741824
+          },
+          "memory_usage_ratio": 0.223297119140625,
+          "write_ttl_seconds": 600,
+          "read_ttl_seconds": 300
+        }
+      }
+    ]
+  },
+  "recorded_at": "2026-11-08T10:05:10.177660+00:00",
+  "versions": {
+    "vllm": "0.30.0+precompiled",
+    "torch": "2.13.0+cu129",
+    "lmcache_base": "0.5.6",
+    "lmcache_runtime_version_banner": "0.1.dev1 (generated version file)",
+    "lmcache_source_revision": "d096273c4fdd740fe3a7561f224dc19389d7fa38"
+  },
+  "gpu_uuid": "GPU-fb9880e5-6155-b080-837a-948d5fd08b4c",
+  "validation_scope": "Single-request functional walkthrough on H800 PCIe; not a comparative performance benchmark."
+}
