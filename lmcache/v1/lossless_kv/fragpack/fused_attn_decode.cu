@@ -24,11 +24,14 @@ constexpr int kLenRel = kMetaRel + kMetaPages * 2 * 8;     // int32[kMetaPages*2
 constexpr int kEscRel = (kLenRel + kMetaPages * 2 * 4 + 15) & ~15;
 
 // K and V records each stream through one whole-record slot (TMA), sized for
-// a raw record.
+// a raw record plus the 128-byte alignment slack.
 template <bool F8>
 struct Smem {
-  static constexpr int kSlotRel = kEscRel + Fmt<F8>::kEscCap;           // K slot, then V slot
-  static constexpr int kBarRel = kSlotRel + 2 * Fmt<F8>::kRawRecord;  // uint64 mbarrier[2]
+  // K slot, then V slot, each 128-byte aligned with room for the record's
+  // address offset mod 128 (slot_off).
+  static constexpr int kSlotRel = kEscRel + Fmt<F8>::kEscCap;
+  static constexpr int kSlotStride = Fmt<F8>::kRawRecord + 128;
+  static constexpr int kBarRel = kSlotRel + 2 * kSlotStride + 128;  // uint64 mbarrier[2]
   static constexpr int kBytes = kBarRel + 16;
 };
 
@@ -200,6 +203,10 @@ __device__ __forceinline__ void mbar_wait(uint64_t* bar, uint32_t parity) {
       "}\n" ::"r"(smem_u32(bar)), "r"(parity) : "memory");
 }
 
+// Bulk copies run at full rate only when source and destination agree mod 128
+// bytes, so a record lands at its address's offset within a 128-aligned slot.
+__device__ __forceinline__ int slot_off(int64_t addr) { return (int)(addr & 127); }
+
 template <bool F8>
 __global__ void __launch_bounds__(kThreads, 2) decode_attn(Params p) {
   using F = Fmt<F8>;
@@ -211,7 +218,9 @@ __global__ void __launch_bounds__(kThreads, 2) decode_attn(Params p) {
   float* red = reinterpret_cast<float*>(smem + kRedRel);
   float* red2 = reinterpret_cast<float*>(smem + kRed2Rel);
   float* msh = reinterpret_cast<float*>(smem + kMshRel);
+  // 128-byte aligned slots (the dynamic smem base follows the static smem).
   uint8_t* slots = smem + M::kSlotRel;
+  slots += (128u - (smem_u32(slots) & 127u)) & 127u;
   uint64_t* mbar = reinterpret_cast<uint64_t*>(smem + M::kBarRel);
   uint8_t* escbuf = smem + kEscRel;
   int64_t* maddr = reinterpret_cast<int64_t*>(smem + kMetaRel);
@@ -270,13 +279,13 @@ __global__ void __launch_bounds__(kThreads, 2) decode_attn(Params p) {
   auto issue = [&](int i, int which) {
     if (i < n) {
       const int m = 2 * (i - cb) + which;
-      tma_load(slots + which * F::kRawRecord, reinterpret_cast<const void*>(maddr[m]),
-               F::kDenseBytes + mlen[m], &mbar[which]);
+      tma_load(slots + which * M::kSlotStride + slot_off(maddr[m]),
+               reinterpret_cast<const void*>(maddr[m]), F::kDenseBytes + mlen[m], &mbar[which]);
     }
   };
   auto slot_rec = [&](int i, int which) {
     mbar_wait(&mbar[which], i & 1);
-    return slots + which * F::kRawRecord;
+    return slots + which * M::kSlotStride + slot_off(maddr[2 * (i - cb) + which]);
   };
 
   // Transposed tiles fill the 8 GQA heads into mma's n8 side: S^T = K Q^T and
