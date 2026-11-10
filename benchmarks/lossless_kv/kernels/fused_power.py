@@ -2,7 +2,8 @@
 """Sustained time, energy, clock and power of fused decode vs FA3.
 
 Per shape, in one process: FA3, fused over coded records, fused over raw
-records, and the same three each followed by a fixed weight-read GEMM block
+records, optionally FlashInfer's paged decode (``--flashinfer``, vLLM's
+FLASHINFER setting), and the same kernels each followed by a fixed weight-read GEMM block
 (a decode-step stand-in, so attention shares the step's clock). NVML energy,
 SM clock, power, temperature and throttle reasons are read over each window.
 The KV comes from one layer of a captured dump (``capture_kv.py``); the
@@ -12,7 +13,7 @@ index of the measured GPU, default 0), ``HEADS`` (KV heads, default 4).
 Usage::
 
     python -m benchmarks.lossless_kv.kernels.fused_power --dump KV.npy \
-        OUT.json [--fp8] [--gemm-mb 600]
+        OUT.json [--fp8] [--gemm-mb 600] [--flashinfer] [--no-gemm]
 """
 
 # Standard
@@ -32,6 +33,7 @@ import pynvml
 import torch
 
 # First Party
+from benchmarks.lossless_kv.kernels.fi_decode import flashinfer_decode
 from benchmarks.lossless_kv.kernels.fragpack_step_bench import (
     FILL_BLOCKS,
     T,
@@ -117,6 +119,8 @@ def main() -> None:
     ap.add_argument("--warm", type=float, default=4)
     ap.add_argument("--window", type=float, default=6)
     ap.add_argument("--shapes", default="")
+    ap.add_argument("--flashinfer", action="store_true", help="add FlashInfer decode")
+    ap.add_argument("--no-gemm", action="store_true", help="skip the +GEMM rows")
     a = ap.parse_args()
     from vllm.vllm_flash_attn import flash_attn_varlen_func
     from vllm.vllm_flash_attn.flash_attn_interface import get_scheduler_metadata
@@ -194,7 +198,7 @@ def main() -> None:
         q = torch.randn(b, heads * 8, 128, dtype=torch.bfloat16, device="cuda")
         seq = torch.tensor(lens, dtype=torch.int32, device="cuda")
         cu = torch.arange(b + 1, dtype=torch.int32, device="cuda")
-        out, out2 = torch.empty_like(q), torch.empty_like(q)
+        out, out2, out3 = torch.empty_like(q), torch.empty_like(q), torch.empty_like(q)
         u = decode_units(b, heads, sms)
         o, m, pl = workspace_elems(heads, u)
         w = (
@@ -253,11 +257,18 @@ def main() -> None:
             else f"{b}x{lens[0]}"
         }
         kern = [("fa3", fa3), ("fused", fused), ("fused_raw", fraw)]
-        for name, fn in (
-            kern
-            + [(n + "+gemm", (lambda f: lambda: (f(), gemm()))(f)) for n, f in kern]
+        if a.flashinfer:
+            fi = flashinfer_decode(q, kc, vc, bt, lens, T, 128**-0.5, out3)
+            fa3()
+            fi()
+            torch.cuda.synchronize()
+            row["fi_maxdiff"] = float((out3.float() - out2.float()).abs().max())
+            kern.append(("flashinfer", fi))
+        extra = [] if a.no_gemm else (
+            [(n + "+gemm", (lambda f: lambda: (f(), gemm()))(f)) for n, f in kern]
             + [("gemm", gemm)]
-        ):
+        )
+        for name, fn in kern + extra:
             row[name] = sustained(fn, a.warm, a.window, handle)
             time.sleep(2)
         print(json.dumps(row), flush=True)

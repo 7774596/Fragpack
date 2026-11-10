@@ -197,7 +197,17 @@ def _decode_rows(
         replan = partial(
             decode_attention, q, tables, bt, seq, scale, auto, out_fp, ws[0], True
         )
-        t_fa, t_plan, *t_us = _time_rounds([fa3, replan, *fused], args.rounds, 10)
+        extra = []
+        if args.flashinfer:
+            # First Party
+            from benchmarks.lossless_kv.kernels.fi_decode import flashinfer_decode
+
+            out_fi = torch.empty_like(q)
+            extra = [flashinfer_decode(q, kc, vc, bt, lens, T, scale, out_fi)]
+        t_fa, t_plan, *t_us = _time_rounds(
+            [fa3, replan, *fused, *extra], args.rounds, 10
+        )
+        t_fi = t_us.pop() if extra else None
         t_fp = t_us[0]
         raw_bytes = 2 * sum(pages) * T * heads * D * 2
         rows.append(
@@ -217,6 +227,12 @@ def _decode_rows(
                 "maxdiff": float((out_fa.float() - out_fp.float()).abs().max()),
             }
         )
+        if extra:
+            rows[-1]["us_flashinfer"] = round(t_fi, 1)
+            rows[-1]["flashinfer_over_fa3"] = round(t_fi / t_fa, 3)
+            rows[-1]["fi_maxdiff"] = float(
+                (out_fa.float() - out_fi.float()).abs().max()
+            )
         logger.info("%s", rows[-1])
     return rows
 
@@ -323,6 +339,7 @@ def main() -> None:
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--samples", type=int, default=6)
     p.add_argument("--raw-records", action="store_true")
+    p.add_argument("--flashinfer", action="store_true", help="add FlashInfer decode")
     p.add_argument("--prefill", default="16000x2048,100000x2048,100000x8192")
     args = p.parse_args()
     torch.manual_seed(0)
