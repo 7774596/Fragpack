@@ -15,7 +15,8 @@ codec call, on the same card:
 - optionally nvCOMP algorithms with and without a BF16 byte shuffle, and the
   SplitZip GPU codec calibrated on the same slots as the lossless codec.
   These codecs work on contiguous buffers, so restore adds a copy into the paged blocks
-  (``dec_gbs``); ``dec_contig_gbs`` stops at the codec's own output;
+  (``dec_gbs``, one ``scatter_rows`` launch per call, as the raw paged copy
+  uses); ``dec_contig_gbs`` stops at the codec's own output;
 - optionally ExANS (OpenLake) builds through their scatter/gather C API;
 - optionally single-core CPU zstd over byte-shuffled slots.
 
@@ -29,24 +30,30 @@ printed, then the Pareto front (lowest ratio for a given ``dec_gbs``) per call
 size.
 """
 
+# Future
 from __future__ import annotations
 
+# Standard
+from pathlib import Path
+from typing import Any, Callable
 import argparse
 import json
-from pathlib import Path
 import sys
 import time
-from typing import Any, Callable
 
+# Third Party
 import numpy as np
 import torch
+import triton
+import triton.language as tl
 
+# First Party
 from lmcache.v1.lossless_kv.calibration import calibrate_codebooks, tier_codebooks
-from lmcache.v1.lossless_kv.format import ONLINE_TILE_SCALARS
 from lmcache.v1.lossless_kv.compressed_kv import (
     FusedCompressedKVDecoder,
     FusedOnlineKVPacker,
 )
+from lmcache.v1.lossless_kv.format import ONLINE_TILE_SCALARS
 from lmcache.v1.lossless_kv.kv_layout import (
     allocate_cross_layer_kv_cache,
     physical_kv_view,
@@ -75,6 +82,71 @@ def byte_unshuffle(data: torch.Tensor) -> torch.Tensor:
         torch.Tensor: New byte tensor with interleaved little-endian scalars.
     """
     return data.view(2, -1).t().contiguous().view(-1)
+
+
+@triton.jit
+def _scatter_rows_kernel(
+    src_ptrs, dst, dst_rows, row_bytes, SHUFFLED: tl.constexpr, BLOCK: tl.constexpr
+):
+    """Copy source row ``r`` (at address ``src_ptrs[r]``) to ``dst[dst_rows[r]]``."""
+    r = tl.program_id(0)
+    c = tl.program_id(1).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    d = tl.load(dst_rows + r).to(tl.int64)
+    if SHUFFLED:
+        # Low-byte stream then high-byte stream -> interleaved 16-bit scalars.
+        half = row_bytes // 2
+        src = tl.load(src_ptrs + r).to(tl.pointer_type(tl.uint8))
+        m = c < half
+        lo = tl.load(src + c, mask=m).to(tl.uint16)
+        hi = tl.load(src + half + c, mask=m).to(tl.uint16)
+        out = dst.to(tl.pointer_type(tl.uint16)) + d * half
+        tl.store(out + c, lo | (hi << 8), mask=m)
+    else:
+        words = row_bytes // 8
+        src = tl.load(src_ptrs + r).to(tl.pointer_type(tl.int64))
+        m = c < words
+        out = dst.to(tl.pointer_type(tl.int64)) + d * words
+        tl.store(out + c, tl.load(src + c, mask=m), mask=m)
+
+
+def scatter_rows(
+    src_ptrs: torch.Tensor,
+    rows: torch.Tensor,
+    dst_rows: torch.Tensor,
+    shuffled: bool = False,
+) -> None:
+    """Copy whole source rows into scattered destination rows in one launch.
+
+    This is the paged restore a contiguous codec needs after decoding: one
+    kernel writes every block, so the raw baseline and the external codecs
+    are not charged for per-block launches or ``index_copy_``'s indexing.
+
+    Args:
+        src_ptrs (torch.Tensor): int64 device addresses of the source rows,
+            each ``rows.shape[1] * rows.element_size()`` bytes (8-byte aligned).
+        rows (torch.Tensor): Contiguous ``[pool_blocks, row]`` destination.
+        dst_rows (torch.Tensor): int64 destination row index per source row.
+        shuffled (bool): Sources hold ``byte_shuffle`` output; unshuffle into
+            16-bit scalars while copying.
+
+    Returns:
+        None. Runs asynchronously on the current stream.
+    """
+    row_bytes = rows.shape[1] * rows.element_size()
+    block = 4096
+    elems = row_bytes // 2 if shuffled else row_bytes // 8
+    grid = (dst_rows.numel(), triton.cdiv(elems, block))
+    _scatter_rows_kernel[grid](
+        src_ptrs, rows, dst_rows, row_bytes, SHUFFLED=shuffled, BLOCK=block, num_warps=8
+    )
+
+
+def _row_ptrs(data: torch.Tensor) -> torch.Tensor:
+    """Return the device addresses of the rows of a contiguous 2-D tensor."""
+    step = data.shape[1] * data.element_size()
+    return data.data_ptr() + step * torch.arange(
+        data.shape[0], dtype=torch.int64, device=data.device
+    )
 
 
 def pareto_front(rows: list[dict[str, Any]]) -> list[str]:
@@ -238,12 +310,13 @@ def _raw_copy_rows(kv: _PagedKV, ks: list[int], repeats: int) -> list[dict[str, 
     """Time the uncompressed restore: contiguous staging into paged blocks."""
     rows = []
     stream = torch.cuda.current_stream()
+    ptrs = _row_ptrs(kv.reference)
     for k in ks:
         groups = call_groups(len(kv.block_ids), k)
 
         def run(_: Any, groups: list[slice] = groups) -> None:
             for g in groups:
-                kv.rows.index_copy_(0, kv.ids[g], kv.reference[g])
+                scatter_rows(ptrs[g], kv.rows, kv.ids[g])
 
         kv.clear()
         run(None)
@@ -357,9 +430,11 @@ def _nvcomp_rows(
     ``dec_gbs`` adds the copy into the scattered paged blocks, with the byte
     unshuffle fused into that copy.
     """
+    # Third Party
     import nvidia
 
     nvidia.__path__.append(nvcomp_path)
+    # Third Party
     from nvidia import nvcomp
 
     rows: list[dict[str, Any]] = []
@@ -429,12 +504,13 @@ def _nvcomp_rows(
                         for batch, g in zip(encoded, groups, strict=True):
                             out = codec.decode(batch)
                             kept.append(out)
-                            for o, dst in zip(out, blocks[g], strict=True):
-                                src = torch.from_dlpack(o).view(torch.uint8).reshape(-1)
-                                if shuffled:
-                                    dst.view(-1, 2).copy_(src.view(2, -1).t())
-                                else:
-                                    dst.copy_(src)
+                            ptrs = torch.tensor(
+                                [torch.from_dlpack(o).data_ptr() for o in out],
+                                dtype=torch.int64,
+                                pin_memory=True,
+                            ).cuda(non_blocking=True)
+                            kept.append(ptrs)
+                            scatter_rows(ptrs, kv.rows, kv.ids[g], shuffled)
                         return kept
 
                     kv.clear()
@@ -481,6 +557,7 @@ def _splitzip_rows(
     (``dec_gbs``); ``dec_contig_gbs`` stops at SplitZip's output buffer.
     """
     sys.path.insert(0, splitzip_path)
+    # Third Party
     from codec_gpu import ChunkLocalSplitZipGPU
 
     codec = ChunkLocalSplitZipGPU(device="cuda", chunk_size=1024)
@@ -505,7 +582,7 @@ def _splitzip_rows(
         ) -> None:
             for e, g in zip(encoded, groups, strict=True):
                 out = codec.decode(e).view(torch.int16).view(g.stop - g.start, -1)
-                kv.rows.index_copy_(0, kv.ids[g], out)
+                scatter_rows(_row_ptrs(out), kv.rows, kv.ids[g])
 
         kv.clear()
         paged(None)
@@ -537,6 +614,7 @@ def _exans_rows(
     record slots; this is the codec's own ratio). Decode reads record headers
     on the host before launching, as the API does.
     """
+    # Standard
     import ctypes
 
     lib = ctypes.CDLL(lib_path)
@@ -699,6 +777,7 @@ def _exans_rows(
 
 def _cpu_zstd_rows(raw: np.ndarray, level: int) -> list[dict[str, Any]]:
     """Time single-core zstd over byte-shuffled slots (per-core throughput)."""
+    # Third Party
     import zstandard
 
     compressor = zstandard.ZstdCompressor(level=level)
