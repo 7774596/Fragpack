@@ -48,39 +48,58 @@ added capacity affects concurrent requests and returning sessions.
 \end{abstract}
 
 \section{Introduction}
-Consider a coding agent investigating a timeout. Its prompt includes
-repository context, a bug report, and the investigation history. If the
-user then asks for a regression test, most of the prompt remains unchanged.
-Prefix caching avoids repeated prefill by reusing the keys and values
-already computed for this shared context. vLLM stores KV in paged
-blocks~\cite{vllm}, while LMCache retains
+% [PDF 批注 1 | 2026-11-11]
+% 位置：原 fragpack_demo(16).pdf 第 1 页，Introduction 首段。
+% 原始意见：这个背景太奇怪了。一般直接就讲KV Cache的重要性了。不需要这么一个场景。
+% 处理：已删除开场场景，直接说明 KV Cache 对生成和跨请求前缀复用的作用。
+Key/value (KV) caching is essential to efficient LLM inference. It reuses
+the attention keys and values of preceding tokens during generation and,
+through prefix caching, avoids repeated prefill for shared prompt prefixes.
+LLM agents benefit from this reuse because successive calls often share
+long contexts. vLLM manages KV in paged GPU blocks~\cite{vllm}, while LMCache retains
 reusable prefixes in DRAM and NVMe across requests~\cite{lmcache}.
 
+% [PDF 批注 2 | 2026-11-11]
+% 位置：原 fragpack_demo(16).pdf 第 1 页，Introduction 第二段。
+% 原始意见：这一段不知道想表达什么，有告诉AI这一段要表达什么么？
+% 处理：已明确本段主旨；GPU 容量限制活跃请求，外部缓存容量限制历史保留，
+% 二者共同引出降低每个 token 的 KV 存储开销这一动机。
+Cache capacity limits both concurrent execution and history reuse.
 For Qwen3-30B-A3B, each cached token requires 96~KiB of BF16 KV across all
-layers. With many concurrent sessions, requests may wait for free GPU
-blocks even when external storage holds their prefixes. External tiers
-relieve GPU memory pressure by storing inactive histories, but can also
-fill up. If a resumed session's prefix has been evicted, the engine must
-recompute it. Capacity thus limits both concurrency and history reuse.
+layers. A fixed GPU KV budget therefore limits the contexts of concurrently
+active requests. External storage retains inactive histories, but does not
+expand the GPU memory available to active requests. Its own capacity limits
+how many histories remain reusable; evicted prefixes must be recomputed
+when sessions resume.
 
-KVFold uses lossless compression to fit more KV into the available GPU
-memory and external storage. The codec preserves each BF16 value's low
-byte, assigns short codes to frequent high-byte values, and uses escapes
-for the remaining values. Unlike quantization methods such as
-KIVI~\cite{kivi} or lossy context codecs such as CacheGen~\cite{cachegen},
-it reconstructs the original KV bits. The main \emph{pool mode} stores
-completed GPU blocks as FragPack records. During prefill, KVFold gathers
-and decodes the context's KV into a BF16 workspace for FlashAttention-3
-(FA3)~\cite{fa3}. During decode, it reconstructs operands within a fused
-attention kernel. An alternative \emph{tier mode} stores compressed KV in
-LMCache while retaining the native GPU cache layout and attention
-implementation. Both modes share the coding principle and offline
-calibration, but use different formats for attention and external
-storage.
+% [PDF 批注 3 | 2026-11-11]
+% 位置：原 fragpack_demo(16).pdf 第 1 页，Introduction 中首次介绍 pool mode 处。
+% 原始意见：衔接太不自然了。还没讲清楚KVFold的定位就直接讲KVFold的两个模式了。KVFold的介绍应该是下一段的。
+% 处理：已先交代压缩动机与无损目标，下一段独立介绍 KVFold 的系统定位，
+% 再另起一段概述两种模式；具体字节编码细节保留在 System Description。
+Reducing the bytes required per cached token can increase cache capacity
+under fixed budgets. Quantization methods such as KIVI~\cite{kivi} and
+lossy context codecs such as CacheGen~\cite{cachegen} reduce storage by
+approximating KV values. Lossless compression instead preserves the
+original KV bits, allowing capacity gains without changing the cached
+values.
 
-The demonstration follows the agent as it continues a task, runs alongside
-other sessions, and resumes an earlier investigation. Interactive requests
-show prefix reuse, external restoration, and KV byte checks.
+We present KVFold, a lossless KV-cache compression system for LLM agents.
+KVFold combines a compact BF16 representation with GPU execution and
+external-cache integration to address both active-context capacity and
+history retention. It reconstructs the original KV values bit for bit.
+
+KVFold provides two integration paths. The main \emph{pool mode} stores
+completed GPU blocks as FragPack records. Prefill gathers and decodes KV
+into a BF16 workspace for FlashAttention-3 (FA3)~\cite{fa3}, while decode
+reconstructs operands inside a fused attention kernel. The alternative
+\emph{tier mode} compresses KV in LMCache while preserving the native GPU
+cache layout and attention implementation. The paths share the coding
+principle and offline calibration, but use different record formats.
+
+The demonstration uses a coding agent's timeout investigation to show
+prefix reuse, external restoration, and KV byte checks as tasks continue
+and sessions resume.
 Recorded AgentX workloads~\cite{agentx} show the capacity gain at scale:
 with a 54~GiB KV budget per GPU, pool mode holds 1.59M tokens compared
 with 1.18M for the uncompressed baseline. With admission capped at
