@@ -10,3 +10,6 @@ __pycache__/
 *.out
 *.synctex.gz
 .DS_Store
+
+# Optional local PowerPoint generation dependency.
+/node_modules/

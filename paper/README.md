@@ -1,99 +1,121 @@
 # KVFold demonstration paper
 
-The current manuscript is [fragpack_demo(16).pdf](fragpack_demo%2816%29.pdf),
-with editable source in `fragpack_demo(16).tex`. It presents GPU-resident
-FragPack records and the external-cache codec as separate integration paths.
-The paper uses gather + FA3 for pool-mode prefill. Historical measurements
-and the saved functional demonstration retain their original evidence scope.
+The current manuscript is [kvfold_update4_b.pdf](kvfold_update4_b.pdf), with
+editable source in [kvfold_update4_b.tex](kvfold_update4_b.tex). It is four pages
+including references and reserves three body-text lines for Acknowledgment.
+The two result tables appear at the bottom of page 3, after their demonstration
+context; Figure 3 appears at the top of page 4.
 
-## Package contents
+The [revision ledger](kvfold_update4_b-changes.md) records the 15 requirements
+in `修改方案.txt`, approved compression, and subsequent wording refinements.
+The [source diff](kvfold_update4_b.diff) compares this manuscript with the
+archived update3 B baseline. Experiment values and evidence boundaries are
+unchanged. The manuscript uses the accepted Figure 3 B interaction layout.
+
+## Contents
 
 | Location | Contents |
 | --- | --- |
-| `fragpack_demo(16).tex` / `.pdf` | Current four-page paper with the KV data-flow Figure 3; empty Acknowledgment body |
-| `fragpack_demo(15).tex` / `.pdf` | Four-page alternative with the prompt, prefix strips and response view |
-| `fragpack_demo(14).tex` / `.pdf` | Retained interaction-view revision |
-| `fragpack_demo(8).tex` / `.pdf` | Retained screenshot-based baseline |
-| `kvfold-demo-introduction.tex` / `.pdf` | Four-page Chinese paper and demonstration introduction |
-| `figures/` | Editable TikZ architecture, record example and demonstration figures |
-| `images/` | Figure PDFs, PNG previews, captions and original console captures |
-| `references.bib` | Bibliography shared by the retained manuscripts |
-| [evidence/](evidence/README.md) | Recorded evidence, provenance and record-example validation |
-| `materials/` | Author-supplied design references and implementation notes |
+| `kvfold_update4_b.tex` / `.pdf` | Current manuscript and reading PDF |
+| `kvfold_update4_b-changes.md` / `.diff` | Revision record and source comparison |
+| `references.bib`, `references_update4.bib` | All 13 cited works, full metadata, and bibliography display controls |
+| `images/fig1_architecture_update4.svg` | Editable architecture source |
+| `images/figure1-kvfold_update4.pdf`, `.png` | Current architecture exports |
+| `figures/record_layout_update4.tex` | Editable TikZ encoding example included by the manuscript |
+| `images/figure2-kvfold_update4.pdf`, `.png` | Standalone encoding-example exports |
+| `figures/fig3_b.js`, `fig3_b_metrics.json` | Native PowerPoint generator and the six recorded metric-card inputs |
+| `images/fig3_b_update4.pdf`, `.png`, `.pptx` | Current demonstration figure, preview, and editable PowerPoint |
+| [evidence/](evidence/README.md) | Recorded results, implementation mapping, correctness scope, and provenance |
+| `materials/` | Author-supplied Industry manuscripts, figure reference, and abstract/Introduction inputs |
+| `package.json`, `package-lock.json` | Optional, pinned PowerPoint-generation dependency |
 
-Earlier retired manuscripts are not part of this package. Some retained
-figure filenames contain older version numbers because they are shared
-inputs, not obsolete files. The screenshot assets required by versions 8
-and 14 and the Chinese introduction are included with their original bytes.
+## Build the manuscript
 
-## Build
-
-Building the paper requires Python 3, Make, `latexmk`, pdfLaTeX, BibTeX,
-IEEEtran and the packages imported by the manuscript preamble. Standalone
-figure export also uses `preview.sty` and Poppler's `pdftoppm`.
-The Chinese introduction requires XeLaTeX, `ctex`, Noto Sans CJK SC and
-DejaVu Sans / Sans Mono. Model weights, GPUs and running services are not required.
-
-From the repository root:
+Run from the repository root:
 
 ```sh
-make -C paper                    # Current version 16
-make -C paper VERSION=15         # Alternative Figure 3
-make -C paper VERSION=14         # Retained interaction revision
-make -C paper VERSION=8          # Screenshot baseline
-make -C paper briefing           # Chinese introduction
-make -C paper figures            # All three figures from version 16
-make -C paper VERSION=15 figures FIGURES=3
-make -C paper dataflow           # Standalone full-height data-flow figure
+make -C paper
 ```
 
-Build intermediates stay in ignored `paper/build/` subdirectories. Successful
-builds update the corresponding reading PDF or figure exports in place.
-The complete package can also be copied out of the repository and built with
-`make -C <copied-paper-directory>`; no external worktree is needed.
+The build requires `latexmk`, pdfLaTeX, BibTeX, IEEEtran, and the imported LaTeX
+packages. It uses the checked figure assets and needs no GPU, Node.js,
+LibreOffice, or model files. Intermediate files stay in ignored `paper/build/`.
+A successful build updates `paper/kvfold_update4_b.pdf`.
 
-## Figure variants
+For Overleaf, upload this directory with its relative paths intact, select
+`kvfold_update4_b.tex` as the main document, and use pdfLaTeX. The figure PDFs
+are included, so figure-generation dependencies are unnecessary.
 
-Versions 15 and 16 share the architecture and record example. Version 15 uses
-`figures/demo_views(15).tex`, keeping the prompt, complete saved response,
-four request controls and prefix strips. Version 16 uses the data-flow
-composition in `figures/demo_views_dataflow.tex` through
-`figures/demo_views(16).tex`.
+To add acknowledgments, replace `\par\vspace*{3\baselineskip}` with the final
+paragraph. Do not retain the spacer in addition to the text; it reserves three
+lines. Recompile after editing to confirm pagination.
 
-The independent `images/figure3-dataflow.pdf` has a 178 by 180 mm canvas.
-The version-16 wrapper changes vertical coordinates to a 178 by 158.4 mm
-canvas while retaining font sizes and horizontal scales. Version 15 uses a
-178 by 154 mm canvas. All three panels share the same outer right edge;
-right-side cards retain their original padding. The Inspector represents
-an independent After Build check, not verification of the Restore request.
+## Edit and regenerate figures
 
-Both current manuscripts remain four pages. Demonstration begins near the
-end of page 2, Figure 3 appears on page 3, and both result tables and all
-references remain on page 4. The opening paragraph uses normal pagination,
-so it does not leave a large blank area on page 2.
+Figure 1 is an SVG; its exporter requires Python with PyGObject, pycairo, and
+the Rsvg 2.0 typelib. Figure 2 uses the manuscript's TikZ preamble and requires
+`preview.sty`. Both preview renderers require Poppler's `pdftoppm`.
 
-## Evidence and supporting materials
+```sh
+make -C paper figure1
+make -C paper figure2
+```
 
-See [evidence/README.md](evidence/README.md) for immutable source hashes,
-experiment configurations, scope limitations and the mapping from historical
-source identifiers to files in this package. The saved Qwen3-4B interaction
-and model-block byte check are distinct from the recorded Qwen3-30B AgentX
-capacity experiments. Packaging or rebuilding the paper runs no experiment.
+The explicit figure targets regenerate their current PDF/PNG exports. Figure 2
+can also be exported as editable SVG using `latex` and `dvisvgm` with WOFF2:
 
-| Material | Role |
-| --- | --- |
-| `materials/main(11).pdf` | Author-selected Industry manuscript supplying the recorded results |
-| `materials/industry.pdf` | Additional author-supplied Industry draft; does not replace the evidence source above |
-| `materials/lmcache-lossless-kv.pdf` | Historical Chinese implementation notes for revision `c0b2273` |
-| `materials/KVFold_Fig3_Workflow_Comparison.pdf` | Author-supplied Figure 3 composition reference |
+```sh
+python3 paper/render_figures.py --figures 2 --svg
+```
 
-The third-party demonstration-paper library, editing-session records,
-machine-specific restoration archives and build caches remain outside this
-package. The committed sources and assets are sufficient to rebuild every
-retained manuscript and the standalone figures.
+Figure 3 uses native editable PowerPoint shapes, lines, and text. Install its
+optional dependency and generate a candidate:
 
-Validation on November 10, 2026 rebuilt all four manuscript versions and
-the Chinese introduction from an independent copy of this directory. All
-five PDFs remain four pages; their 20 rendered pages and extracted text
-match the distributed copies. Standalone figure exports also match their
-distributed renderings. Final LaTeX logs contain no warnings or box errors.
+```sh
+npm ci --prefix paper
+make -C paper figure3
+```
+
+This writes `paper/build/kvfold_update4_b/fig3/fig3_b_update4.pptx`; it does not
+replace the checked exports under `images/`. The generator reads saved prefix
+counts and exact Inspector bytes from `evidence/live-run.json`, and metric
+values and bar scales from `figures/fig3_b_metrics.json`. It does not depend on
+old manuscripts, old figure sources, or a pre-existing build directory.
+
+A candidate can be rendered with LibreOffice and Poppler from the repository
+root. Use a separate LibreOffice profile and retain the candidate until checked:
+
+```sh
+soffice -env:UserInstallation=file:///tmp/kvfold-figure3-render \
+  --headless --convert-to pdf \
+  --outdir paper/build/kvfold_update4_b/fig3 \
+  paper/build/kvfold_update4_b/fig3/fig3_b_update4.pptx
+pdftoppm -r 400 -singlefile -png \
+  paper/build/kvfold_update4_b/fig3/fig3_b_update4.pdf \
+  paper/build/kvfold_update4_b/fig3/fig3_b_update4
+```
+
+Use Arial/Courier New or the compatible Liberation fonts, plus DejaVu Sans for
+circled numbers. Inspect text, alignment, and bar scales before replacing the
+three matching exports under `images/` and rebuilding the manuscript.
+
+## Evidence and retired versions
+
+The saved Qwen3-4B interaction is distinct from the Qwen3-30B AgentX capacity
+runs. The Inspector checks export/import integrity of already encoded KV;
+it does not compare the first encoding with model-produced BF16. See
+[implementation notes](evidence/implementation-notes.md) for revisions,
+measurement definitions, memory accounting, and remaining unverified details.
+Rebuilding the paper does not rerun experiments.
+
+The current workspace retains only update4 B and its required materials.
+Earlier manuscripts, alternative figures, the version-8 Chinese briefing,
+and writing intermediates were preserved in a verified external archive before
+removal. [The cleanup index](evidence/workspace-cleanup.json) records the archive
+identifier, checksums, retired paper files, and retained author-source moves.
+The archive includes a per-file manifest and restoration instructions; restore
+into a separate directory before selecting files to bring back.
+
+The historical `evidence/provenance.json` remains byte-for-byte unchanged.
+Its references to retired assets describe the original evidence package;
+they are not dependencies for building this manuscript.

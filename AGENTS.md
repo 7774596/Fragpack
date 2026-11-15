@@ -3,6 +3,8 @@
 FragPack is an experimental lossless KV representation, GPU execution module,
 and vLLM adapter. Read [docs/development.md](docs/development.md), the relevant
 design documentation, and [CONTRIBUTING.md](CONTRIBUTING.md) before changes.
+直接给出结论和可执行步骤。省略客套、重复解释和泛泛建议，保留必要的依据、验证结果和限制,不是很有必要的也不要展开解释.
+
 
 ## Repository boundaries
 
@@ -55,3 +57,48 @@ The default branch is `main`. Develop on a named branch and follow the scoped
 commit format in `CONTRIBUTING.md`. Do not initialize, commit, push, or change
 remotes unless the task authorizes it. Do not add references to workflow tools
 or managed directories that are absent from this repository.
+
+## Reports and experiment records
+
+- Write new reports, experiment notes, result summaries, table headings, and
+  figure labels in clear, standard technical English. Use English when
+  substantively revising these documents. Preserve original raw logs and data.
+- Summarize progress and results briefly in Simplified Chinese in chat. Lead
+  with the outcome, key measurements, and limitations that affect the conclusion.
+- Keep current reports and reproducible result summaries easy to find. Archive
+  superseded runs and duplicate snapshots instead of accumulating loose records.
+  Preserve source revisions, configurations, measurements, and failure evidence.
+
+## Manuscript writing style
+
+- Use formal but natural academic English. Follow the user-approved TAPE_A
+  exemplar for paragraph flow and cohesion, without copying its wording or
+  scientific claims.
+- Connect the problem, existing approaches, their limitations, and the proposed
+  solution through clear reasoning. Use causal, conditional, or concessive
+  transitions where they help the argument; avoid formulaic linking phrases.
+- Explain relevant prior-work mechanisms simply before discussing their limits.
+  Keep enough background to make the comparison understandable, without turning
+  the Introduction into a catalogue of systems.
+- Group paragraphs by shared purpose and merge closely related points. Avoid
+  fragmented short paragraphs, but do not impose a fixed paragraph count. The
+  four-paragraph KVFold Introduction was a local editorial choice.
+- Prefer precise, familiar words and varied sentence lengths. Remove redundant
+  explanations, inflated claims, and mechanical phrasing; avoid colloquial slang.
+- Preserve numbers, results, citations, technical meaning, and evidence scope.
+  Keep measured findings, interpretations, and planned work distinct.
+- For the current KVFold manuscript, end the Introduction with the system and
+  its approach, rather than demonstration activities or console operations. The
+  Abstract may briefly summarize the demonstrated capabilities and benefits.
+- Apply this style within the requested editing scope. Approval of a style does
+  not authorize applying a chat-only draft to manuscript files.
+
+## Workspace cleanup
+
+- Before retiring a worktree or local branch, check active processes and services,
+  Git ancestry, and unique uncommitted files; age alone does not prove inactivity.
+- During authorized cleanup, preserve unique work and required evidence in a
+  verified archive with a restoration index before removing obsolete worktrees,
+  branches, or experiment directories. Keep active development and services intact.
+- Remove disposable test stores and build caches separately from scientific
+  evidence. Do not clean shared datasets, model weights, or unrelated repositories.

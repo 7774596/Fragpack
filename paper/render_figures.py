@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Export manuscript figures as PDFs and 400 dpi PNGs.
+"""Export manuscript figures as PDFs, 400 dpi PNGs, and optional editable SVGs.
 
-Native labels and diagrams remain vector objects; UI screenshots remain raster.
+The encoding example retains native vector labels and diagram objects.
+SVG export requires latex and dvisvgm with WOFF2 support. It retains live text
+and embeds the figure's fonts instead of outlining glyphs or substituting fonts.
 """
 
 from __future__ import annotations
@@ -11,49 +13,154 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 
 
-def export_figures(version: int, numbers: list[int], *, dataflow: bool = False) -> None:
+def _add_svg_font_fallbacks(text: str) -> str:
+    """Keep embedded TeX fonts first, with editable fallbacks for new glyphs.
+
+    dvisvgm embeds only used glyphs. Named fallbacks support later text edits
+    and SVG editors that ignore embedded webfonts, without replacing the fonts
+    used to display the exported labels in a browser.
+    """
+    fonts = {
+        "phvr8r": ("'Nimbus Sans','Liberation Sans',Helvetica,Arial,sans-serif", 400),
+        "phvb8r": ("'Nimbus Sans','Liberation Sans',Helvetica,Arial,sans-serif", 700),
+        "pcrr8r": ("'Nimbus Mono PS','Liberation Mono','Courier New',monospace", 400),
+    }
+    for family, (fallbacks, weight) in fonts.items():
+        text = text.replace(
+            f"@font-face{{font-family:{family};",
+            f"@font-face{{font-family:{family};font-weight:{weight};",
+        )
+        text = re.sub(
+            rf"(text\.f\d+\s*\{{font-family:){family};",
+            rf"\g<1>{family},{fallbacks};font-weight:{weight};",
+            text,
+        )
+    return text
+
+
+def export_editable_svg(wrapper: Path, *, paper: Path, target: Path) -> None:
+    """Render a TikZ wrapper through DVI, retaining text and embedded WOFF2 fonts.
+
+    Use the same source and PreviewBorder as the PDF export. DVI intermediates
+    and diagnostics stay beside the wrapper under ``svg/``. ``latex`` and
+    ``dvisvgm`` must be on PATH; compilation and conversion run synchronously.
+    The final SVG replaces ``target`` only after a live-text check succeeds.
+    """
+    out = wrapper.parent / "svg"
+    out.mkdir(exist_ok=True)
+    svg_wrapper = out / wrapper.name
+    svg_wrapper.write_text(
+        wrapper.read_text(encoding="utf-8").replace(
+            r"\begin{document}", "\\def\\FigureSVG{1}\n\\begin{document}", 1
+        ),
+        encoding="utf-8",
+    )
+    with (out / "build-console.log").open("wb") as stream:
+        for _ in range(2):
+            subprocess.run(
+                [
+                    "latex",
+                    "-interaction=nonstopmode",
+                    "-halt-on-error",
+                    "-file-line-error",
+                    f"-output-directory={out}",
+                    str(svg_wrapper),
+                ],
+                cwd=paper,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+        svg = out / f"{wrapper.stem}.svg"
+        subprocess.run(
+            [
+                "dvisvgm",
+                "--bbox=preview",
+                "--font-format=woff2",
+                "--precision=6",
+                f"--output={svg}",
+                str(out / f"{wrapper.stem}.dvi"),
+            ],
+            cwd=paper,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+    svg.write_text(
+        _add_svg_font_fallbacks(svg.read_text(encoding="utf-8")), encoding="utf-8"
+    )
+    root = ET.parse(svg).getroot()
+    if not root.findall(".//{http://www.w3.org/2000/svg}text"):
+        raise RuntimeError(f"The SVG export contains no editable text: {svg}")
+    shutil.copyfile(svg, target)
+
+
+def export_figures(
+    numbers: list[int],
+    *,
+    source: str | None = None,
+    output_stem: str | None = None,
+    svg: bool = False,
+) -> None:
     """Compile numbered figure inputs with the manuscript's own preamble.
 
-    ``version`` selects the preamble and numbered figure inputs; ``numbers``
-    selects the one-based figure indices. ``dataflow`` additionally exports
-    the native dataflow source without the paper's vertical placement scale.
-    Intermediate wrappers and logs stay under paper/build/v<version>/.
-    Successful exports replace the selected PDF and PNG under images/.
+    The preamble and Figure 2 input come from the current kvfold_update4_b
+    manuscript. ``numbers`` must select Figure 2, the only TikZ figure in this
+    manuscript. Intermediates stay under paper/build/kvfold_update4_b/.
+    Successful exports replace the selected PDF and PNG under images/. With
+    ``svg=True``, also export SVG with editable text and embedded fonts.
     This command uses only CPU LaTeX tools and never runs model code.
+
+    For a separately named revision, provide one figure number, a paper-relative
+    TikZ ``source``, and an ``output_stem``. The manuscript and its normal
+    exports are then preserved; the revision gets its own build directory.
     """
     paper = Path(__file__).resolve().parent
-    document = paper / f"fragpack_demo({version}).tex"
+    document = paper / "kvfold_update4_b.tex"
     text = document.read_text(encoding="utf-8")
     preamble = text.split(r"\title{", 1)[0]
-    inputs = re.findall(r"\\input\{(figures/[^{}]+\.tex)\}", text)
-    build = paper / "build" / f"v{version}"
+    tikz_inputs = re.findall(r"\\input\{(figures/[^{}]+\.tex)\}", text)
+    if len(tikz_inputs) != 1:
+        raise ValueError("The current manuscript must contain one TikZ record figure")
+    inputs = {2: tikz_inputs[0]}
+    build = paper / "build" / "kvfold_update4_b"
     images = paper / "images"
     images.mkdir(exist_ok=True)
+    if svg:
+        for tool in ("latex", "dvisvgm"):
+            if shutil.which(tool) is None:
+                raise FileNotFoundError(f"SVG export requires {tool} on PATH")
+
+    if (source is None) != (output_stem is None):
+        raise ValueError("--source and --output-stem must be provided together")
+    if source is not None:
+        if len(numbers) != 1:
+            raise ValueError("A source override requires exactly one figure number")
+        if not (paper / source).is_file():
+            raise FileNotFoundError(paper / source)
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", output_stem):
+            raise ValueError("The output stem must use letters, digits, '_' or '-'")
 
     exports: list[tuple[str, str, str, str]] = []
     for number in numbers:
-        if number < 1 or number > len(inputs):
-            raise ValueError(f"Figure {number} is outside 1..{len(inputs)}")
+        if number not in inputs:
+            raise ValueError(
+                "This exporter handles Figure 2; "
+                "use the SVG/PPTX exporters for Figures 1/3"
+            )
         exports.append(
             (
-                inputs[number - 1],
-                f"fig{number}",
+                source if source is not None else inputs[number],
+                output_stem if output_stem is not None else f"fig{number}",
                 f"figure{number}",
-                f"figure{number}({version})",
+                output_stem
+                if output_stem is not None
+                else f"figure{number}-kvfold_update4",
             )
         )
-    if dataflow:
-        exports.append(
-            (
-                "figures/demo_views_dataflow.tex",
-                "dataflow",
-                "figure3-dataflow",
-                "figure3-dataflow",
-            )
-        )
-
     for source, directory, stem, target_stem in exports:
         out = build / directory
         out.mkdir(parents=True, exist_ok=True)
@@ -103,29 +210,33 @@ def export_figures(version: int, numbers: list[int], *, dataflow: bool = False) 
         )
         print(target.relative_to(paper))
         print(target.with_suffix(".png").relative_to(paper))
+        if svg:
+            svg_target = target.with_suffix(".svg")
+            export_editable_svg(wrapper, paper=paper, target=svg_target)
+            print(svg_target.relative_to(paper))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--version",
-        type=int,
-        default=16,
-        help="Manuscript preamble version (default: 16)",
-    )
-    parser.add_argument(
         "--figures",
         type=int,
         nargs="+",
-        help="One-based figure indices (default: 1 2, unless --dataflow)",
+        default=[2],
+        help="TikZ figure index (default: 2)",
     )
     parser.add_argument(
-        "--dataflow",
+        "--source", help="Paper-relative TikZ source for one figure revision"
+    )
+    parser.add_argument(
+        "--output-stem", help="Separate PDF/PNG/SVG filename stem under images/"
+    )
+    parser.add_argument(
+        "--svg",
         action="store_true",
-        help="Export the native 180 mm dataflow figure",
+        help="Also export SVG with editable text and embedded fonts",
     )
     args = parser.parse_args()
-    numbers = (
-        args.figures if args.figures is not None else ([] if args.dataflow else [1, 2])
+    export_figures(
+        args.figures, source=args.source, output_stem=args.output_stem, svg=args.svg
     )
-    export_figures(args.version, numbers, dataflow=args.dataflow)

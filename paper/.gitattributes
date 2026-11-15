@@ -1,2 +1,7 @@
 *.pdf binary
 *.png binary
+*.pptx binary
+
+# Preserve supplied text line endings and valid patch context prefixes.
+*.txt whitespace=cr-at-eol
+*.diff whitespace=-blank-at-eol

@@ -1,0 +1,237 @@
+{
+  "archive_id": "20261115-162301-update4b-workspace",
+  "source_commit": "3da6a2909742b60d88fd9bfb8760648af8eaa7b1",
+  "snapshot_sha256": "f77a4add572ccf5d3fc2a5dbb6e8bb36758f641f9e82c2b15e135cdc224ed233",
+  "manifest_sha256": "872ec9fa356e136bbe1d4f982a3bd248a7588d04d453c63ee6fdf69408dca8a2",
+  "retired_paper_files": [
+    {
+      "path": "paper/figures/architecture(5).tex",
+      "sha256": "58dc65f9325a3e255bb3700298158c3422204418bfd557c7086df853ef71fcc6"
+    },
+    {
+      "path": "paper/figures/architecture_update3.tex",
+      "sha256": "b9996645587cd9145dec02190de8c07bb0e4c157dcfed0d756753f932bb27834"
+    },
+    {
+      "path": "paper/figures/demo_views(15).tex",
+      "sha256": "4942f9fa733f1a804cbbc8bb45f22e4ea2363aae477f7c117aac6aa9243fd05c"
+    },
+    {
+      "path": "paper/figures/demo_views(16).tex",
+      "sha256": "b17e3e521ebfb0509fd40c1f3ed9e8b6f520de737fd1de7bdfa1749f85846702"
+    },
+    {
+      "path": "paper/figures/demo_views_dataflow.tex",
+      "sha256": "0808622811d822e23139b0f6de438bb9466bafbab794e44fafb25b726bdf1fcb"
+    },
+    {
+      "path": "paper/figures/demo_views_update2.tex",
+      "sha256": "c178448f774da7142899eaed5a929ded850ba86782d6e529baccd2ec0d958d28"
+    },
+    {
+      "path": "paper/figures/demo_views_update3.tex",
+      "sha256": "f887388698f955f98e46d3fc393a3a94a17341ca10c6156fd2303eef4e6167c5"
+    },
+    {
+      "path": "paper/figures/fig3_a.js",
+      "sha256": "44a9928211c1082cea955c8e6d6007a8d6cb4abe5e6b365c9cb83c9debb72f26"
+    },
+    {
+      "path": "paper/figures/fig3_update2.tex",
+      "sha256": "cde7a9dc8c0c3d831a3aeeb46b8d8fb17dd346a3e80a688846ad6889fce700da"
+    },
+    {
+      "path": "paper/figures/fig3_update3.tex",
+      "sha256": "f4aef2fa151085c508b723beff8b39a889d50c578926a03bff1865d845bd79ed"
+    },
+    {
+      "path": "paper/figures/fig3_update3_pptx.js",
+      "sha256": "40b1d4c03a411216dbc5a7f410358cc0413a6036ab66d07cf9e0278348969666"
+    },
+    {
+      "path": "paper/figures/figure3_refined_pptx.js",
+      "sha256": "a005e6bf2165f4b4fa8ac5371aa4f3979a88c30b8c8bfa41f2aece6391f0b972"
+    },
+    {
+      "path": "paper/figures/record_layout(10).tex",
+      "sha256": "25b6115ee5957c4b2204c3dcdae4ff18f4e0150a9eadbcb3ff31575c1e4bf9f4"
+    },
+    {
+      "path": "paper/images/console-gpu-full(8).png",
+      "sha256": "473dded3e0931f6ebcb95b45ee0f346cdb23ae0345c9498dea85ba6e72207115"
+    },
+    {
+      "path": "paper/images/console-prefix-full(8).png",
+      "sha256": "1dc14858814f6896cec8b14f4dcb3f0f8f9a3f0b6578df647b35901ff06535f6"
+    },
+    {
+      "path": "paper/images/console-tier-full(8).png",
+      "sha256": "529df210850f5235d86dbd567426395444d13f1340a66bc3a1a457f216e51bba"
+    },
+    {
+      "path": "paper/images/fig1_architecture_optimized.svg",
+      "sha256": "12315da93a26523d7325d2e424bba736cee9c63794229aadbd8eeafbf025ec56"
+    },
+    {
+      "path": "paper/images/fig3_a.pdf",
+      "sha256": "d76f8cd06ecf09a998d00e168abc67e570f08a5df18ba2c1fc38160006f83cf2"
+    },
+    {
+      "path": "paper/images/fig3_a.png",
+      "sha256": "cba47340c439f38399bcf10588c396e9138613b0cab40b337726d50896ac1395"
+    },
+    {
+      "path": "paper/images/fig3_a.pptx",
+      "sha256": "a4f5567332c20343652520fff9efa16d62a2bb3a91866b3e4d09ca6e6cb7e558"
+    },
+    {
+      "path": "paper/images/fig3_b.pdf",
+      "sha256": "0b2f75706e952c91ac73257c6ac7f7f49c3046ec8157b2c8e55e92e86e648bfa"
+    },
+    {
+      "path": "paper/images/fig3_b.png",
+      "sha256": "d1844dfbe677bbd13b641ca23d08af839a58c8a838b690b0046d10e254077318"
+    },
+    {
+      "path": "paper/images/fig3_b.pptx",
+      "sha256": "7de8aed94d06569e4f535dcb0ad287381d91d588d690eeb8506dfda385753ad8"
+    },
+    {
+      "path": "paper/images/fig3_update2-caption.txt",
+      "sha256": "78bdb8b979f5b588cc77e4fdf114712c0888cfeff658b0304aaf973df6a79d61"
+    },
+    {
+      "path": "paper/images/fig3_update3-caption.txt",
+      "sha256": "f439d84b6de128990b7d8b026f4d94391d76bf7b4e782cf8f56d53235c111512"
+    },
+    {
+      "path": "paper/images/figure1-kvfold_update3.pdf",
+      "sha256": "73943dfdc24d3c16b0ad7d9910769dfccf7a3a2262ee88b97f3cd644dafb1144"
+    },
+    {
+      "path": "paper/images/figure1-kvfold_update3.png",
+      "sha256": "560614b7c15652980e804b12e2440391d43014759069b28e0b03ce0115fd098c"
+    },
+    {
+      "path": "paper/images/figure2-kvfold_update1.pdf",
+      "sha256": "db5a84e5f24a02f8dff70ae24ca5133530b5dad46dbbe47f1ad4d6a93035ebe0"
+    },
+    {
+      "path": "paper/images/figure2-kvfold_update1.png",
+      "sha256": "e0aa2356c14a95b608adcf3d6c6a99613d4fc268ba1f92cfc5a0b778579de414"
+    },
+    {
+      "path": "paper/images/figure3(16).png",
+      "sha256": "3a6e802d05152112e208bd38391a5c2a26a958dcd628782b9098a91c1f2723fd"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update1-caption.txt",
+      "sha256": "cb3f257d06e1732d72d7dc2167dc8b41c1fbdde299855a57133bc5f083134751"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update1.pdf",
+      "sha256": "75cacf2ef95981c312d95e4a3e69b5f9599dc4ac3d37d264e73c91c64fa287f2"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update1.png",
+      "sha256": "25c1397bc847f9da40950bacac0affc26d164b9dac7fdb75f4670f8fafbf5678"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update1.svg",
+      "sha256": "4c321e4f348bdd7f31b62a3913509f70dd7c847eced360660e8abf95b6813a56"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update2-caption.txt",
+      "sha256": "40e118fcd2599723fa370ca90bb3a09c18323b87cbe2c47116dd6e340497a1ef"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update2.pdf",
+      "sha256": "3ada2b1adc473c8079cc919b84e0db8e325e79642af3fe8ad09c41dc737abd31"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update2.png",
+      "sha256": "50823790fb245ab9757544af1249185417e2633aaf8369b6e7380f2ec26cef95"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update2.svg",
+      "sha256": "65037e023c38df4b69b37bc45e613ad4250eb1d37f54c08fe7defcb506fb1548"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update3-refined.png",
+      "sha256": "acdc7fe4a460c63924d08a2a8d23c29d0349a687bef6236c1e17942bb17f424c"
+    },
+    {
+      "path": "paper/images/figure3-kvfold_update3-refined.pptx",
+      "sha256": "40e2f50e4badc1afcb53a5f3109f6cf258a8933404f1e059c71172c7887d1200"
+    },
+    {
+      "path": "paper/kvfold-demo-introduction.pdf",
+      "sha256": "21ccd8f314ab30018b572c11dcb96faaaef57b9d3bfddf084d483df2baa036f9"
+    },
+    {
+      "path": "paper/kvfold-demo-introduction.tex",
+      "sha256": "8dc9e5a42dea402c3d3ea3eeed6a7764cdf6c3a02f1ee683a0ecc0abc8446ee0"
+    },
+    {
+      "path": "paper/kvfold_update1.pdf",
+      "sha256": "56f21b18ac0e85642d274175560099b7f467a3c9572b03345262b6afa7492eb7"
+    },
+    {
+      "path": "paper/kvfold_update1.tex",
+      "sha256": "6f08431e9f46c4b019bdce4b41a8c6d9c361488cad2053da9e8df762b5a58796"
+    },
+    {
+      "path": "paper/kvfold_update2.pdf",
+      "sha256": "bb4ce63680c460ccf310fb29812af47da50e38a106f2bc30fb2242be8c123743"
+    },
+    {
+      "path": "paper/kvfold_update2.tex",
+      "sha256": "1c8f2963bd0b350846bbcf16a5d7e2c8ac4eddef1b2796ec61ce7fcaf8240755"
+    },
+    {
+      "path": "paper/kvfold_update3.zh-CN.mono.pdf",
+      "sha256": "5a4625f6c87e3dccf58f8b423e773dda00728bc3590efc8cbfb95790a0526440"
+    },
+    {
+      "path": "paper/kvfold_update3_a.pdf",
+      "sha256": "56527bceb36bcb103121f741e4d9a11e264ede32e31312d343c627eee1276f70"
+    },
+    {
+      "path": "paper/kvfold_update3_a.tex",
+      "sha256": "43be9ad800486cd854e26c5223bb3a14088378a26327ef5c1ec2049efb23356b"
+    },
+    {
+      "path": "paper/kvfold_update3_b.pdf",
+      "sha256": "f364c1de3430ff3a058a6ddf9fd7bfe392931c4d15308784fd97259c55998cf4"
+    },
+    {
+      "path": "paper/kvfold_update3_b.tex",
+      "sha256": "a989ff68de2220110f4224941d85c857db75836ff706b9bf611e26eea949d000"
+    }
+  ],
+  "retained_source_moves": [
+    {
+      "from": "paper/kvfold_abstract_update2.txt",
+      "to": "paper/materials/kvfold_abstract_update2.txt"
+    },
+    {
+      "from": "paper/kvfold_introduction_update2.txt",
+      "to": "paper/materials/kvfold_introduction_update2.txt"
+    }
+  ],
+  "old_build_directories": [
+    "_check_trim",
+    "kvfold_update_b",
+    "kvfold_update2",
+    "kvfold_update3",
+    "kvfold_update3_a",
+    "_layout_check",
+    "kvfold_update1",
+    "kvfold_update4_b-fit"
+  ],
+  "notes": [
+    "Current update4 B manuscript, figure sources, editable assets, bibliography, and all evidence JSON are retained.",
+    "Earlier locally deleted tracked versions are preserved by tracked-paper-at-head.tar.gz.",
+    "Historical capture records referenced by provenance.json are preserved in the private archive."
+  ]
+}
