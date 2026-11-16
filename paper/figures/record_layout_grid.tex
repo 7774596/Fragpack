@@ -1,0 +1,131 @@
+% Fig. 2 candidate: grid-aligned revision of record_layout_update4.tex.
+% The manuscript still inputs record_layout_update4.tex; this file is separate.
+% Facts are unchanged (evidence/record-example.json): scalars 3C12/3956/4178,
+% codes 000/111/111, escapes 0001/1111 packed low nibble first into F1, raw
+% patch (1, 41), Low 16 KiB, Codes 6 KiB, Variable 64 B = 48 + 1 + 3 + 4 + 8.
+% Canvas: 252 pt x 114.9 pt, i.e. \columnwidth by the height of the current
+% Fig. 2 box (114.90141 pt), so adopting it at natural size with
+% \input{figures/record_layout_grid.tex} leaves pagination unchanged.
+% Coordinates are final-size points from the top-left corner (y grows
+% downward). Widths are not drawn to scale. Palette and sans/mono type follow
+% Figs. 1 and 3. Lines outside the picture end in % so that the file adds no
+% spaces when it is input in horizontal mode.
+% Export: python3 paper/render_figures.py --figures 2 \
+%   --source figures/record_layout_grid.tex --output-stem figure2-layout-grid
+\definecolor{kvfInk}{HTML}{202C3A}%
+\definecolor{kvfMuted}{HTML}{586779}%
+\definecolor{kvfPad}{HTML}{EDF0F4}%
+\definecolor{kvfBlue}{HTML}{246AC0}%
+\definecolor{kvfBlueTint}{HTML}{EDF4FC}%
+\definecolor{kvfTeal}{HTML}{0F8083}%
+\definecolor{kvfTealTint}{HTML}{E8F7F9}%
+\definecolor{kvfOrange}{HTML}{C76821}%
+\definecolor{kvfOrangeTint}{HTML}{FFF4E8}%
+\begin{tikzpicture}[x=1pt,y=-1pt,line cap=round,line join=round,
+    lab/.style={anchor=base west,inner sep=0pt,text=kvfInk,
+      font=\fontfamily{phv}\fontsize{7.6}{9}\selectfont},
+    sub/.style={lab,text=kvfMuted,
+      font=\fontfamily{phv}\fontsize{6.9}{8}\selectfont},
+    hex/.style={anchor=base,inner sep=0pt,
+      font=\fontfamily{pcr}\fontseries{b}\fontsize{8}{9}\selectfont},
+    flow/.style={line width=.7pt,-{Stealth[length=3pt,width=2.6pt]}},
+    maps/.style={line width=.55pt,-{Stealth[length=2.4pt,width=2.2pt]}}]
+  \path[use as bounding box] (0,0) rectangle (252,114.9);
+
+  % Chip: #1 fill, #2 left edge, #3 top edge, #4 value. All chips are 23 x 11 pt.
+  \def\kvfChip#1#2#3#4{%
+    \fill[#1,rounded corners=1.3pt] (#2,#3) rectangle (#2+23,#3+11);
+    \node[hex,text=white] at (#2+11.5,#3+7.9) {#4};}
+  % Lookup note: #1 colour, #2 left edge, #3 baseline, #4 source, #5 high byte.
+  \def\kvfMaps#1#2#3#4#5{%
+    \node[lab,text=#1] (kvfm) at (#2,#3) {#4};
+    \draw[maps,#1] ([xshift=2.2pt,yshift=2.6pt]kvfm.base east) -- ++(5.8,0);
+    \node[hex,anchor=base west,text=#1]
+      at ([xshift=9.8pt]kvfm.base east) {#5};}
+  % Sans ellipsis after monospaced samples; Courier dots are too widely spaced.
+  \def\kvfDots{{\fontfamily{phv}\selectfont\kern2.4pt\ldots}}
+
+  \node[lab,font=\fontfamily{phv}\fontseries{b}\fontsize{8.6}{10}\selectfont]
+    (title) at (0,7.2) {Example K record};
+  \node[lab,text=kvfMuted] at ([xshift=6pt]title.base east)
+    {128\,\texttimes\,128 BF16};
+
+  % --- Three worked scalars at x = 47, 115, 183 (68 pt pitch). Every box
+  % below a scalar is centred on its high byte, so each path is one straight
+  % line; the lookup that recovers the high byte sits beside its code.
+  \node[lab] at (0,18) {BF16 (hex)};
+  \node[sub] at (0,26.1)
+    {\textcolor{kvfTeal}{high} \textbar\ \textcolor{kvfBlue}{low}};
+  \node[lab] at (0,38.5) {3-bit code};
+  \node[lab] at (0,55.5) {4-bit escape};
+
+  \foreach \x/\hi/\lo in {47/3C/12,115/39/56,183/41/78} {
+    \begin{scope}
+      \clip[rounded corners=1.3pt] (\x,13.3) rectangle (\x+46,24.3);
+      \fill[kvfTeal] (\x,13.3) rectangle (\x+23,24.3);
+      \fill[kvfBlue] (\x+23,13.3) rectangle (\x+46,24.3);
+    \end{scope}
+    \node[hex,text=white] at (\x+11.5,21.2) {\hi};
+    \node[hex,text=white] at (\x+34.5,21.2) {\lo};
+    \draw[flow,kvfTeal] (\x+11.5,25.3) -- (\x+11.5,29.5);
+  }
+  \node[lab,text=kvfMuted] at (236,20.4) {\ldots};
+
+  \foreach \x/\v in {47/000,115/111,183/111} {\kvfChip{kvfTeal}{\x}{30.3}{\v}}
+  \foreach \x/\v in {115/0001,183/1111} {
+    \draw[flow,kvfOrange] (\x+11.5,42.3) -- (\x+11.5,46.5);
+    \kvfChip{kvfOrange}{\x}{47.3}{\v}
+  }
+  \kvfMaps{kvfTeal}{74.5}{38.5}{{\fontshape{sl}\selectfont P}[0]}{3C}
+  \kvfMaps{kvfOrange}{142.5}{55.5}{{\fontshape{sl}\selectfont E}[1]}{39}
+  \kvfMaps{kvfOrange}{210.5}{55.5}{Raw}{41}
+
+  % --- Record row: two fixed streams, then the variable region. Its cell
+  % boundaries reuse the scalar grid (93 and 183 pt). The variable region is
+  % a single outline: its tab in the record row plus the field strip below.
+  % Outer edges sit .25 pt inside the canvas so that strokes stay within it.
+  \begin{scope}
+    \clip[rounded corners=1.5pt] (.25,66.8) rectangle (190,85.3);
+    \fill[kvfBlueTint] (.25,66.8) rectangle (93,85.3);
+    \fill[kvfTealTint] (93,66.8) rectangle (183,85.3);
+  \end{scope}
+  \path[fill=kvfOrangeTint,draw=kvfOrange,line width=.5pt,rounded corners=1.5pt]
+    (183,66.8) -- (251.75,66.8) -- (251.75,104.3) -- (.25,104.3) -- (.25,88.3)
+    -- (183,88.3) [sharp corners] -- cycle;
+  \draw[kvfTeal,line width=.5pt] (93,66.8) -- (183,66.8) (93,85.3) -- (183,85.3);
+  \draw[kvfBlue,line width=.5pt,rounded corners=1.5pt]
+    (93,66.8) -- (.25,66.8) -- (.25,85.3) -- (93,85.3);
+  \draw[kvfBlue,line width=.5pt] (93,66.8) -- (93,85.3);
+
+  \node[lab] at (4.5,74.8) {Low};
+  \node[lab,anchor=base east] at (88.5,74.8) {16 KiB};
+  \node[hex,anchor=base west,text=kvfBlue] at (4.5,82.8) {12 56 78\kvfDots};
+  \node[lab] at (97.5,74.8) {Codes};
+  \node[lab,anchor=base east] at (178.5,74.8) {6 KiB};
+  \node[hex,anchor=base west,text=kvfTeal] at (97.5,82.8) {000 111 111\kvfDots};
+  \node[lab] at (187.5,74.8) {Variable};
+  \node[lab,anchor=base east] at (247.5,74.8) {64 B};
+
+  % Field strip, 4..248 pt: widths follow the labels, not the byte counts.
+  \fill[white] (4,90.9) rectangle (248,101.7);
+  \fill[kvfPad] (114,90.9) rectangle (152,101.7)
+                (210,90.9) rectangle (248,101.7);
+  \draw[kvfOrange,line width=.45pt] (4,90.9) rectangle (248,101.7);
+  \foreach \x in {60,114,152,210}
+    \draw[kvfOrange,line width=.45pt] (\x,90.9) -- (\x,101.7);
+  \node[lab,anchor=base] at (32,99) {Header 48 B};
+  \node[lab,anchor=base] at (87,99)
+    {Escapes {\fontfamily{pcr}\fontseries{b}\fontsize{8}{9}\selectfont
+      \color{kvfOrange}F1}};
+  \node[lab,anchor=base,text=kvfMuted] at (133,99) {pad 3 B};
+  \node[lab,anchor=base] at (181,99)
+    {Raw (1, {\fontfamily{pcr}\fontseries{b}\fontsize{8}{9}\selectfont
+      \color{kvfOrange}41})};
+  \node[lab,anchor=base,text=kvfMuted] at (229,99) {pad 8 B};
+
+  \node[lab] (dec) at (0,112.9) {Decode};
+  \draw[maps,kvfInk] ([xshift=2.6pt,yshift=2.6pt]dec.base east) -- ++(7.4,0);
+  \node[hex,anchor=base west] at ([xshift=12.4pt]dec.base east)
+    {\color{kvfTeal}3C\color{kvfBlue}12 \color{kvfTeal}39\color{kvfBlue}56
+     \color{kvfTeal}41\color{kvfBlue}78\color{kvfMuted}\kvfDots};
+\end{tikzpicture}%

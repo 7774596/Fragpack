@@ -8,8 +8,8 @@ BUILD := build/$(DOCUMENT)
 all: $(DOCUMENT).pdf
 
 $(DOCUMENT).pdf: $(DOCUMENT).tex references.bib references_update4.bib \
-                figures/record_layout_update4.tex \
-                images/figure1-kvfold_update4.pdf images/fig3_b_update4.pdf
+                images/figure1-architecture-refined.pdf \
+                images/figure2-record-map.pdf images/fig3_b_units.pdf
 	mkdir -p "$(BUILD)"
 	$(LATEXMK) -pdf -interaction=nonstopmode -halt-on-error -file-line-error -outdir="$(BUILD)" "$(DOCUMENT).tex"
 	cp "$(BUILD)/$(DOCUMENT).pdf" "$@"
@@ -26,4 +26,4 @@ figure2:
 # Install the pinned optional dependency first: npm ci --prefix paper
 # This creates a candidate PPTX; inspect its PDF render before publishing it.
 figure3:
-	node figures/fig3_b.js
+	node figures/fig3_b.js --ttft-units

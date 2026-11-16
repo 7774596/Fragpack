@@ -4,13 +4,16 @@
  *
  * node paper/figures/fig3_b.js
  * node paper/figures/fig3_b.js --update4
+ * node paper/figures/fig3_b.js --ttft-units
  *
  * Output is always an intermediate native PPTX in the figure build directory.
  * Existing images, editable presentations, manuscript sources and PDFs are not
  * overwritten. Candidate output is build/kvfold_update4_b/fig3/fig3_b_update4.pptx.
- * Both invocations generate the current figure, with Inspector MiB labels
- * calculated from archived byte counts. Install pinned dependencies with
+ * The default and --update4 generate the current figure, with Inspector MiB
+ * labels calculated from archived byte counts. Install pinned dependencies with
  * npm ci --prefix paper before running this CPU-only generator.
+ * --ttft-units writes a separate fig3_b_units.pptx candidate whose four TTFT
+ * value labels include the suffix "s"; measurements and geometry are unchanged.
  *
  * The accepted layout uses Arial, monospaced code, neutral vector shadows,
  * white action buttons, and blue Pool/orange Tier. Metric inputs are kept in
@@ -32,11 +35,12 @@ const { execFileSync } = require('node:child_process');
 const PptxGenJS = require('pptxgenjs');
 
 const root = path.resolve(__dirname, '../..');
-if (process.argv.slice(2).some(arg => arg !== '--update4')) {
-  throw new Error('Usage: node paper/figures/fig3_b.js [--update4]');
+if (process.argv.slice(2).some(arg => !['--update4', '--ttft-units'].includes(arg))) {
+  throw new Error('Usage: node paper/figures/fig3_b.js [--update4] [--ttft-units]');
 }
+const ttftUnits = process.argv.includes('--ttft-units');
 const work = path.join(root, 'paper/build/kvfold_update4_b/fig3');
-const output = path.join(work, 'fig3_b_update4.pptx');
+const output = path.join(work, ttftUnits ? 'fig3_b_units.pptx' : 'fig3_b_update4.pptx');
 const sourcePath = path.join(__dirname, 'fig3_b_metrics.json');
 const source = fs.readFileSync(sourcePath, 'utf8');
 const sourceHash = crypto.createHash('sha256').update(source).digest('hex');
@@ -407,7 +411,8 @@ metrics.forEach((m, index) => {
       C.track, C.track, 0, .6);
     rect(`${item.key}-bar`, m.x + 1.31, top - item.dy - .14,
       2.35 * item.value / m.maximum, .28, item.fill, item.fill, 0, .6);
-    text(`${item.key}-value`, item.shown, m.x + 5.14, top - item.dy, 1.24,
+    const shown = ttftUnits && m.label === 'Engine TTFT' ? `${item.shown}s` : item.shown;
+    text(`${item.key}-value`, shown, m.x + 5.14, top - item.dy, 1.24,
       { anchor: 'east', size: isMode ? 9.2 : 9, bold: isMode, color: item.ink,
         font: isMode ? MODE_SANS : SANS });
   }
@@ -512,15 +517,19 @@ print(json.dumps({k:v for k,v in audit.items() if k!='all_text'},ensure_ascii=Fa
 (async () => {
   fs.mkdirSync(work, { recursive: true });
   await pptx.writeFile({ fileName: output, compression: true });
-  const auditPath = path.join(work, 'native-object-audit.json');
+  const auditPath = path.join(work, ttftUnits
+    ? 'fig3_b_units-native-object-audit.json' : 'native-object-audit.json');
   process.stdout.write(execFileSync('python3', ['-c', groupAndValidate, output, auditPath], { encoding: 'utf8' }));
-  fs.writeFileSync(path.join(work, 'source-data-check.json'), JSON.stringify({
+  const dataPath = path.join(work, ttftUnits
+    ? 'fig3_b_units-source-data-check.json' : 'source-data-check.json');
+  fs.writeFileSync(dataPath, JSON.stringify({
     metricSource: path.relative(root, sourcePath), metricSourceSha256: sourceHash,
     interactionSource: path.relative(root, interactionSource), interactionSha256: interactionHash,
     canvasMm: [WIDTH, HEIGHT], minimumFontPt: 7.8 * TEX_TO_OFFICE_PT,
     prefixScale: PREFIX_MAX, prefixStripWidthMm: stripWidth * XS,
     interactions: actions,
     inspectorSizes,
+    ...(ttftUnits ? { ttftUnitSuffix: 's' } : {}),
     metrics: metrics.map(m => ({ label: m.label, mode: m.mode, raw: m.raw,
       compressed: m.compressed, maximum: m.maximum })),
   }, null, 2) + '\n');

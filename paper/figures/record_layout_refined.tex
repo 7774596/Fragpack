@@ -1,0 +1,115 @@
+% Standalone Fig. 2 revision; the manuscript keeps its original figure.
+% Facts: evidence/record-example.json; caption: images/figure2-layout-refined-caption.txt.
+% Equal-width path columns use centers 3.05, 5.45, 7.85 cm and 0.68 cm row steps.
+% Only HIGH bytes feed the short orthogonal encoding links. No escape exists
+% on the first path. Band/field widths follow label content, never byte ratios.
+% Font families phv/pcr match the sans/monospace grammar of Figures 1 and 3.
+% Export: python3 paper/render_figures.py --figures 2 \
+%   --source figures/record_layout_refined.tex --output-stem figure2-layout-refined
+\begin{tikzpicture}[x=1cm,y=1cm,text=fpInk,
+    font=\fontfamily{phv}\fontsize{9}{10.5}\selectfont,
+    line cap=round,line join=round,
+    arrow/.style={-{Stealth[length=.9mm,width=.7mm]},line width=.65pt},
+    bits/.style={font=\fontfamily{pcr}\fontsize{9.2}{10.5}\selectfont\bfseries},
+    note/.style={font=\fontfamily{phv}\fontsize{8.7}{10}\selectfont},
+    code/.style={draw=fpTeal,fill=fpTeal,line width=.6pt,
+      rounded corners=.7pt,minimum width=1.12cm,minimum height=.44cm,
+      inner sep=1pt,bits,text=white},
+    escape/.style={code,draw=fpOrange,fill=fpOrange}]
+  \path[use as bounding box] (0,-.12) rectangle (9.20,5.75);
+  \node[anchor=base west,inner sep=0pt,
+    font=\fontfamily{phv}\fontsize{9.3}{10.5}\selectfont\bfseries]
+    at (.12,5.45) {Example K record};
+  \node[anchor=base west,inner sep=0pt,note,text=fpInk!70]
+    at (3.12,5.45) {128\,$\times$\,128 BF16};
+
+  % Each entire BF16 pair is centered, as are its code/escape/result boxes.
+  % The elbow begins at the HIGH-byte half, not at the whole-pair center.
+  \node[anchor=base west,inner sep=0pt] at (.12,4.90) {BF16 (hex)};
+  \node[anchor=base west,inner sep=0pt,note,text=fpInk!70]
+    at (.12,4.58) {high $\mid$ low};
+  \foreach \x/\hi/\lo in {3.05/3C/12,5.45/39/56,7.85/41/78} {
+    \draw[fpTeal,fill=fpTeal,line width=.6pt]
+      (\x-.67,4.62) rectangle (\x,5.06);
+    \draw[fpBlue,fill=fpBlue,line width=.6pt]
+      (\x,4.62) rectangle (\x+.67,5.06);
+    \node[bits,text=white] at (\x-.335,4.84) {\hi};
+    \node[bits,text=white] at (\x+.335,4.84) {\lo};
+    \draw[arrow,draw=fpTeal]
+      (\x-.335,4.62) -- (\x-.335,4.54) -- (\x,4.54) -- (\x,4.42);
+  }
+  \node[bits,text=fpInk!65] at (8.87,4.84) {\ldots};
+
+  \node[anchor=west,inner sep=0pt] at (.12,4.16) {3-bit code};
+  \foreach \x/\value in {3.05/000,5.45/111,7.85/111} {
+    \node[code] at (\x,4.16) {\value};
+  }
+  \node[anchor=west,inner sep=0pt] at (.12,3.48) {4-bit escape};
+  \foreach \x/\value in {5.45/0001,7.85/1111} {
+    \draw[arrow,draw=fpOrange] (\x,3.90) -- (\x,3.74);
+    \node[escape] at (\x,3.48) {\value};
+    \draw[arrow,draw=fpOrange] (\x,3.22) -- (\x,3.06);
+  }
+  \draw[arrow,draw=fpTeal] (3.05,3.90) -- (3.05,3.06);
+
+  % All three recovered high bytes use the same frame, font and baseline.
+  % Only table variables P/E are italic; bracket indices and Raw are upright.
+  \node[anchor=west,inner sep=0pt] at (.12,2.80) {High byte};
+  \foreach \x in {3.05,5.45,7.85} {
+    \draw[draw=fpInk!25,fill=fpInk!2,line width=.5pt,rounded corners=.8pt]
+      (\x-.96,2.58) rectangle (\x+.96,3.02);
+  }
+  \node[anchor=base,inner sep=0pt] at (3.05,2.70)
+    {$P$[0]\,$\to$\,{\fontfamily{pcr}\selectfont 3C}};
+  \node[anchor=base,inner sep=0pt] at (5.45,2.70)
+    {$E$[1]\,$\to$\,{\fontfamily{pcr}\selectfont 39}};
+  \node[anchor=base,inner sep=0pt] at (7.85,2.70)
+    {Raw\,$\to$\,{\fontfamily{pcr}\selectfont 41}};
+
+  % Compact storage band: equal label/capacity baselines and padding.
+  % Repeated byte examples are already visible in the aligned paths above.
+  \foreach \a/\b/\c/\label/\size in {
+      .12/3.1067/fpBlue/Low/16 KiB,
+      3.1067/6.0933/fpTeal/Codes/6 KiB,
+      6.0933/9.08/fpOrange/Variable/64 B} {
+    \draw[draw=\c!70,fill=\c!9,line width=.5pt]
+      (\a,1.72) rectangle (\b,2.40);
+    \node[anchor=base,note,text=\c!85!black] at ({(\a+\b)/2},2.10) {\label};
+    \node[anchor=base,font=\fontfamily{phv}\fontsize{9}{10}\selectfont\bfseries]
+      at ({(\a+\b)/2},1.82) {\size};
+  }
+
+  % An independent variable-region container. Its 7.6 cm field strip is
+  % content-sized: Header 2.8, F1 .9, pad .75, Raw 2.4, pad .75 cm.
+  \draw[draw=fpOrange!65,fill=white,line width=.55pt,rounded corners=1pt]
+    (.60,.37) rectangle (8.60,1.44);
+  \node[anchor=base west,inner sep=0pt,note] at (.80,1.12)
+    {Variable region\enspace\textperiodcentered\enspace64 B};
+  \fill[fill=fpInk!10,draw=fpInk!22,line width=.4pt]
+    (7.04,1.10) rectangle (7.22,1.26);
+  \node[anchor=base west,inner sep=0pt,note,text=fpInk!65]
+    at (7.34,1.12) {padding};
+
+  % Fine, unheaded detail leader ends on a visible top-edge anchor. Its
+  % entire route lies in whitespace and never runs along the container edge.
+  \draw[fpOrange!80,line width=.5pt]
+    (7.58665,1.72) -- (7.58665,1.58) -- (6.55,1.58) -- (6.55,1.44);
+  \draw[draw=fpOrange!80,fill=white,line width=.5pt]
+    (6.55,1.44) circle[radius=.035];
+
+  \draw[draw=fpOrange!65,fill=fpOrange!7,line width=.5pt]
+    (.80,.51) rectangle (8.40,.95);
+  \fill[fpInk!10] (4.50,.519) rectangle (5.25,.941);
+  \fill[fpInk!10] (7.65,.519) rectangle (8.391,.941);
+  \foreach \x in {3.60,4.50,5.25,7.65}
+    \draw[fpOrange!65,line width=.45pt] (\x,.51) -- (\x,.95);
+  \node[anchor=base,note] at (2.20,.64) {Header: 48 B};
+  \node[anchor=base,bits] at (4.05,.64) {F1};
+  \node[anchor=base,note] at (4.875,.64) {3 B};
+  \node[anchor=base,note] at (6.45,.64)
+    {Raw (1,{\fontfamily{pcr}\selectfont 41})};
+  \node[anchor=base,note] at (8.025,.64) {8 B};
+
+  \node[anchor=base west,inner sep=0pt] at (.12,-.02)
+    {Decode\,$\to$\,{\fontfamily{pcr}\selectfont 3C12 3956 4178\,\ldots}};
+\end{tikzpicture}

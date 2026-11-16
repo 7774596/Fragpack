@@ -27,8 +27,8 @@ def export_architecture(update4: bool = False) -> None:
     This synchronous, CPU-only export does not invoke model or GPU code.
     """
     paper = Path(__file__).resolve().parent
-    source = paper / "images/fig1_architecture_update4.svg"
-    target = paper / "images/figure1-kvfold_update4.pdf"
+    source = paper / "images/fig1_architecture_refined.svg"
+    target = paper / "images/figure1-architecture-refined.pdf"
     build = paper / "build/kvfold_update4_b/fig1-qa"
     build.mkdir(parents=True, exist_ok=True)
     root = ET.parse(source).getroot()

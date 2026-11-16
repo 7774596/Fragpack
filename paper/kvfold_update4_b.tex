@@ -11,7 +11,7 @@
 \usepackage{stfloats}
 \usepackage[hidelinks]{hyperref}
 \hypersetup{pdftitle={KVFold: Expanding Cache Capacity for LLM Agents with Lossless Compression},
-            pdfsubject={ICDE demonstration review draft, update 4 B}}
+            pdfsubject={ICDE demonstration paper}}
 \definecolor{fpInk}{HTML}{172634}
 \definecolor{fpBlue}{HTML}{1D62D0}
 \definecolor{fpTeal}{HTML}{007E6A}
@@ -73,7 +73,7 @@ during generation and across requests with shared prefixes. This reuse is
 particularly useful for large language model (LLM) agents, whose successive
 calls often share long
 contexts. Retaining these states, however, requires substantial memory. For
-Qwen3-30B-A3B, each token requires 96~KiB of BF16 KV across all layers, or
+Qwen3-30B-A3B, each token requires 96~KiB of bfloat16 (BF16) KV across all layers, or
 48~KiB per rank with a tensor-parallel (TP) degree of two. GPU capacity
 therefore limits active contexts, while external cache capacity limits how
 much history can be retained for later reuse.
@@ -94,7 +94,7 @@ bytes per retained KV value. Reducing this cost requires a more compact
 representation.
 FlexGen~\cite{flexgen} combines GPU/CPU/disk offloading with low-bit
 compression, and KVQuant~\cite{kvquant} tailors KV quantization to channel
-distributions and outliers. KIVI~\cite{kivi}, for example, quantizes
+distributions and outliers. KIVI~\cite{kivi} quantizes
 keys per channel and values per token, using two-bit representations suited to
 their different distributions. For context transfer, CacheGen~\cite{cachegen}
 quantizes differences between nearby tokens and then applies arithmetic coding
@@ -129,12 +129,12 @@ record layouts tailored to their access patterns.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.90\textwidth]{images/figure1-kvfold_update4.pdf}
+\includegraphics[width=0.90\textwidth]{images/figure1-architecture-refined.pdf}
 \caption{KVFold's integration paths: pool mode exports its compressed GPU
 records unchanged, whereas tier mode retains native GPU pages and applies
 a cache-server codec. Dashed boundaries separate worker and cache-server
 processes; LMCache manages DRAM and NVMe. FA3 denotes
-FlashAttention-3~\cite{fa3}.}
+FlashAttention-3~\cite{fa3neurips}.}
 \label{fig:architecture}
 \end{figure*}
 
@@ -165,17 +165,13 @@ in Fig.~\ref{fig:record}.
 
 \begin{figure}[!ht]
 \centering
-\begingroup
-\tikzset{every picture/.append style={yscale=0.88}}
-\resizebox{0.89\columnwidth}{!}{\input{figures/record_layout_update4.tex}}
-\endgroup
-\caption{An illustrative KVFold record shows how three scalars are
-recovered through direct lookup, an extended-table escape, and a raw
-escape. Each raw patch stores the escape's position in the escape sequence
-and its original high byte. The variable region occupies 64~B in this
-example, within the format's 2~KiB limit. Recombining each recovered high
-byte with its retained low byte reproduces the original BF16 value. The
-layout is not drawn to scale.}
+\includegraphics[width=\columnwidth]{images/figure2-record-map.pdf}
+\caption{An illustrative KVFold record. P and E denote the primary and
+extended high-byte tables. Low bytes are unchanged. BF16 values and bytes
+are hexadecimal; codes and selectors are binary. Selectors 0001 and 1111
+pack into F1, low nibble first. Raw patch (1,~41) stores zero-based escape
+ordinal 1 and high byte 41. The variable region occupies 64~B
+(limit: 2~KiB). Not to scale.}
 \label{fig:record}
 \end{figure}
 
@@ -226,13 +222,13 @@ The tier codec shares pool mode's offline per-layer, per-head K/V
 calibration, but uses token-order records and a different escape encoding to suit page
 restoration. Grouped indices locate the escape streams needed for a tile,
 so the decoder can recover that tile without scanning all preceding tiles.
-Codebooks are fixed at startup and identified by a digest. If an encoded
+The codec's tables are fixed at startup and identified by a digest. If an encoded
 chunk would be larger than its raw form, the server stores it uncompressed.
 
 Tier mode integrates encoding and recovery into the existing transfer
 operations. After the corresponding model step completes, the server encodes
 full chunks into
-a bounded GPU pool, and a background worker commits them to
+fixed-capacity GPU codec slots, and a background worker commits them to
 DRAM. When loading a compressed chunk, the decoder writes directly into
 destination pages if the chunk can be restored in full. Raw records and
 partially shared leading chunks use scratch space before scattering into their
@@ -254,20 +250,21 @@ BF16 weights and KV; the capacity and retention views display recorded
 results from Claude Code session traces replayed with SemiAnalysis's
 InferenceX AgentX benchmark~\cite{agentx}, using Qwen3-30B-A3B with FP8
 weights and BF16 KV on two H800 SXM GPUs (TP~2).
-A planned eight-minute walkthrough covers Build/Append/Edit/Restore,
+In these recorded runs, $P$ denotes the number of live root sessions, and $S$
+is the maximum number of concurrent requests.
+A planned eight-minute walkthrough covers Build/Append/Edit early/Restore,
 then $S=8$ or $12$, and finally 640~GiB or 2~TiB of NVMe capacity.
-The console reports cached-token counts, KV sizes, and TTFT for the live
-interaction, plus waiting requests and latency for the selected recorded runs.
-Here, $P$ denotes the number of live root sessions, and $S$ is the maximum
-number of concurrent requests.
+The console reports cached-token counts, KV sizes, and time to first token
+(TTFT) for the live interaction, plus waiting requests and latency for the
+selected recorded runs.
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=\textwidth]{images/fig3_b_update4.pdf}
-\caption{Recomposed console views. Selected console elements are shown.
+\includegraphics[width=\textwidth]{images/fig3_b_units.pdf}
+\caption{Recomposed console views with selected elements.
 (1) Saved Qwen3-4B interaction:
 the four operations reveal reused, restored, and newly computed tokens.
-The Inspector shows BF16 and encoded sizes after Build. (2,3) Qwen3-30B capacity
+The Inspector shows BF16 and encoded sizes after Build. (2, 3) Qwen3-30B-A3B capacity
 comparisons on coding-agent traces from InferenceX AgentX:
 $P=64$, 400~GiB DRAM; (2) $S=12$, 2~TiB NVMe; (3) $S=8$, 640~GiB NVMe.
 Within each metric, paired bars use the same zero-based scale. KV capacity is in tokens; waiting
@@ -282,13 +279,13 @@ GPU and external hits; stored bytes are normalized to the raw size.}
 \begin{minipage}[t]{\columnwidth}
 \centering
 \caption{GPU capacity: 54 GiB KV/GPU, $P=64$, 400 GiB DRAM, 2 TiB NVMe.
-Mean queue is the average vLLM queue length; TTFT is mean engine TTFT.}
+Waiting is the mean vLLM queue length; TTFT is mean engine TTFT.}
 \label{tab:gpu}
 \small
 \setlength{\tabcolsep}{3pt}
 \begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}rlrrrr@{}}
 \toprule
-$S$ & Mode & KV tokens & Mean queue &
+$S$ & Mode & KV tokens & Waiting &
 \begin{tabular}[t]{@{}r@{}}TTFT\\(s)\end{tabular} &
 \begin{tabular}[t]{@{}r@{}}Goodput\\(req/min)\end{tabular} \\
 \midrule
@@ -329,7 +326,7 @@ Users begin with \emph{Build}, submitting repository context and a bug
 report asking the model to ``Diagnose the timeout failure.'' They then
 extend the task through \emph{Append}, adding ``Write a regression test.''
 The prefix strip distinguishes reused from newly computed tokens alongside
-cached-token counts, time to first token (TTFT), and the response.\par
+cached-token counts, TTFT, and the response.\par
 \end{samepage}
 
 Editing an earlier token through \emph{Edit early} limits reuse to complete
@@ -344,11 +341,11 @@ the decoded KV values before and after transferring an encoded block
 through host memory into an independent GPU scratch store. It displays sizes, checksums,
 and mismatch counts, with byte-for-byte agreement across all layers of the
 captured 128-token block in the saved run. Separate CPU samples exercise
-escapes and raw fallback, while a historical output check found identical
+escapes and raw fallback, while an earlier output check found identical
 greedy outputs for 192 repeat-trace requests in raw and tier modes under
 matching native attention paths.
 
-A recorded microbenchmark compared restoration paths on one H800 SXM,
+Beyond the console, a recorded microbenchmark compared restoration paths on one H800 SXM,
 using 3~GiB of Qwen3-30B-A3B KV in 256-chunk calls.
 SplitZip reached 1,264~GB/s when
 decoding into its buffer, but 376~GB/s including scatter into paged KV.
@@ -363,8 +360,7 @@ Because the external tiers retain the working set, all runs have a
 cached-token share of 0.94. Pool mode reserves 1.3~GiB of this budget
 for staging, overflow, and the prefill workspace, so reported token
 capacity accounts for these costs.
-Cache-server CUDA contexts and transfer buffers are accounted for
-separately. Engine TTFT excludes proxy waiting. Goodput counts completed
+Cache-server CUDA contexts and transfer buffers lie outside this budget. Engine TTFT excludes proxy waiting. Goodput counts completed
 requests per minute with engine TTFT at most 2~s and per-request mean
 inter-token latency at most 40~ms. At $S=12$, pool mode cuts mean TTFT
 from 5.16~s to 1.94~s and raises goodput from 10.6 to 14.9 versus raw.
@@ -380,7 +376,9 @@ calibration and grouped index in Section~\ref{sec:design}.
 Tier codec buffers occupy approximately 1.0~GiB per
 GPU outside the KV budget. Exact-length allocation allows smaller
 records to retain more history: at 640~GiB NVMe, the size ratio of 0.716
-allows about 1.4 times as much KV to fit (Fig.~\ref{fig:views}, Scenario~3).
+allows about 1.4 times as much KV to fit (Fig.~\ref{fig:views}, panel~3).
+Tier mode thereby raises the cached share from 0.55 to 0.91 and goodput
+from 4.6 to 13.5.
 Once the raw working set fits at 2~TiB, both modes reach a cached-token
 share of 0.94. Mean engine TTFT is 1.69~s for raw and 1.85~s for tier,
 with tier input throughput 2.2\% lower (26.9 versus 27.5 thousand tokens/s).

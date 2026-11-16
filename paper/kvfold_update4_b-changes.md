@@ -13,6 +13,11 @@ The changes revise presentation, terminology, units, and related-work coverage.
 They do not report new experiments. The recorded numerical results and their
 implementation boundaries remain in place. Acknowledgment remains empty.
 
+A later figure and consistency pass is recorded in the final section,
+[Final figure and consistency pass](#final-figure-and-consistency-pass-2026-11-16).
+It replaces the three figure artifacts listed under "Figure and source changes"
+and supersedes the wording recorded in items 05, 06, 08, 11, and 15 where noted.
+
 ## 01. Use KVFold consistently
 
 **Location:** `kvfold_update4_b.tex:133,156,172,355`; Fig. 1 source
@@ -380,3 +385,156 @@ at the bottom of page 3; Figure 3 and the acknowledgment reserve remain on page 
 - SHA-256 checks confirm that both update3 manuscript sources/PDFs, shared
   bibliography, original Figure 1 and Figure 3 B assets, the original Fig. 2
   source, and the supplied modification plan are unchanged.
+
+## Final figure and consistency pass (2026-11-16)
+
+This pass follows repository commit `1d4c457`. It replaces all three figures,
+aligns terminology across the text, captions, tables, and figures, and updates
+one citation. No experiment was run and no reported value changed. Line numbers
+refer to the current `kvfold_update4_b.tex`. `kvfold_update4_b.diff` still
+documents the update3-to-update4 revision above; this pass is reproducible with
+`git diff 1d4c457 -- paper/`.
+
+### F1. Figure 1: refined architecture diagram
+
+**Location:** `kvfold_update4_b.tex:132,137`; source
+`images/fig1_architecture_refined.svg`; exports
+`images/figure1-architecture-refined.pdf` and `.png` from `render_architecture.py`.
+
+- The pool-mode server column adds `KVFold blobs` / `No re-encoding`, aligned
+  with tier mode's `GPU codec` / `Encode / restore`. DRAM and NVMe therefore
+  occupy the same columns in both panels, and the former blank region above the
+  server row is used. The box follows Section II-C: pool mode exports existing
+  records in relocatable blobs instead of decoding and encoding them again.
+- `Same KVFold records` and `Tier-format records` sit above the server rows.
+  `CUDA IPC · export / import` labels the export path beside its vertical segment.
+- NVMe uses the same stacked shape as DRAM.
+- Two-line labels are placed from Liberation Sans metrics with a fixed gap
+  between lines; no label overlaps or touches its box.
+- The canvas is 1100 × 393 viewBox units (previously 398) at the same 178 mm
+  width.
+
+The caption text is unchanged except for the citation key (B2).
+
+### F2. Figure 2: per-value lanes and a record memory map
+
+**Location:** `kvfold_update4_b.tex:166–176`; source
+`figures/record_layout_map.tex`; exports `images/figure2-record-map.pdf` and
+`.png` from `render_figures.py`.
+
+| Before | After |
+| --- | --- |
+| `\input{figures/record_layout_update4.tex}` scaled to `0.89\columnwidth` with `yscale=0.88` | `\includegraphics[width=\columnwidth]{images/figure2-record-map.pdf}` |
+
+The worked example is unchanged and follows `evidence/record-example.json`:
+scalars `3C12`, `3956`, and `4178` at kernel-order positions 0–2, codes
+`000/111/111`, selectors `0001/1111`, raw patch `(1, 41)`, 16 KiB of low bytes,
+6 KiB of codes, and a 64 B variable region (48 + 1 + 3 + 4 + 8 B). The kernel
+order in `fragpack/compression/attn_page.py` places token 0, dimensions 0, 1,
+and 8 of a K record at positions 0–2, so the sample stream `12 56 78` is
+contiguous.
+
+Each example now occupies one column with its decode path: `Direct P[0] → 3C`,
+`Extended E[1] → 39`, and `Raw patch → 41`. Colored lanes carry low bytes,
+codes, selectors, and the raw patch into the matching regions of a vertical
+record map. Region heights are not to scale. Figure labels use the caption's
+term `selector` (`4-bit selector`, `Selectors 1 B`).
+
+**Caption before:**
+
+> An illustrative KVFold record shows how three scalars are recovered through
+> direct lookup, an extended-table escape, and a raw escape. Each raw patch
+> stores the escape's position in the escape sequence and its original high
+> byte. The variable region occupies 64 B in this example, within the format's
+> 2 KiB limit. Recombining each recovered high byte with its retained low byte
+> reproduces the original BF16 value. The layout is not drawn to scale.
+
+**Caption after:**
+
+> An illustrative KVFold record. P and E denote the primary and extended
+> high-byte tables. Low bytes are unchanged. BF16 values and bytes are
+> hexadecimal; codes and selectors are binary. Selectors 0001 and 1111 pack into
+> F1, low nibble first. Raw patch (1, 41) stores zero-based escape ordinal 1 and
+> high byte 41. The variable region occupies 64 B (limit: 2 KiB). Not to scale.
+
+The first sentence matches the figure heading `KVFold record layout`.
+`figures/record_layout_update4.tex` remains in the repository but is no longer
+included by the manuscript.
+
+### F3. Figure 3: TTFT units on value labels
+
+**Location:** `kvfold_update4_b.tex:263–272`; generator
+`figures/fig3_b.js --ttft-units`; exports `images/fig3_b_units.pdf`, `.png`,
+and `.pptx`.
+
+The four Engine TTFT value labels gain the suffix `s`. A text comparison of the
+previous `fig3_b_update4.pdf` (commit `1d4c457`) and `fig3_b_units.pdf` finds
+no other difference, and both pages measure 506.268 × 325.984 pt.
+`fig3_b_metrics.json` is unchanged.
+
+| Before | After | Reason |
+| --- | --- | --- |
+| `Recomposed console views. Selected console elements are shown.` | `Recomposed console views with selected elements.` | Merges two sentences; supersedes item 06's wording. |
+| `(2,3) Qwen3-30B capacity comparisons` | `(2, 3) Qwen3-30B-A3B capacity comparisons` | Uses the model name given in the main text. |
+
+### T. Text consistency
+
+| Location | Before | After | Reason |
+| --- | --- | --- | --- |
+| 14, PDF metadata | `pdfsubject={ICDE demonstration review draft, update 4 B}` | `pdfsubject={ICDE demonstration paper}` | Removes draft labeling from the PDF. |
+| 76 | `96~KiB of BF16 KV` | `96~KiB of bfloat16 (BF16) KV` | Defines BF16 in the main text; the Abstract defines it separately (item 02). |
+| 97 | `KIVI~\cite{kivi}, for example, quantizes` | `KIVI~\cite{kivi} quantizes` | KIVI is not an example of the preceding KVQuant sentence. |
+| 225 | `Codebooks are fixed at startup and identified by a digest.` | `The codec's tables are fixed at startup and identified by a digest.` | Uses one term with pool-mode tables; the tier codec identifies its tables by a table digest. |
+| 230–231 | `encodes full chunks into a bounded GPU pool` | `encodes full chunks into fixed-capacity GPU codec slots` | Avoids `pool` outside pool mode; the transport uses fixed-capacity codec slots (`docs/design/native-lmcache-transfer.md:29–30`). |
+| 252–259 | Walkthrough first, then `Here, $P$ denotes ...`; `Build/Append/Edit/Restore`; `TTFT` | `In these recorded runs, $P$ denotes ...` before the walkthrough; `Build/Append/Edit early/Restore`; `time to first token (TTFT)` | Defines P, S, and TTFT before use and uses the console's operation name; supersedes items 08 and 15. |
+| 329 | `time to first token (TTFT)` | `TTFT` | Defined at first use above. |
+| 282, 288 | Table I `Mean queue`; `Mean queue is the average vLLM queue length` | `Waiting`; `Waiting is the mean vLLM queue length` | Matches `waiting requests` in the text and Fig. 3; supersedes item 05's header. |
+| 344 | `a historical output check` | `an earlier output check` | Plainer wording; the check and its scope are unchanged. |
+| 348 | `A recorded microbenchmark compared restoration paths` | `Beyond the console, a recorded microbenchmark compared restoration paths` | Marks the benchmark as separate from the interactive scenario. |
+| 363 | `Cache-server CUDA contexts and transfer buffers are accounted for separately.` | `Cache-server CUDA contexts and transfer buffers lie outside this budget.` | States the accounting boundary (`evidence/paper-evidence.json:60`; `evidence/implementation-notes.md:91–93`). |
+| 379 | `(Fig.~\ref{fig:views}, Scenario~3)` | `(Fig.~\ref{fig:views}, panel~3)` | Fig. 3 panels are numbered, and `Scenario 3` names this subsection; supersedes item 11's note. |
+| 380–381 | — | `Tier mode thereby raises the cached share from 0.55 to 0.91 and goodput from 4.6 to 13.5.` | States Table II's 640 GiB result in the text; the values are unchanged table entries. |
+
+### B. Bibliography
+
+1. `references_update4.bib`, key `h2o`: title `{H2O}` becomes `{H$_2$O}`,
+   matching the text.
+2. New key `fa3neurips`: Shah et al., *FlashAttention-3: Fast and Accurate
+   Attention with Asynchrony and Low-precision*, Advances in Neural Information
+   Processing Systems 37 (NeurIPS 2024), pp. 68658–68685,
+   DOI `10.52202/079017-2193`, verified against the published proceedings
+   record. The Fig. 1 caption cites `fa3neurips` instead of the arXiv entry
+   `fa3`.
+
+`references.bib` is unchanged in this pass and identical to commit `1d4c457`.
+Its `fa3` entry remains but is no longer cited; the bibliography still lists 13
+works. Its SHA-256 (`9aa63260…`) differs from the value recorded in
+`evidence/provenance.json` (`c2cc332e…`, package of 2026-11-10); that difference
+was introduced by commit `1d4c457`, not by this pass.
+
+### Build and repository integration
+
+- `Makefile`: the PDF depends on `images/figure1-architecture-refined.pdf`,
+  `images/figure2-record-map.pdf`, and `images/fig3_b_units.pdf`;
+  `make figure3` runs `fig3_b.js --ttft-units`.
+- `render_architecture.py` exports `images/fig1_architecture_refined.svg`;
+  `render_figures.py` exports `figures/record_layout_map.tex` to
+  `figure2-record-map`.
+- `README.md` lists the current figure sources and exports.
+- The superseded exports `images/fig1_architecture_update4.svg`,
+  `images/figure1-kvfold_update4.*`, `images/figure2-kvfold_update4.*`, and
+  `images/fig3_b_update4.*` are removed from the working tree and remain
+  recoverable from commit `1d4c457`.
+
+### Validation of this pass
+
+- `make -C paper` succeeds. The PDF has four Letter pages. The LaTeX log has no
+  warnings, undefined references, overfull boxes, or underfull boxes; BibTeX
+  reports no warnings; all 13 references resolve.
+- Fig. 1 is at the top of page 2 and Fig. 2 in the left column of page 2.
+  Tables I and II remain at the bottom of page 3 with three-line captions and
+  aligned rows. Fig. 3 is at the top of page 4, followed by the Acknowledgment
+  reserve and the references.
+- All 22 PDF fonts are embedded; the document contains no raster image objects.
+- All eight result-table rows are identical to commit `1d4c457`. No GPU
+  experiment or new measurement was performed.

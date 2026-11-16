@@ -107,9 +107,9 @@ def export_figures(
 ) -> None:
     """Compile numbered figure inputs with the manuscript's own preamble.
 
-    The preamble and Figure 2 input come from the current kvfold_update4_b
-    manuscript. ``numbers`` must select Figure 2, the only TikZ figure in this
-    manuscript. Intermediates stay under paper/build/kvfold_update4_b/.
+    The preamble comes from the current kvfold_update4_b manuscript.
+    ``numbers`` must select Figure 2, whose TikZ source produces the PDF
+    included by the manuscript. Intermediates stay under paper/build/kvfold_update4_b/.
     Successful exports replace the selected PDF and PNG under images/. With
     ``svg=True``, also export SVG with editable text and embedded fonts.
     This command uses only CPU LaTeX tools and never runs model code.
@@ -122,10 +122,7 @@ def export_figures(
     document = paper / "kvfold_update4_b.tex"
     text = document.read_text(encoding="utf-8")
     preamble = text.split(r"\title{", 1)[0]
-    tikz_inputs = re.findall(r"\\input\{(figures/[^{}]+\.tex)\}", text)
-    if len(tikz_inputs) != 1:
-        raise ValueError("The current manuscript must contain one TikZ record figure")
-    inputs = {2: tikz_inputs[0]}
+    inputs = {2: "figures/record_layout_map.tex"}
     build = paper / "build" / "kvfold_update4_b"
     images = paper / "images"
     images.mkdir(exist_ok=True)
@@ -158,7 +155,7 @@ def export_figures(
                 f"figure{number}",
                 output_stem
                 if output_stem is not None
-                else f"figure{number}-kvfold_update4",
+                else "figure2-record-map",
             )
         )
     for source, directory, stem, target_stem in exports:

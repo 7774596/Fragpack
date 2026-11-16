@@ -19,12 +19,12 @@ unchanged. The manuscript uses the accepted Figure 3 B interaction layout.
 | `kvfold_update4_b.tex` / `.pdf` | Current manuscript and reading PDF |
 | `kvfold_update4_b-changes.md` / `.diff` | Revision record and source comparison |
 | `references.bib`, `references_update4.bib` | All 13 cited works, full metadata, and bibliography display controls |
-| `images/fig1_architecture_update4.svg` | Editable architecture source |
-| `images/figure1-kvfold_update4.pdf`, `.png` | Current architecture exports |
-| `figures/record_layout_update4.tex` | Editable TikZ encoding example included by the manuscript |
-| `images/figure2-kvfold_update4.pdf`, `.png` | Standalone encoding-example exports |
+| `images/fig1_architecture_refined.svg` | Editable architecture source |
+| `images/figure1-architecture-refined.pdf`, `.png` | Current architecture exports |
+| `figures/record_layout_map.tex` | Editable TikZ source for the encoding example |
+| `images/figure2-record-map.pdf`, `.png` | Encoding-example PDF included by the manuscript and its PNG preview |
 | `figures/fig3_b.js`, `fig3_b_metrics.json` | Native PowerPoint generator and the six recorded metric-card inputs |
-| `images/fig3_b_update4.pdf`, `.png`, `.pptx` | Current demonstration figure, preview, and editable PowerPoint |
+| `images/fig3_b_units.pdf`, `.png`, `.pptx` | Current demonstration figure, preview, and editable PowerPoint |
 | [evidence/](evidence/README.md) | Recorded results, implementation mapping, correctness scope, and provenance |
 | `materials/` | Author-supplied Industry manuscripts, figure reference, and abstract/Introduction inputs |
 | `package.json`, `package-lock.json` | Optional, pinned PowerPoint-generation dependency |
@@ -76,7 +76,7 @@ npm ci --prefix paper
 make -C paper figure3
 ```
 
-This writes `paper/build/kvfold_update4_b/fig3/fig3_b_update4.pptx`; it does not
+This writes `paper/build/kvfold_update4_b/fig3/fig3_b_units.pptx`; it does not
 replace the checked exports under `images/`. The generator reads saved prefix
 counts and exact Inspector bytes from `evidence/live-run.json`, and metric
 values and bar scales from `figures/fig3_b_metrics.json`. It does not depend on
@@ -89,10 +89,10 @@ root. Use a separate LibreOffice profile and retain the candidate until checked:
 soffice -env:UserInstallation=file:///tmp/kvfold-figure3-render \
   --headless --convert-to pdf \
   --outdir paper/build/kvfold_update4_b/fig3 \
-  paper/build/kvfold_update4_b/fig3/fig3_b_update4.pptx
+  paper/build/kvfold_update4_b/fig3/fig3_b_units.pptx
 pdftoppm -r 400 -singlefile -png \
-  paper/build/kvfold_update4_b/fig3/fig3_b_update4.pdf \
-  paper/build/kvfold_update4_b/fig3/fig3_b_update4
+  paper/build/kvfold_update4_b/fig3/fig3_b_units.pdf \
+  paper/build/kvfold_update4_b/fig3/fig3_b_units
 ```
 
 Use Arial/Courier New or the compatible Liberation fonts, plus DejaVu Sans for
