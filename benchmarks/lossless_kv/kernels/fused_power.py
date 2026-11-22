@@ -119,6 +119,7 @@ def main() -> None:
     ap.add_argument("--warm", type=float, default=4)
     ap.add_argument("--window", type=float, default=6)
     ap.add_argument("--shapes", default="")
+    ap.add_argument("--blocks", type=int, default=2112, help="pages in the pool")
     ap.add_argument("--flashinfer", action="store_true", help="add FlashInfer decode")
     ap.add_argument("--no-gemm", action="store_true", help="skip the +GEMM rows")
     a = ap.parse_args()
@@ -128,7 +129,7 @@ def main() -> None:
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(int(os.environ.get("SMI_GPU", "0")))
     torch.manual_seed(0)
-    heads, nb = int(os.environ.get("HEADS", "4")), 2112
+    heads, nb = int(os.environ.get("HEADS", "4")), a.blocks
     dump = np.load(a.dump, mmap_mode="r")
     layer = np.asarray(dump[:, a.layer : a.layer + 1, :, :, 0:heads])
     content = layer[8:, 0]

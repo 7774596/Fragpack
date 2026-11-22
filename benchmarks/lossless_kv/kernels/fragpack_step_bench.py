@@ -16,7 +16,16 @@ step:
 
 ``--raw-records`` calibrates the codebooks on random bytes, so the store
 keeps every record raw and the fused kernel reads the format without the
-byte savings.
+byte savings. ``--raw-too`` keeps the coded store and adds such a raw-record
+store, timed in the same rounds (``us_fused_raw``).
+
+``--rest R`` idles the GPU ``R`` times each timed sample after it, so that
+average power stays under the cap and the kernels keep the full clock. The
+host spins through the idle time and one untimed call precedes each sample,
+so neither a sleeping core nor an idle GPU slows the timed calls. With
+``SMI_GPU`` set to the NVML index of the measured GPU, each decode row
+records the SM clock (``mhz_min``, ``mhz_med``) and the OR of the throttle
+reasons (``thr``) seen while the row was timed.
 
 Usage:
     python -m benchmarks.lossless_kv.kernels.fragpack_step_bench --dump KV.npy \
@@ -26,12 +35,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from functools import partial
 import json
 import math
+import os
 from pathlib import Path
 import statistics
-from typing import Callable
+import threading
+import time
+from typing import Any, Callable, Iterator
 
 import numpy as np
 import torch
@@ -54,13 +67,55 @@ D = ap.HEAD_DIM
 FILL_BLOCKS = 64
 
 
-def _time_rounds(fns: list[Callable[[], None]], rounds: int, inner: int) -> list[float]:
+@contextmanager
+def _clock_watch(handle: Any) -> Iterator[dict]:
+    """Poll one GPU's SM clock and throttle reasons while the body runs.
+
+    Args:
+        handle: NVML device handle, or None to record nothing.
+
+    Yields:
+        A dict that holds ``mhz_min``, ``mhz_med`` and ``thr`` on exit.
+    """
+    out: dict = {}
+    if handle is None:
+        yield out
+        return
+    # Third Party
+    import pynvml
+
+    clocks: list[int] = []
+    thr = [0]
+    stop = threading.Event()
+
+    def poll() -> None:
+        while not stop.is_set():
+            clocks.append(pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM))
+            thr[0] |= pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(handle)
+            stop.wait(0.02)
+
+    th = threading.Thread(target=poll)
+    th.start()
+    try:
+        yield out
+    finally:
+        stop.set()
+        th.join()
+        out.update(
+            mhz_min=min(clocks), mhz_med=statistics.median(clocks), thr=hex(thr[0])
+        )
+
+
+def _time_rounds(
+    fns: list[Callable[[], None]], rounds: int, inner: int, rest: float = 0.0
+) -> list[float]:
     """Return the median microseconds per call of each function.
 
     Args:
         fns: Zero-argument callables enqueueing GPU work.
         rounds: Rounds; each round times every function once (interleaved).
         inner: Calls per timed sample.
+        rest: GPU idle time after each sample, as a multiple of the sample.
 
     Returns:
         One median per function.
@@ -74,12 +129,18 @@ def _time_rounds(fns: list[Callable[[], None]], rounds: int, inner: int) -> list
         for i, fn in enumerate(fns):
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
+            if rest:
+                fn()
             start.record()
             for _ in range(inner):
                 fn()
             end.record()
             end.synchronize()
-            samples[i].append(start.elapsed_time(end) * 1e3 / inner)
+            ms = start.elapsed_time(end)
+            samples[i].append(ms * 1e3 / inner)
+            wake = time.perf_counter() + rest * ms / 1e3
+            while time.perf_counter() < wake:
+                pass
     return [statistics.median(s) for s in samples]
 
 
@@ -103,6 +164,31 @@ def fill_store(store: HbmKvStore, kv: torch.Tensor) -> None:
     torch.cuda.synchronize()
 
 
+def _make_store(
+    calib: np.ndarray, kv: torch.Tensor, heads: int, raw: bool
+) -> HbmKvStore:
+    """Return a single-layer store filled with ``kv`` (``[NB, 2, T, H, D]``).
+
+    ``raw`` calibrates the codebooks on random bytes, so every record is kept
+    raw (in overflow).
+    """
+    if raw:
+        calib = np.random.default_rng(0).integers(0, 1 << 16, calib.shape, np.uint16)
+    table, offset = calibrate(calib)
+    nb = kv.shape[0]
+    cache = torch.zeros(nb, page_bytes(heads), dtype=torch.uint8, device="cuda")
+    store = HbmKvStore(
+        [cache],
+        heads,
+        device_tables(table, torch.device("cuda"), offset=offset),
+        FILL_BLOCKS * T,
+        8,
+        2 * heads * nb + 4096 if raw else 4096,
+    )
+    fill_store(store, kv)
+    return store
+
+
 def _batches(args: argparse.Namespace, max_ctx: int) -> list[list[int]]:
     """Return decode batches (context lengths) to time."""
     out = [[int(x) for x in b.split("/")] for b in args.decode.split(",") if b]
@@ -122,8 +208,15 @@ def _decode_rows(
     heads: int,
     batches: list[list[int]],
     args: argparse.Namespace,
+    raw_store: HbmKvStore | None = None,
+    nvml: Any = None,
 ) -> list[dict]:
-    """Time FA3 vs fused decode attention for each batch."""
+    """Time FA3 vs fused decode attention for each batch.
+
+    ``raw_store`` holds the same pages as raw records; the fused kernel is
+    then also timed over it, interleaved with the other kernels. ``nvml``
+    is the NVML handle of the measured GPU (None: no clock record).
+    """
     from vllm.vllm_flash_attn import flash_attn_varlen_func
     from vllm.vllm_flash_attn.flash_attn_interface import get_scheduler_metadata
 
@@ -197,6 +290,25 @@ def _decode_rows(
         replan = partial(
             decode_attention, q, tables, bt, seq, scale, auto, out_fp, ws[0], True
         )
+        raw = []
+        if raw_store is not None:
+            w_raw = (*part, torch.empty(plan, dtype=torch.int32, device="cuda"))
+            rtables = raw_store.layer_tables(0)
+            decode_attention(q, rtables, bt, seq, scale, auto, out_fp, w_raw, True)
+            raw = [
+                partial(
+                    decode_attention,
+                    q,
+                    rtables,
+                    bt,
+                    seq,
+                    scale,
+                    auto,
+                    out_fp,
+                    w_raw,
+                    False,
+                )
+            ]
         extra = []
         if args.flashinfer:
             # First Party
@@ -204,10 +316,12 @@ def _decode_rows(
 
             out_fi = torch.empty_like(q)
             extra = [flashinfer_decode(q, kc, vc, bt, lens, T, scale, out_fi)]
-        t_fa, t_plan, *t_us = _time_rounds(
-            [fa3, replan, *fused, *extra], args.rounds, 10
-        )
+        with _clock_watch(nvml) as clock:
+            t_fa, t_plan, *t_us = _time_rounds(
+                [fa3, replan, *fused, *raw, *extra], args.rounds, 10, args.rest
+            )
         t_fi = t_us.pop() if extra else None
+        t_raw = t_us.pop() if raw else None
         t_fp = t_us[0]
         raw_bytes = 2 * sum(pages) * T * heads * D * 2
         rows.append(
@@ -227,6 +341,9 @@ def _decode_rows(
                 "maxdiff": float((out_fa.float() - out_fp.float()).abs().max()),
             }
         )
+        rows[-1].update(clock)
+        if raw:
+            rows[-1]["us_fused_raw"] = round(t_raw, 1)
         if extra:
             rows[-1]["us_flashinfer"] = round(t_fi, 1)
             rows[-1]["flashinfer_over_fa3"] = round(t_fi / t_fa, 3)
@@ -339,33 +456,35 @@ def main() -> None:
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--samples", type=int, default=6)
     p.add_argument("--raw-records", action="store_true")
+    p.add_argument(
+        "--raw-too", action="store_true", help="also time fused over raw records"
+    )
     p.add_argument("--flashinfer", action="store_true", help="add FlashInfer decode")
+    p.add_argument("--rest", type=float, default=0.0, help="idle per sample, x")
     p.add_argument("--prefill", default="16000x2048,100000x2048,100000x8192")
     args = p.parse_args()
     torch.manual_seed(0)
+    nvml = None
+    if "SMI_GPU" in os.environ:
+        # Third Party
+        import pynvml
+
+        pynvml.nvmlInit()
+        nvml = pynvml.nvmlDeviceGetHandleByIndex(int(os.environ["SMI_GPU"]))
     h0, h1 = (int(x) for x in args.heads.split(":"))
     dump = np.load(args.dump, mmap_mode="r")
     layer = np.asarray(dump[:, args.layer : args.layer + 1, :, :, h0:h1])
     heads = h1 - h0
-    calib = layer[: args.calib_pages]
-    if args.raw_records:
-        calib = np.random.default_rng(0).integers(0, 1 << 16, calib.shape, np.uint16)
-    table, offset = calibrate(calib)
     content = layer[args.calib_pages :, 0]
     idx = np.arange(args.blocks) % content.shape[0]
     kv = torch.from_numpy(content[idx].view(np.int16)).cuda().view(torch.bfloat16)
     nb = args.blocks
-    cache = torch.zeros(nb, page_bytes(heads), dtype=torch.uint8, device="cuda")
-    store = HbmKvStore(
-        [cache],
-        heads,
-        device_tables(table, torch.device("cuda"), offset=offset),
-        FILL_BLOCKS * T,
-        8,
-        # Raw records all live in overflow.
-        2 * heads * nb + 4096 if args.raw_records else 4096,
+    store = _make_store(layer[: args.calib_pages], kv, heads, args.raw_records)
+    raw_store = (
+        _make_store(layer[: args.calib_pages], kv, heads, True)
+        if args.raw_too
+        else None
     )
-    fill_store(store, kv)
     st = store.stats()
     kc, vc = kv[:, 0].contiguous(), kv[:, 1].contiguous()
     del kv
@@ -379,7 +498,14 @@ def main() -> None:
     }
     logger.info("%s", head)
     rows = _decode_rows(
-        store, kc, vc, heads, _batches(args, nb * T // args.batch), args
+        store,
+        kc,
+        vc,
+        heads,
+        _batches(args, nb * T // args.batch),
+        args,
+        raw_store,
+        nvml,
     )
     pre = [tuple(map(int, c.split("x"))) for c in args.prefill.split(",") if c]
     rows += _prefill_rows(store, kc, vc, heads, pre, args.rounds)
