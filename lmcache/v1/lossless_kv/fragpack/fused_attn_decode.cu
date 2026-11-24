@@ -396,25 +396,107 @@ __global__ void __launch_bounds__(kThreads, 2) decode_attn(Params p) {
 }
 
 // Rows with no context (cudagraph padding) produce zeros. ``out_scale`` is the
-// V scale of FP8 records (1 for BF16).
-__global__ void combine(const float* opart, const float* ml, const int32_t* plan,
-                        __nv_bfloat16* out, int64_t out_stride, int units, float out_scale) {
-  const int b = blockIdx.x, qh = blockIdx.y, d = threadIdx.x;
+// V scale of FP8 records (1 for BF16). ``kWarps`` warps reduce a sequence's
+// split-KV chunks in parallel with coalesced float4 loads (32 lanes x 4 = 128
+// dims per warp), then warp 0 merges the ``kWarps`` partial states in smem.
+template <int kWarps>
+__global__ void __launch_bounds__(kWarps * 32) combine(const float* opart, const float* ml,
+                                                       const int32_t* plan, __nv_bfloat16* out,
+                                                       int64_t out_stride, int units,
+                                                       float out_scale) {
+  const int b = blockIdx.x, qh = blockIdx.y;
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
   const int h = qh >> 3, g = qh & 7;
   const int first = plan[1 + 2 * units + 2 * b], chunks = plan[2 + 2 * units + 2 * b];
   const int64_t base = (int64_t)h * units + first;
-  float gm = -INFINITY;
-  for (int s = 0; s < chunks; ++s) gm = fmaxf(gm, ml[((base + s) * 8 + g) * 2]);
-  float den = 0.f, acc = 0.f;
-  if (gm != -INFINITY) {
-    for (int s = 0; s < chunks; ++s) {
-      const int64_t r = (base + s) * 8 + g;
-      const float w = exp2f(ml[r * 2] - gm);
-      den += w * ml[r * 2 + 1];
-      acc += w * opart[r * 128 + d];
+  __nv_bfloat16* out_row = out + (int64_t)b * out_stride + qh * 128;
+
+  auto store4 = [&](float4 acc, float inv) {
+    const __nv_bfloat162 p0 = __floats2bfloat162_rn(acc.x * inv, acc.y * inv);
+    const __nv_bfloat162 p1 = __floats2bfloat162_rn(acc.z * inv, acc.w * inv);
+    if ((reinterpret_cast<uintptr_t>(out_row) & 7u) == 0u) {
+      uint2 packed;
+      packed.x = *reinterpret_cast<const uint32_t*>(&p0);
+      packed.y = *reinterpret_cast<const uint32_t*>(&p1);
+      reinterpret_cast<uint2*>(out_row)[lane] = packed;
+    } else {
+      out_row[4 * lane + 0] = p0.x;
+      out_row[4 * lane + 1] = p0.y;
+      out_row[4 * lane + 2] = p1.x;
+      out_row[4 * lane + 3] = p1.y;
+    }
+  };
+
+  if (chunks == 1) {
+    if (warp != 0) return;
+    const int64_t r = base * 8 + g;
+    const float2 mls = reinterpret_cast<const float2*>(ml)[r];
+    const float4 v = reinterpret_cast<const float4*>(opart + r * 128)[lane];
+    const float inv = (mls.x != -INFINITY && mls.y > 0.f) ? out_scale / mls.y : 0.f;
+    store4(v, inv);
+    return;
+  }
+
+  float m_w = -INFINITY, l_w = 0.f;
+  float4 o_w = make_float4(0.f, 0.f, 0.f, 0.f);
+  for (int s = warp; s < chunks; s += kWarps) {
+    const int64_t r = (base + s) * 8 + g;
+    const float2 mls = reinterpret_cast<const float2*>(ml)[r];
+    if (mls.x == -INFINITY) continue;
+    const float4 v = reinterpret_cast<const float4*>(opart + r * 128)[lane];
+    if (m_w == -INFINITY) {
+      m_w = mls.x;
+      l_w = mls.y;
+      o_w = v;
+    } else {
+      const float mn = fmaxf(m_w, mls.x);
+      const float wa = exp2f(m_w - mn);
+      const float wb = exp2f(mls.x - mn);
+      m_w = mn;
+      l_w = l_w * wa + mls.y * wb;
+      o_w.x = o_w.x * wa + v.x * wb;
+      o_w.y = o_w.y * wa + v.y * wb;
+      o_w.z = o_w.z * wa + v.z * wb;
+      o_w.w = o_w.w * wa + v.w * wb;
     }
   }
-  out[(int64_t)b * out_stride + qh * 128 + d] = __float2bfloat16(den > 0.f ? acc / den * out_scale : 0.f);
+
+  __shared__ float sh_m[kWarps];
+  __shared__ float sh_l[kWarps];
+  __shared__ float4 sh_o[kWarps][32];
+  if (lane == 0) {
+    sh_m[warp] = m_w;
+    sh_l[warp] = l_w;
+  }
+  sh_o[warp][lane] = o_w;
+  __syncthreads();
+
+  if (warp == 0) {
+    const int nw = chunks < kWarps ? chunks : kWarps;
+    float gm = -INFINITY;
+#pragma unroll
+    for (int k = 0; k < kWarps; ++k) {
+      if (k < nw) gm = fmaxf(gm, sh_m[k]);
+    }
+    float den = 0.f;
+    float4 acc = make_float4(0.f, 0.f, 0.f, 0.f);
+    if (gm != -INFINITY) {
+#pragma unroll
+      for (int k = 0; k < kWarps; ++k) {
+        if (k < nw && sh_m[k] != -INFINITY) {
+          const float wt = exp2f(sh_m[k] - gm);
+          den += wt * sh_l[k];
+          const float4 v = sh_o[k][lane];
+          acc.x += wt * v.x;
+          acc.y += wt * v.y;
+          acc.z += wt * v.z;
+          acc.w += wt * v.w;
+        }
+      }
+    }
+    const float inv = den > 0.f ? out_scale / den : 0.f;
+    store4(acc, inv);
+  }
 }
 
 }  // namespace
@@ -478,8 +560,17 @@ void fused_decode(torch::Tensor q, torch::Tensor rec_addr, torch::Tensor rec_len
   else
     launch(std::false_type{});
   C10_CUDA_KERNEL_LAUNCH_CHECK();
-  combine<<<dim3(B, kvh * 8), 128, 0, stream>>>(
-      p.opart, p.ml, p.plan, reinterpret_cast<__nv_bfloat16*>(out.data_ptr()),
-      out.stride(0), units, static_cast<float>(out_scale));
+  auto launch_combine = [&](auto w_tag) {
+    constexpr int kW = decltype(w_tag)::value;
+    combine<kW><<<dim3(B, kvh * 8), kW * 32, 0, stream>>>(
+        p.opart, p.ml, p.plan, reinterpret_cast<__nv_bfloat16*>(out.data_ptr()), out.stride(0),
+        units, static_cast<float>(out_scale));
+  };
+  if (B <= 4)
+    launch_combine(std::integral_constant<int, 16>{});
+  else if (B <= 16)
+    launch_combine(std::integral_constant<int, 8>{});
+  else
+    launch_combine(std::integral_constant<int, 4>{});
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
