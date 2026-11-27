@@ -166,8 +166,9 @@ into dual shared-memory slots, decompresses each thread's 64 scalars directly
 into registers without writing KV back to global memory, and executes
 tensor-core MMAs with online softmax before merging partial states across page
 ranges. Fixed padded-batch launch metadata preserves decode-only CUDA graph
-replay; every KV bit is exact, while accumulation order matches FA3 up to
-floating-point rounding. Completed blocks export behind a 4~KB-aligned header
+replay. The fused decode kernel recovers the original BF16 KV values bit for
+bit. Its attention outputs may differ from those of FA3 because floating-point
+sums depend on the reduction order. Completed blocks export behind a 4~KB-aligned header
 for unchanged storage in LMCache and re-import directly into GPU pages via
 atomic fill counters (falling back to vLLM recomputation if validation fails).
 
