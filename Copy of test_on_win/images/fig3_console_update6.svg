@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="181.80mm" height="101.24mm" viewBox="0 0 1160 646" role="img">
+<rect x="0" y="0" width="1160" height="646" fill="#FFFFFF"/>
+
+<!-- SECTION 1: Prefix reuse and restore (Clean borderless header, original Copy_of_test_on_win colors) -->
+<rect x="10" y="6" width="20" height="20" rx="2" fill="#2B5B9E"/>
+<text x="20" y="21" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">1</text>
+<text x="39" y="22" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="18.5" fill="#000000" font-weight="700">Prefix reuse and restore</text>
+<text x="1150" y="21" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15" fill="#000000" text-anchor="end">Qwen3-4B · Pool</text>
+
+<rect x="10" y="36" width="468" height="156" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<text x="24" y="59" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">Prompt excerpt</text>
+<text x="24" y="84" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">“You are maintaining a Python repository.</text>
+<text x="24" y="106" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">Diagnose the timeout failure below.”</text>
+<rect x="24" y="119" width="440" height="59" rx="2" fill="#E8EEF5" stroke="#000000" stroke-width="0.7"/>
+<text x="36" y="143" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.6" fill="#000000">deadline = monotonic() + timeout</text>
+<text x="36" y="166" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.6" fill="#000000">connection = await client.acquire()</text>
+
+<rect x="492" y="36" width="658" height="156" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<text x="508" y="59" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">Action</text>
+<rect x="608" y="47" width="12" height="12" rx="1" fill="#2E7D7B" stroke="#000000" stroke-width="0.6"/>
+<text x="625" y="58" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Reused (GPU)</text>
+<rect x="726" y="47" width="12" height="12" rx="1" fill="#2B5B9E" stroke="#000000" stroke-width="0.6"/>
+<text x="743" y="58" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Restored (DRAM)</text>
+<rect x="864" y="47" width="12" height="12" rx="1" fill="#C4533E" stroke="#000000" stroke-width="0.6"/>
+<text x="881" y="58" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Computed</text>
+<text x="1136" y="58" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" text-anchor="end">Cached / prompt</text>
+
+<!-- Build -->
+<text x="508" y="84" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">Build</text>
+<rect x="608" y="72" width="360" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="608" y="72" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="677.5" y="72" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="747" y="72" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="816.5" y="72" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="886" y="72" width="11.39" height="13" rx="1" fill="#C4533E"/>
+<text x="1136" y="84" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" text-anchor="end">0 / 534</text>
+
+<!-- Append -->
+<text x="508" y="112" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">Append</text>
+<rect x="608" y="100" width="360" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="608" y="100" width="67" height="13" rx="1" fill="#2E7D7B"/>
+<rect x="677.5" y="100" width="67" height="13" rx="1" fill="#2E7D7B"/>
+<rect x="747" y="100" width="67" height="13" rx="1" fill="#2E7D7B"/>
+<rect x="816.5" y="100" width="67" height="13" rx="1" fill="#2E7D7B"/>
+<rect x="886" y="100" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="955.5" y="100" width="8.04" height="13" rx="1" fill="#C4533E"/>
+<text x="1136" y="112" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" text-anchor="end">512 / 656</text>
+
+<!-- Edit early -->
+<text x="508" y="140" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">Edit early</text>
+<rect x="608" y="128" width="360" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="608" y="128" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="677.5" y="128" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="747" y="128" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="816.5" y="128" width="67" height="13" rx="1" fill="#C4533E"/>
+<rect x="886" y="128" width="11.39" height="13" rx="1" fill="#C4533E"/>
+<text x="1136" y="140" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" text-anchor="end">0 / 534</text>
+
+<!-- Restore -->
+<rect x="500" y="151" width="642" height="24" rx="1.5" fill="#E6ECF4"/>
+<text x="508" y="168" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" font-weight="700">Restore</text>
+<rect x="608" y="156" width="360" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="608" y="156" width="67" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="677.5" y="156" width="67" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="747" y="156" width="67" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="816.5" y="156" width="67" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="886" y="156" width="11.39" height="13" rx="1" fill="#C4533E"/>
+<text x="1136" y="168" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" font-weight="700" text-anchor="end">512 / 534</text>
+
+<!-- Sub-cards -->
+<rect x="10" y="202" width="566" height="64" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<text x="24" y="225" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" font-weight="700">Restore response</text>
+<text x="24" y="252" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000">“… it is not enforced during the <tspan font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.6">client.acquire()</tspan> call.”</text>
+
+<rect x="590" y="202" width="560" height="64" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<text x="606" y="225" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" font-weight="700">KV Inspector</text>
+<rect x="1022" y="210" width="114" height="20" rx="1.5" fill="#D4ECEA" stroke="#000000" stroke-width="0.7"/>
+<text x="1079" y="225" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" font-weight="700" text-anchor="middle">0 mismatches</text>
+<text x="630" y="254" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15" fill="#000000">BF16</text>
+<text x="676" y="254" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="18.5" fill="#000000" font-weight="700">18.00 MB</text>
+<line x1="776" y1="248" x2="839" y2="248" stroke="#000000" stroke-width="1.3"/>
+<polygon points="844,248 838,244.88 838,251.12" fill="#000000"/>
+<text x="862" y="254" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="18.5" fill="#000000" font-weight="700">12.73 MB</text>
+<text x="962" y="254" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" font-style="italic">(70.7%)</text>
+
+<!-- SECTION 2: GPU capacity -->
+<rect x="10" y="294" width="20" height="20" rx="2" fill="#2B5B9E"/>
+<text x="20" y="309" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">2</text>
+<text x="39" y="310" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="18.5" fill="#000000" font-weight="700">GPU capacity</text>
+<text x="1150" y="309" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15" fill="#000000" text-anchor="end">Qwen3-30B-A3B · 54 GB KV/GPU</text>
+
+<rect x="10" y="324" width="1140" height="140" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<line x1="322" y1="334" x2="322" y2="454" stroke="#C5D0DF" stroke-width="0.9"/>
+<line x1="756" y1="334" x2="756" y2="454" stroke="#C5D0DF" stroke-width="0.9"/>
+
+<!-- Col 1: KV capacity -->
+<text x="26" y="350" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">KV capacity ↑</text>
+<text x="26" y="394" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Raw</text>
+<rect x="78" y="380" width="170" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="78" y="380" width="121.576" height="16" rx="1" fill="#C4533E"/>
+<text x="308" y="394" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" text-anchor="end">1.18M</text>
+
+<text x="26" y="432" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">Pool</text>
+<rect x="78" y="418" width="170" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="78" y="418" width="163.818" height="16" rx="1" fill="#2B5B9E"/>
+<text x="308" y="432" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.4" fill="#000000" font-weight="700" text-anchor="end">1.59M</text>
+
+<!-- Col 2: Requests -->
+<text x="338" y="350" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">Requests</text>
+<rect x="558" y="339" width="10" height="10" rx="1" fill="#C4533E" stroke="#000000" stroke-width="0.55"/>
+<rect x="570" y="339" width="10" height="10" rx="1" fill="#2B5B9E" stroke="#000000" stroke-width="0.55"/>
+<text x="585" y="349" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000">Running</text>
+<rect x="650" y="339" width="10" height="10" rx="1" fill="#E59A8B" stroke="#000000" stroke-width="0.55"/>
+<rect x="662" y="339" width="10" height="10" rx="1" fill="#7FA4D8" stroke="#000000" stroke-width="0.55"/>
+<text x="677" y="349" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000">Waiting</text>
+
+<text x="338" y="379" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">S=12 Raw</text>
+<rect x="426" y="368" width="234" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="426" y="368" width="150.6375" height="13" rx="1" fill="#C4533E"/>
+<rect x="576.6375" y="368" width="21.9375" height="13" rx="1" fill="#E59A8B"/>
+<text x="744" y="379" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" text-anchor="end">10.3 + 1.5</text>
+
+<text x="338" y="401" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">S=12 Pool</text>
+<rect x="426" y="390" width="234" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="426" y="390" width="166.725" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="592.725" y="390" width="5.85" height="13" rx="1" fill="#7FA4D8"/>
+<text x="744" y="401" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700" text-anchor="end">11.4 + 0.4</text>
+
+<text x="338" y="429" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">S=16 Raw</text>
+<rect x="426" y="418" width="234" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="426" y="418" width="162.3375" height="13" rx="1" fill="#C4533E"/>
+<rect x="588.3375" y="418" width="64.35" height="13" rx="1" fill="#E59A8B"/>
+<text x="744" y="429" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" text-anchor="end">11.1 + 4.4</text>
+
+<text x="338" y="451" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">S=16 Pool</text>
+<rect x="426" y="440" width="234" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="426" y="440" width="204.75" height="13" rx="1" fill="#2B5B9E"/>
+<rect x="630.75" y="440" width="20.475" height="13" rx="1" fill="#7FA4D8"/>
+<text x="744" y="451" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700" text-anchor="end">14.0 + 1.4</text>
+
+<!-- Col 3: TTFT & Goodput -->
+<text x="772" y="350" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">TTFT ↓ (goodput)</text>
+<text x="772" y="379" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">S=12 Raw</text>
+<rect x="852" y="368" width="174" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="852" y="368" width="64.1314" height="13" rx="1" fill="#C4533E"/>
+<text x="1138" y="379" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" text-anchor="end">5.16 s (10.6)</text>
+
+<text x="772" y="401" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">S=12 Pool</text>
+<rect x="852" y="390" width="174" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="852" y="390" width="21.8743" height="13" rx="1" fill="#2B5B9E"/>
+<text x="1138" y="401" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700" text-anchor="end">1.76 s (15.7)</text>
+
+<text x="772" y="429" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">S=16 Raw</text>
+<rect x="852" y="418" width="174" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="852" y="418" width="165.3" height="13" rx="1" fill="#C4533E"/>
+<text x="1138" y="429" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" text-anchor="end">13.3 s (3.7)</text>
+
+<text x="772" y="451" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">S=16 Pool</text>
+<rect x="852" y="440" width="174" height="13" rx="1" fill="#E8EEF5"/>
+<rect x="852" y="440" width="55.0586" height="13" rx="1" fill="#2B5B9E"/>
+<text x="1138" y="451" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700" text-anchor="end">4.43 s (9.1)</text>
+
+<!-- SECTION 3: History retention -->
+<rect x="10" y="492" width="20" height="20" rx="2" fill="#2B5B9E"/>
+<text x="20" y="507" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">3</text>
+<text x="39" y="508" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="18.5" fill="#000000" font-weight="700">History retention</text>
+<text x="1150" y="507" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15" fill="#000000" text-anchor="end">Qwen3-30B-A3B · 640 GB NVMe</text>
+
+<rect x="10" y="522" width="1140" height="116" rx="2" fill="#FFFFFF" stroke="#000000" stroke-width="0.85"/>
+<line x1="518" y1="532" x2="518" y2="628" stroke="#C5D0DF" stroke-width="0.9"/>
+<line x1="834" y1="532" x2="834" y2="628" stroke="#C5D0DF" stroke-width="0.9"/>
+
+<!-- Col 1: Hit breakdown -->
+<text x="26" y="549" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">Hit breakdown ↑</text>
+<rect x="314" y="538" width="11" height="11" rx="1" fill="#2E7D7B" stroke="#000000" stroke-width="0.6"/>
+<text x="329" y="548" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000">DRAM</text>
+<rect x="384" y="538" width="11" height="11" rx="1" fill="#D4A553" stroke="#000000" stroke-width="0.6"/>
+<text x="399" y="548" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000">NVMe</text>
+<rect x="452" y="538" width="11" height="11" rx="1" fill="#CBD5E1" stroke="#000000" stroke-width="0.6"/>
+<text x="467" y="548" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000">Miss</text>
+
+<text x="26" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Raw</text>
+<rect x="80" y="568" width="128.16" height="20" fill="#2E7D7B"/>
+<rect x="208.16" y="568" width="67.64" height="20" fill="#D4A553"/>
+<rect x="275.8" y="568" width="160.2" height="20" fill="#CBD5E1"/>
+<rect x="80" y="568" width="356" height="20" fill="none" stroke="#000000" stroke-width="0.75"/>
+<text x="144.08" y="583" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">36%</text>
+<text x="241.98" y="583" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" font-weight="700" text-anchor="middle">19%</text>
+<text x="355.9" y="583" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" text-anchor="middle">45%</text>
+<text x="504" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" text-anchor="end">55%</text>
+
+<text x="26" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">Tier</text>
+<rect x="80" y="602" width="210.04" height="20" fill="#2E7D7B"/>
+<rect x="290.04" y="602" width="113.92" height="20" fill="#D4A553"/>
+<rect x="403.96" y="602" width="32.04" height="20" fill="#CBD5E1"/>
+<rect x="80" y="602" width="356" height="20" fill="none" stroke="#000000" stroke-width="0.75"/>
+<text x="185.02" y="617" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#FFFFFF" font-weight="700" text-anchor="middle">59%</text>
+<text x="347" y="617" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" font-weight="700" text-anchor="middle">32%</text>
+<text x="419.98" y="617" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.5" fill="#000000" text-anchor="middle">9%</text>
+<text x="504" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.4" fill="#000000" font-weight="700" text-anchor="end">91%</text>
+
+<!-- Col 2: Stored KV -->
+<text x="536" y="549" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">Stored KV ↓</text>
+<text x="536" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Raw</text>
+<rect x="584" y="570" width="168" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="584" y="570" width="168" height="16" rx="1" fill="#C4533E"/>
+<text x="818" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" text-anchor="end">100%</text>
+
+<text x="536" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">Tier</text>
+<rect x="584" y="604" width="168" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="584" y="604" width="119.28" height="16" rx="1" fill="#1D3A63"/>
+<text x="818" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.4" fill="#000000" font-weight="700" text-anchor="end">71.0%</text>
+
+<!-- Col 3: TTFT & Goodput -->
+<text x="852" y="549" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16" fill="#000000" font-weight="700">TTFT ↓ (goodput)</text>
+<text x="852" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000">Raw</text>
+<rect x="898" y="570" width="134" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="898" y="570" width="129.4057" height="16" rx="1" fill="#C4533E"/>
+<text x="1138" y="584" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.2" fill="#000000" text-anchor="end">6.76 s (4.6)</text>
+
+<text x="852" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" fill="#000000" font-weight="700">Tier</text>
+<rect x="898" y="604" width="134" height="16" rx="1" fill="#E8EEF5"/>
+<rect x="898" y="604" width="44.22" height="16" rx="1" fill="#1D3A63"/>
+<text x="1138" y="618" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.6" fill="#000000" font-weight="700" text-anchor="end">2.31 s (13.5)</text>
+</svg>

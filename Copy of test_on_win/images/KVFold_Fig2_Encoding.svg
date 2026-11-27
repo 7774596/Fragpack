@@ -1,0 +1,122 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="88.6mm" height="71.451613mm" viewBox="0 0 620 500" version="1.1" role="img" aria-labelledby="title desc">
+  <title id="title">Two-level encoding and the GPU pool record layout</title>
+  <desc id="desc">Examples of the pool-mode primary, extended, and raw fallback paths. The scaled record has 16384 low bytes, 6144 primary-code bytes, and 550 variable bytes on average, compared with a 32768-byte raw record. The variable region detail is enlarged below.</desc>
+  <rect x="0" y="0" width="620" height="500" fill="#FFFFFF" />
+
+  <!-- PANEL (a): Two-level encoding (3+4) — LoomKV Fig. 6 matched semantic colors -->
+  <g id="encoding-examples" inkscape:label="(a) Two-level encoding">
+    <text x="9" y="24" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="20.5" font-weight="bold" fill="#18283B" text-anchor="start">(a) Two-level encoding (3+4)</text>
+    <rect x="478" y="12" width="12" height="11.5" rx="1" fill="#99B2DE" stroke="#40546A" stroke-width="0.75" />
+    <text x="495" y="22.5" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="start">High</text>
+    <rect x="548" y="12" width="12" height="11.5" rx="1" fill="#CEBEEF" stroke="#40546A" stroke-width="0.75" />
+    <text x="565" y="22.5" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="start">Low</text>
+    <path d="M 9 34 H 611" fill="none" stroke="#C5D2DF" stroke-width="1.2" stroke-linecap="round" />
+
+    <!-- Left row labels -->
+    <text x="12" y="100" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">BF16</text>
+    <text x="12" y="135" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">Low</text>
+    <text x="12" y="164" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">Primary (3b)</text>
+    <text x="12" y="202" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">Extended (4b)</text>
+    <text x="12" y="239" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">Raw patch</text>
+
+    <path d="M 9 114 H 611" fill="none" stroke="#E0E8EF" stroke-width="1" stroke-linecap="round" />
+
+    <!-- Direct column -->
+    <g id="direct" inkscape:label="Direct">
+      <text x="204" y="54" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="17.2" font-weight="bold" fill="#18283B" text-anchor="middle">Direct</text>
+      <text x="204" y="73" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="middle">P[0] → <tspan font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-weight="bold" fill="#18283B">3C</tspan></text>
+      <rect x="168" y="82" width="36" height="24" fill="#99B2DE" stroke="#40546A" stroke-width="0.7" />
+      <rect x="204" y="82" width="36" height="24" fill="#CEBEEF" stroke="#40546A" stroke-width="0.7" />
+      <text x="186" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">3C</text>
+      <text x="222" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">12</text>
+      <text x="204" y="135" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="normal" fill="#18283B" text-anchor="middle">12</text>
+      <text x="204" y="164" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">000</text>
+    </g>
+
+    <!-- Extended column -->
+    <g id="extended" inkscape:label="Extended">
+      <text x="370" y="54" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="17.2" font-weight="bold" fill="#18283B" text-anchor="middle">Extended</text>
+      <text x="370" y="73" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="middle">E[1] → <tspan font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-weight="bold" fill="#18283B">39</tspan></text>
+      <rect x="334" y="82" width="36" height="24" fill="#99B2DE" stroke="#40546A" stroke-width="0.7" />
+      <rect x="370" y="82" width="36" height="24" fill="#CEBEEF" stroke="#40546A" stroke-width="0.7" />
+      <text x="352" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">39</text>
+      <text x="388" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">56</text>
+      <text x="370" y="135" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="normal" fill="#18283B" text-anchor="middle">56</text>
+      <rect x="342" y="147" width="56" height="22.5" rx="3" fill="#FFEBE7" stroke="#C9A59F" stroke-width="0.75" />
+      <text x="370" y="164" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">111</text>
+      <line x1="370" y1="169.5" x2="370" y2="179.5" stroke="#40546A" stroke-width="1.35" stroke-linecap="butt" />
+      <polygon points="370,185 366.8,178.5 373.2,178.5" fill="#40546A" />
+      <rect x="338" y="185" width="64" height="22.5" rx="3" fill="#E4F9F7" stroke="#89BAB6" stroke-width="0.75" />
+      <text x="370" y="202" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">0001</text>
+    </g>
+
+    <!-- Raw fallback column -->
+    <g id="raw-fallback" inkscape:label="Raw fallback">
+      <text x="536" y="54" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="17.2" font-weight="bold" fill="#18283B" text-anchor="middle">Raw fallback</text>
+      <text x="536" y="73" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="middle">patch → <tspan font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-weight="bold" fill="#18283B">41</tspan></text>
+      <rect x="500" y="82" width="36" height="24" fill="#99B2DE" stroke="#40546A" stroke-width="0.7" />
+      <rect x="536" y="82" width="36" height="24" fill="#CEBEEF" stroke="#40546A" stroke-width="0.7" />
+      <text x="518" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">41</text>
+      <text x="554" y="100" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="middle">78</text>
+      <text x="536" y="135" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="normal" fill="#18283B" text-anchor="middle">78</text>
+      <rect x="508" y="147" width="56" height="22.5" rx="3" fill="#FFEBE7" stroke="#C9A59F" stroke-width="0.75" />
+      <text x="536" y="164" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">111</text>
+      <line x1="536" y1="169.5" x2="536" y2="179.5" stroke="#40546A" stroke-width="1.35" stroke-linecap="butt" />
+      <polygon points="536,185 532.8,178.5 539.2,178.5" fill="#40546A" />
+      <rect x="504" y="185" width="64" height="22.5" rx="3" fill="#FFEBE7" stroke="#C9A59F" stroke-width="0.75" />
+      <text x="536" y="202" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">1111</text>
+      <line x1="536" y1="207.5" x2="536" y2="217.5" stroke="#40546A" stroke-width="1.35" stroke-linecap="butt" />
+      <polygon points="536,223 532.8,216.5 539.2,216.5" fill="#40546A" />
+      <rect x="490" y="223" width="92" height="22.5" rx="3" fill="#FFEBE7" stroke="#C9A59F" stroke-width="0.75" />
+      <text x="536" y="239.5" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="15.8" font-weight="bold" fill="#18283B" text-anchor="middle">(1, 41)</text>
+    </g>
+  </g>
+
+  <!-- PANEL (b): Pool record layout — Exact LoomKV Fig. 6(a) color palette -->
+  <g id="pool-record-layout" inkscape:label="(b) Pool record layout">
+    <path d="M 9 263 H 611" fill="none" stroke="#C5D2DF" stroke-width="1.2" stroke-linecap="round" />
+    <text x="9" y="289" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="20.5" font-weight="bold" fill="#18283B" text-anchor="start">(b) Pool record layout (128 × 128 BF16)</text>
+
+    <!-- Raw baseline bar (#FFEBE7 matching LoomKV Fig. 6a) -->
+    <text x="11" y="323" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.5" font-weight="bold" fill="#18283B" text-anchor="start">Raw</text>
+    <rect x="87" y="304" width="520" height="26" rx="2" fill="#FFEBE7" stroke="#40546A" stroke-width="0.8" id="raw-total" />
+    <text x="347" y="322.5" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">Raw BF16 · 32 KB</text>
+
+    <!-- Scaled Pool record bar (#CEBEEF low, #4170CB primary, #99B2DE variable strip) -->
+    <text x="11" y="361" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.5" font-weight="bold" fill="#18283B" text-anchor="start">Record</text>
+    <rect x="87" y="342" width="260" height="27" fill="#CEBEEF" stroke="#40546A" stroke-width="0.8" id="low-bytes" />
+    <rect x="347" y="342" width="97.5" height="27" fill="#4170CB" stroke="#40546A" stroke-width="0.8" id="primary-bytes" />
+    <rect x="444.5" y="342" width="8.728" height="27" fill="#99B2DE" stroke="#40546A" stroke-width="0.8" id="variable-bytes" />
+    <rect x="453.228" y="342" width="153.772" height="27" fill="#FFFFFF" stroke="#8EA2B5" stroke-width="0.85" stroke-dasharray="4 3" id="saved-bytes" />
+    <text x="217" y="361" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.8" font-weight="bold" fill="#18283B" text-anchor="middle">Low · 16 KB</text>
+    <text x="395.75" y="361" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.8" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3-bit · 6 KB</text>
+    <text x="530.1" y="361" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="15.0" font-weight="bold" fill="#40546A" text-anchor="middle">≈29.6% saved</text>
+
+    <!-- Fixed dense bracket -->
+    <path d="M 87 375 V 380 H 444.5 V 375" fill="none" stroke="#40546A" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round" />
+    <text x="265.75" y="396" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="middle">Fixed dense · 22,528 B</text>
+
+    <!-- Variable region heading + unambiguous orthogonal bracket -->
+    <text x="11" y="421" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.2" font-weight="bold" fill="#18283B" text-anchor="start">Variable region</text>
+    <text x="128" y="421" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.5" font-weight="normal" fill="#40546A" text-anchor="start">(avg. 550 B, ≤2 KB)</text>
+    <text x="606" y="421" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="14.0" font-weight="normal" font-style="italic" fill="#40546A" text-anchor="end">Enlarged detail</text>
+
+    <circle cx="448.864" cy="371" r="2.0" fill="#40546A" />
+    <path d="M 448.864 371 V 433" fill="none" stroke="#40546A" stroke-width="1.1" stroke-linecap="round" />
+    <path d="M 10 441 V 433 H 607 V 441" fill="none" stroke="#40546A" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round" />
+
+    <!-- Expanded 3-segment variable region (Exact LoomKV Fig. 6a: #FDF2DC / #E4F9F7 / #FFEBE7) -->
+    <rect x="10" y="443" width="184" height="49" rx="3" fill="#FDF2DC" stroke="#40546A" stroke-width="0.8" />
+    <text x="102" y="463" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">Warp header</text>
+    <text x="102" y="482" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.8" font-weight="normal" fill="#40546A" text-anchor="middle">48 B</text>
+
+    <rect x="198" y="443" width="200" height="49" rx="3" fill="#E4F9F7" stroke="#40546A" stroke-width="0.8" />
+    <text x="298" y="463" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">4-bit selectors</text>
+    <text x="298" y="482" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.8" font-weight="normal" fill="#40546A" text-anchor="middle">e.g., F1</text>
+
+    <rect x="402" y="443" width="205" height="49" rx="3" fill="#FFEBE7" stroke="#40546A" stroke-width="0.8" />
+    <text x="504.5" y="463" font-family="'Liberation Serif', 'Times New Roman', Times, serif" font-size="16.0" font-weight="bold" fill="#18283B" text-anchor="middle">Raw patches</text>
+    <text x="504.5" y="482" font-family="'Liberation Mono', Consolas, 'Courier New', monospace" font-size="14.8" font-weight="normal" fill="#40546A" text-anchor="middle">e.g., (1, 41)</text>
+  </g>
+</svg>

@@ -1,0 +1,41 @@
+{
+  "version": "update6",
+  "scope": "Synchronized AgentX recorded results aligned with the finalized systems evaluation; binary unit suffixes converted directly to decimal unit suffixes without scaling underlying counts.",
+  "live_inspector": {
+    "model": "Qwen3-4B",
+    "block_tokens": 128,
+    "raw_label": "18.00 MB",
+    "encoded_label": "12.73 MB",
+    "ratio_percent": 70.7,
+    "mismatches": 0
+  },
+  "gpu_capacity": {
+    "model": "Qwen3-30B-A3B",
+    "kv_budget_per_gpu": "54 GB",
+    "dram": "400 GB",
+    "nvme": "2 TB",
+    "sessions_P": 64,
+    "raw_tokens": "1.18M",
+    "pool_tokens": "1.59M",
+    "aux_reserve_gb": 1.3,
+    "rows": [
+      { "S": 12, "mode": "Raw",  "running": 10.3, "waiting": 1.5, "ttft_s": 5.16, "goodput_rpm": 10.6 },
+      { "S": 12, "mode": "Pool", "running": 11.4, "waiting": 0.4, "ttft_s": 1.76, "goodput_rpm": 15.7 },
+      { "S": 16, "mode": "Raw",  "running": 11.1, "waiting": 4.4, "ttft_s": 13.3, "goodput_rpm": 3.7 },
+      { "S": 16, "mode": "Pool", "running": 14.0, "waiting": 1.4, "ttft_s": 4.43, "goodput_rpm": 9.1 }
+    ]
+  },
+  "history_retention": {
+    "model": "Qwen3-30B-A3B",
+    "dram": "400 GB",
+    "nvme": "640 GB",
+    "sessions_P": 64,
+    "admission_S": 8,
+    "rows": [
+      { "nvme": "640 GB", "mode": "Raw",  "dram_hit": 0.36, "nvme_hit": 0.19, "miss": 0.45, "cached": 0.55, "stored_ratio_pct": 100.0, "ttft_s": 6.76, "goodput_rpm": 4.6 },
+      { "nvme": "640 GB", "mode": "Tier", "dram_hit": 0.59, "nvme_hit": 0.32, "miss": 0.09, "cached": 0.91, "stored_ratio_pct": 71.0,  "ttft_s": 2.31, "goodput_rpm": 13.5 },
+      { "nvme": "2 TB",   "mode": "Raw",  "dram_hit": 0.41, "nvme_hit": 0.53, "miss": 0.06, "cached": 0.94, "stored_ratio_pct": 100.0, "ttft_s": 1.69, "goodput_rpm": 15.1 },
+      { "nvme": "2 TB",   "mode": "Tier", "dram_hit": 0.55, "nvme_hit": 0.39, "miss": 0.06, "cached": 0.94, "stored_ratio_pct": 71.0,  "ttft_s": 1.73, "goodput_rpm": 15.1 }
+    ]
+  }
+}
