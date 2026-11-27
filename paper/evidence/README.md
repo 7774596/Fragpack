@@ -6,9 +6,9 @@ experimental results. `provenance.json` preserves the original source mappings
 and asset checksums, including retired manuscripts, screenshots, and capture
 records. Those files remain in the verified external archive identified by
 [workspace-cleanup.json](workspace-cleanup.json); they are not build dependencies.
-The current Figure 3 B uses the same saved-session and AgentX evidence, with
-an interaction-focused first panel and six metric cards. Each paired bar uses
-a shared zero baseline and scale.
+The Update4 B figure paired the saved interaction with six metric cards.
+The [November 27 figure data](../kvfold-demo/figures/fig3_update6_metrics.json)
+give the values used in the current manuscript.
 
 | File | Scope |
 | --- | --- |

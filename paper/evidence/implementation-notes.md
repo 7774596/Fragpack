@@ -1,7 +1,7 @@
 # Implementation and measurement notes
 
 These notes document the implementations and measurement protocol behind the
-recorded results. The current `kvfold_update4_b` retains the Table I and II
+recorded results in `kvfold_update4_b`. That draft retained the Table I and II
 values from the earlier drafts. Source IDs are relative to the original `daser_bench` archive;
 raw logs are not bundled with this paper. The historical JSON is unchanged.
 

@@ -1,1 +1,0 @@
-An illustrative pool-mode record. P and E denote the primary and extended high-byte tables. Low bytes are unchanged. BF16 values and bytes are hexadecimal; codes and selectors are binary. Selectors 0001 and 1111 pack into F1, low nibble first. Raw patch (1,~41) stores zero-based escape ordinal 1 and high byte 41. The variable region occupies 64~B (limit: 2~KiB). Not to scale.
