@@ -32,9 +32,10 @@ LMCache to turn saved bytes into usable capacity across GPU attention and
 variable-length external storage. By preserving every BF16 low byte and
 encoding frequent high bytes with calibrated short codes, KVFold expands
 usable GPU KV capacity from 1.18M to 1.59M tokens on Qwen3-30B-A3B replays
-under a 54~GB per-GPU budget. Attendees edit and restore a live prompt to
-inspect prefix reuse and verify KV integrity after re-import, then compare
-queueing and tiered history retention across recorded coding-agent runs.
+under a 54~GB per-GPU budget. In the live demo, attendees edit and restore a
+preset debugging prompt to inspect prefix reuse and check KV integrity after
+re-import. Recorded coding-agent sessions then show how GPU capacity affects
+queueing and how external cache capacity affects history retention.
 \end{abstract}
 
 \section{Introduction}
@@ -125,39 +126,41 @@ $E$, \texttt{1111} escaping to a 4~B raw patch), adding only 0.1\% to record
 size while bounding per-warp raw patches so fused register decompression stays
 loop-free.
 
-Figure~\ref{fig:record}a traces pool-mode Direct, Extended, and Raw fallback
-paths on \texttt{3C12}, \texttt{3956}, and \texttt{4178} (verified bit-exact
-against a CPU reference). Offline calibration on a single 1,024-token agent
-pass produces 8.4~KB of tables for Qwen3-30B-A3B; across seven prompt domains
-on Qwen3-30B-A3B and GLM-4-9B-Chat-1M, mean tier sizes stay within
-70.6\%--70.9\% of raw BF16 ($<$0.1 percentage point gain from domain-specific
-recalibration).
-
-\begin{figure}[!ht]
+\begin{figure}[!b]
 \centering
 \includegraphics[width=0.97\columnwidth]{images/KVFold_Fig2_Encoding.pdf}
 \caption{(a)~Two-level BF16 high-byte encoding in pool mode (3+4), where $P$
 and $E$ are calibrated primary and extended tables (tier mode uses 3+3 for
-register \texttt{PRMT} lookup). (b)~A 128-token pool record versus 32~KB of raw BF16. The variable region is drawn
-at its mean size (550~B, capped at 2~KB) and enlarged below.}
+register \texttt{PRMT} lookup). (b)~A 128-token pool record versus 32,768~B
+of raw BF16. KB labels are approximate. The variable region is drawn at its
+mean size (550~B, capped at 2,048~B) and enlarged below.}
 \label{fig:record}
 \end{figure}
+
+The Direct, Extended, and Raw paths in Fig.~\ref{fig:record}a match the CPU
+reference bit for bit on \texttt{3C12}, \texttt{3956}, and \texttt{4178}.
+To test cross-domain reuse, we calibrated once per model on 1,024 agent tokens
+(8.4~KB of tables for Qwen3-30B-A3B). Across seven domains, tier records
+averaged 70.6\%--70.9\% of BF16 size on Qwen3-30B-A3B and GLM-4-9B-Chat-1M.
+Per-domain calibration gained less than 0.1 percentage point.
 
 \subsection{Pool Mode: GPU-Resident KV}
 \label{sec:pool}
 KVFold stages each active request's growing block in raw BF16 and encodes it
 immediately after token~128 completes. Each pool record
-compresses one 128$\times$128 BF16 tensor (32~KB raw; one block, layer, head,
-and K/V) permuted into tensor-core MMA fragment order: a fixed 22,528~B dense
-part (16~KB low bytes + 6~KB 3-bit codes) plus a $\le$2~KB variable region
-(48~B warp header, 4-bit selectors, 4~B raw patches; avg.\ 550~B;
-Fig.~\ref{fig:record}b). All $2H$ K/V records of a block and layer share one
+stores one 128$\times$128 K or V tensor for one block, layer, and head
+(32,768~B in BF16) in tensor-core MMA fragment order. The fixed dense part
+occupies 22,528~B, with 16,384~B for low bytes and 6,144~B for 3-bit primary
+codes. The variable region holds a 48~B warp header, 4-bit selectors, and
+4~B raw patches. It averages 550~B and is capped at 2,048~B
+(Fig.~\ref{fig:record}b). All $2H$ K/V records of a block and layer share one
 compressed page with a pooled variable budget; at $H{=}4$, pages shrink from
 256~KB to 186~KB (1.38$\times$ raw blocks before deducting staging, overflow,
 record-map, and prefill buffers). Parallel encoders claim page space via an
 atomic fill counter and publish \emph{(address, length)} in a per-layer record
-map; the rare records exceeding 2~KB or remaining page space (0.03\% in
-serving) fall back to 32~KB raw overflow slots.
+map. Records whose variable region exceeds the cap or whose total size exceeds
+the remaining page space fall back to 32,768~B raw overflow slots (0.03\% in
+serving).
 
 During \emph{prefill}, the plugin decodes cached pages into a BF16 workspace
 for unmodified FA3 ($\le$3\% overhead). During \emph{decode}, a fused kernel
@@ -166,33 +169,40 @@ into dual shared-memory slots, decompresses each thread's 64 scalars directly
 into registers without writing KV back to global memory, and executes
 tensor-core MMAs with online softmax before merging partial states across page
 ranges. Fixed padded-batch launch metadata preserves decode-only CUDA graph
-replay. The fused decode kernel recovers the original BF16 KV values bit for
-bit. Its attention outputs may differ from those of FA3 because floating-point
-sums depend on the reduction order. Completed blocks export behind a 4~KB-aligned header
-for unchanged storage in LMCache and re-import directly into GPU pages via
-atomic fill counters (falling back to vLLM recomputation if validation fails).
+replay. Although the fused kernel recovers the original BF16 KV bit for bit,
+floating-point reduction order can cause its attention outputs to differ from
+those of FA3.
+
+For reuse after GPU eviction, the worker exports completed blocks with a
+4~KB-aligned header. LMCache stores them unchanged. On a hit, the worker
+imports them directly into GPU pages using atomic fill counters. If validation
+fails, vLLM recomputes the block.
 
 \subsection{Tier Mode: External KV Storage}
 \label{sec:tier}
-Tier mode leaves vLLM's native BF16 pages and stock FA3 unchanged while
-compressing chunks in LMCache. Each tier record bundles 128 tokens across all
-layers per TP rank behind a 4~KB-aligned header with 4~KB tail padding for
-\texttt{O\_DIRECT} NVMe I/O (falling back to raw if incompressible), splitting
-each tensor into four streams (low, primary, secondary, raw) partitioned into
-256-scalar tiles with an 8-tile grouped index (0.14 bits/scalar).
+Tier mode keeps vLLM's native BF16 pages and stock FA3 on the GPU and compresses
+chunks in LMCache. Each TP rank stores 128 tokens across all layers in one
+record with a 4~KB header and padding to a 4~KB boundary for
+\texttt{O\_DIRECT} NVMe I/O. Incompressible chunks stay raw. Within a
+compressed record, KVFold splits each tensor into four streams (low bytes,
+primary codes, secondary codes, and raw high bytes) and indexes 256-scalar
+tiles in groups of eight (0.14 bits/scalar).
 
-On stores, three GPU kernels compress directly from paged blocks without a
-gather pass, while a background store worker waits on a CUDA event for batched
-\emph{deferred length readback}, exact-length L1~DRAM allocation, and L2~NVMe
-write-through so length readback never stalls loads. On loads, two CUDA streams
-rotate four GPU load buffers to overlap PCIe DMA with multi-process GPU
-decompression: each warp runs branchless \texttt{PRMT} lookup to restore tiles
-straight into scattered GPU pages (using a scratch buffer only for raw or
-partially shared leading chunks). On one H800 SXM (256 chunks, 3~GB of
-Qwen3-30B-A3B KV), SplitZip decoded at 1,215~GB/s contiguously but dropped to
-671~GB/s with page scatter (76.8\% stored), whereas KVFold restored directly
-into scattered pages at 1,182~GB/s (70.9\% stored). End-to-end greedy decoding
-matched raw tiers bit for bit on both Qwen3-30B-A3B and GLM-4-9B.
+Three GPU kernels compress paged blocks without a gather pass. A background
+worker waits on a CUDA event, reads encoded lengths in batches, allocates
+exact-length L1~DRAM objects, and writes through to L2~NVMe. Loads never
+wait for this \emph{deferred length readback}.
+On loads, two CUDA streams rotate four buffers to overlap PCIe DMA with
+multi-process GPU decompression. Warps use branchless \texttt{PRMT} lookup to
+restore tiles directly into scattered GPU pages. Batches with raw chunks or
+partially shared leading chunks use scratch space.
+
+To measure scatter cost, we restored 256 chunks (3~GB of Qwen3-30B-A3B KV)
+on one H800 SXM. SplitZip decoded at 1,215~GB/s into a contiguous buffer.
+Including the scatter into GPU pages reduced throughput to 671~GB/s
+(76.8\% of BF16 size). KVFold restored directly into GPU pages at
+1,182~GB/s (70.9\%). In end-to-end tests, raw and tier modes produced
+identical greedy output tokens on Qwen3-30B-A3B and GLM-4-9B.
 
 % Declare Fig. 3 near the end of Section II so IEEEtran places it at the top of Page 3.
 \begin{figure*}[!t]
@@ -215,36 +225,38 @@ goodput in req/min).}
 \raggedbottom
 \section{Demonstration Plan}
 \label{sec:demo}
-The eight-minute walkthrough in the KVFold Console (Fig.~\ref{fig:views})
-begins with a live view of one coding-agent prompt across four requests.
-After examining how the engine reuses and restores its prefix, attendees
-explore two recorded views showing how GPU capacity affects request queues
-and how external cache capacity affects history retention. Panel~1 runs live on
-Qwen3-4B (pool mode, one H800 PCIe GPU, BF16 weights and KV); panels~2 and~3
-show recorded InferenceX AgentX Claude Code runs~\cite{agentx} on Qwen3-30B-A3B
-(FP8 weights, BF16 KV, two H800 SXM GPUs, TP~2), where $P$ counts live root
-sessions and a FIFO proxy caps admitted requests at $S$. Engine TTFT excludes
-proxy wait, and goodput counts requests/min with engine TTFT $\le 2$~s and mean
-inter-token latency $\le 40$~ms.
+In the KVFold Console (Fig.~\ref{fig:views}, panel~1), attendees run four
+live requests on a preset Python debugging prompt using Qwen3-4B in pool mode
+(one H800 PCIe GPU, BF16 weights and KV). The recorded views relate GPU
+capacity to request queues (panel~2) and external cache capacity to history
+retention (panel~3). Both use Claude Code sessions from the InferenceX AgentX
+benchmark~\cite{agentx} on Qwen3-30B-A3B (FP8 weights, BF16 KV, two H800
+SXM GPUs, TP~2). Here $P$ counts live root sessions and a FIFO proxy admits
+up to $S$ concurrent requests. For these runs, engine time to first token
+(TTFT) excludes proxy wait. Goodput counts requests per minute with engine
+TTFT $\le 2$~s and mean inter-token latency $\le 40$~ms.
 
 \subsection*{Live Prefix Reuse and Restoration}
-Attendees drive four interactive prompt actions on a Python repository
-debugging task. Clicking \emph{Build} computes all 534 prompt tokens and
-asynchronously exports completed 128-token compressed blocks to LMCache DRAM.
-Clicking \emph{Append} adds a test instruction. The engine reuses 512 cached
-tokens (teal in Fig.~\ref{fig:views}, panel~1), recomputes the original prompt's
-22-token tail, and computes 122 new tokens. Next, \emph{Edit early} changes ``Python'' to
-``TypeScript'' inside the first 128-token block, invalidating prefix reuse so
-all 534 tokens recompute. Clicking \emph{Restore} waits for pending external saves, flushes the GPU prefix
-cache, and replays the original prompt, restoring 512 tokens directly from
-LMCache DRAM into the compressed GPU pool (blue blocks) and returning the
-identical diagnosis.
+In the run shown in panel~1, \emph{Build} computes all 534 prompt tokens and
+asynchronously exports completed 128-token blocks to LMCache DRAM in compressed
+form. \emph{Append} adds the model's response and a preset test instruction.
+The engine reuses 512 tokens (teal), recomputes the prompt's uncached 22-token
+tail, and computes 122 new tokens. \emph{Edit early} changes
+``Python'' to ``TypeScript'' within the first 128-token block. With no complete
+prefix block to reuse, the engine recomputes all 534 tokens.
+\emph{Restore} waits for pending external saves, flushes the GPU prefix cache,
+and replays the original prompt. The engine restores 512 tokens directly
+from LMCache DRAM into the compressed GPU pool (blue). The \emph{Build} and
+\emph{Restore} responses both identify the missing timeout on
+\texttt{client.acquire()}.
 
-After \emph{Build}, the \emph{KV Inspector} exports one 128-token block
-(36 layers, 576 records) through host memory and re-imports it into a separate
-GPU scratch store. It reports the footprint (18.00~MB BF16 $\rightarrow$
-12.73~MB encoded, 70.7\%). The BF16 bytes decoded before export and after
-import have matching SHA-256 digests and zero byte mismatches across all layers.
+\emph{Build} also checks one completed 128-token block (36 layers, 576 records)
+by exporting it through host memory and re-importing it into a separate GPU
+scratch store. \mbox{The \emph{KV Inspector}}
+shows its footprint (18.00~MB BF16, 12.73~MB encoded, 70.7\%). Attendees can
+expand the Inspector to compare the SHA-256 digests of the BF16 values decoded
+before export and after re-import. In this run, the digests match, and a
+value-by-value comparison finds no differences across the 36 layers.
 
 % Declare the paired tables on Page 3 so IEEEtran places them cleanly at the top of Page 4.
 \begin{table*}[!t]
@@ -291,7 +303,7 @@ NVMe & Mode & Cached &
 \end{table*}
 
 \subsection*{GPU Capacity under Concurrent Load}
-The recorded views show how live serving metrics guide mode selection. When
+The recorded views show how serving metrics guide mode selection. When
 external tiers already retain the active working set (0.94 cached-token share
 at 400~GB DRAM and 2~TB NVMe), rising concurrency makes GPU KV capacity the
 primary bottleneck. Under a 54~GB per-GPU KV budget, pool mode holds 1.59M
@@ -299,24 +311,27 @@ usable tokens (1.34$\times$ raw's 1.18M) after reserving 1.3~GB inside the
 budget for staging, overflow, record maps, and prefill workspace; cache-server
 CUDA contexts and transfer buffers lie outside this budget.
 
-At $S{=}8$, neither pool experiences appreciable queueing (raw and pool goodput
-reach 15.1 and 16.3~req/min). Attendees toggle $S{=}12$ and $S{=}16$ in the
-console (Fig.~\ref{fig:views}, panel~2; Table~\ref{tab:gpu}) to watch the raw
-pool saturate: at $S{=}12$, raw builds a mean waiting queue of 1.5 requests and
-triples mean engine TTFT to 5.16~s, whereas pool mode keeps queueing flat
-(0.4 waiting), cuts mean engine TTFT to 1.76~s, and lifts goodput from 10.6 to
-15.7~req/min---matching raw's uncongested $S{=}8$ performance while admitting
-50\% more concurrent requests. At $S{=}16$, pool mode sustains 14.0 running
-requests (vs.\ 11.1 raw) and achieves 2.5$\times$ higher goodput (9.1 vs.\
-3.7~req/min).
+At the low-load baseline ($S{=}8$), both modes show little queueing, with
+goodput of 15.1~req/min in raw mode and 16.3 in pool mode. To see how the two
+modes respond as queues form, attendees compare the higher-load runs at
+$S{=}12$ and $S{=}16$ shown in Fig.~\ref{fig:views} (panel~2) and
+Table~\ref{tab:gpu}.
+At $S{=}12$, raw mode averages 1.5 waiting requests and its mean engine TTFT
+rises to 5.16~s. Pool mode averages 0.4 waiting requests, cuts mean engine
+TTFT to 1.76~s, and raises goodput from 10.6 to 15.7~req/min, just above
+raw mode at $S{=}8$ with a 50\% higher concurrency limit.
+At $S{=}16$, pool mode sustains 14.0 running requests
+on average (vs.\ 11.1 in raw mode) and delivers 2.5$\times$ the goodput
+(9.1 vs.\ 3.7~req/min).
 
+\balance
 \subsection*{History Retention under Storage Pressure}
 When high miss rates or heavy NVMe traffic indicate external tier exhaustion,
 attendees switch to the history-retention view (Fig.~\ref{fig:views}, panel~3;
 Table~\ref{tab:tiers})
-and compare 640~GB against 2~TB NVMe at $S{=}8$. Both arms use unmodified
-native GPU pages, stock FA3, and identical LMCache LRU, write-through, and
-prefetch policies; tier mode's store and rotating load buffers occupy
+and compare two NVMe budgets at $S{=}8$. Raw and tier modes both use native
+GPU pages, stock FA3, and the same LMCache LRU, write-through, and prefetch
+policies. Tier mode's store and rotating load buffers occupy
 approximately 2.5~GB per GPU outside the KV budget.
 
 At 640~GB NVMe, raw LMCache falls off its LRU eviction cliff: cached-token
@@ -331,7 +346,10 @@ compression adds minimal overhead: goodput matches raw (15.1~req/min), mean
 engine TTFT stays within 0.04~s (1.73 vs.\ 1.69~s), and prompt throughput drops
 by only 2.2\% (26.9 vs.\ 27.5 thousand tokens/s).
 
-\balance
+Across the two recorded comparisons, pool mode shortens queues when GPU KV
+capacity limits concurrency, while tier mode reduces recomputation when the
+external cache is too small to retain the working set.
+
 \section*{Acknowledgment}
 % Replace the reserved space below with two or three lines of acknowledgments.
 \par\vspace*{3\baselineskip}
