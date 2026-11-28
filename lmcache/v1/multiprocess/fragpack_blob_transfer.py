@@ -256,11 +256,12 @@ class FragPackBlobTransfer:
             window = todo[window_start : window_start + width]
             slots = worker.acquire(len(window))
             try:
-                lengths, status = port.export_blocks(
-                    [blocks[i] for i in window],
-                    worker.pool,
-                    [worker.offset(s) for s in slots],
-                )
+                with torch.cuda.stream(self._cache_context.stream):
+                    lengths, status = port.export_blocks(
+                        [blocks[i] for i in window],
+                        worker.pool,
+                        [worker.offset(s) for s in slots],
+                    )
                 ready = torch.cuda.Event()
                 ready.record(self._cache_context.stream)
             except BaseException:
@@ -322,7 +323,7 @@ class FragPackBlobTransfer:
         )
         first = max(first, skip_first_n_tokens // BLOCK_TOKENS)
         slot = self._slot_bytes
-        stream = torch.cuda.current_stream()
+        stream = self._cache_context.stream
         fill = self._fill_stream
         statuses: list[torch.Tensor] = []
         for start in range(first, len(memory_objs), self._width):
@@ -350,19 +351,21 @@ class FragPackBlobTransfer:
             filled = torch.cuda.Event()
             filled.record(fill)
             stream.wait_event(filled)
-            statuses.append(
-                port.import_blocks(
-                    self._retrieve_staging,
-                    offsets,
-                    blocks[start : start + len(batch)],
+            with torch.cuda.stream(stream):
+                statuses.append(
+                    port.import_blocks(
+                        self._retrieve_staging,
+                        offsets,
+                        blocks[start : start + len(batch)],
+                    )
                 )
-            )
             done = torch.cuda.Event()
             done.record(stream)
             self._set_free[staging_set] = done
         if not statuses:
             return
-        status = torch.cat(statuses).cpu()
+        with torch.cuda.stream(stream):
+            status = torch.cat(statuses).cpu()
         failed = status.nonzero().flatten().tolist()
         if failed:
             raise RuntimeError(

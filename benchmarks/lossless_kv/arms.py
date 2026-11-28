@@ -51,10 +51,10 @@ from benchmarks.lossless_kv.services import (
 )
 
 ARMS = ("native", "lmcache", "tier", "pool", "pool-native")
-# FragPack allocates staging, overflow records and a decode workspace after
-# vLLM sized its KV pool; CUSTOM arms give vLLM this much less KV so every
+# FragPack allocates staging, scratch, overflow records and a prefill workspace
+# after vLLM sized its KV pool; CUSTOM arms give vLLM this much less KV so every
 # arm uses the same GPU memory.
-FRAGPACK_RESERVED_BYTES = 858 << 20
+FRAGPACK_RESERVED_BYTES = 1304 << 20
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
 # A dist-info shim that makes vLLM discover the FragPack plugin entry point

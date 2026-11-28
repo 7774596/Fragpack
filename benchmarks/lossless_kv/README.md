@@ -16,7 +16,7 @@ Run every module from the repository root; requires vLLM >= 0.30.
 
 `--kv-cache-dtype fp8` runs any arm with an FP8 E4M3 KV cache (use FP8
 codebooks and tables). Every arm gets the same `--gpu-kv-size`; CUSTOM arms
-give vLLM 858 MiB less, which FragPack allocates after KV sizing. LMCache
+give vLLM 1304 MiB less, which FragPack allocates after KV sizing. LMCache
 pins L1 non-lazily, and vLLM starts only after LMCache's `/status` reports
 the full L1 and a healthy L2 adapter. Each arm's scratch store is deleted
 when its services stop.

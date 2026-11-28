@@ -240,7 +240,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("agentx")
     a.add_argument("arms", type=Path, nargs="+")
-    a.add_argument("--ttft-slo", type=float, default=3.0, help="seconds")
+    a.add_argument("--ttft-slo", type=float, default=2.0, help="seconds")
     a.add_argument("--itl-slo", type=float, default=40.0, help="milliseconds")
     sub.add_parser("cached").add_argument("arms", type=Path, nargs="+")
     q = sub.add_parser("queue")

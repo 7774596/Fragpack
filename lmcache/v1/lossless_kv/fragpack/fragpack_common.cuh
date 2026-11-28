@@ -209,7 +209,8 @@ __device__ __forceinline__ void decode_rec(const uint8_t* rec, int vlen, uint32_
     for (int k = (eb >> 3) + lane; 8 * k < e_end; k += 32) {
       const uint32_t w = nw[k];
       const uint32_t b0 = ext_lookup(sl, w), b1 = ext_lookup(sl, w >> 16);
-      const uint32_t b2 = ext_lookup(sl, nw[k + 1]);
+      const uint32_t w_next = 8 * (k + 1) < e_end ? nw[k + 1] : 0u;
+      const uint32_t b2 = ext_lookup(sl, w_next);
       uint4* dst = reinterpret_cast<uint4*>(esc + 32 * k);
       dst[0] = make_uint4(b0, __funnelshift_r(b0, b1, 8), __funnelshift_r(b0, b1, 16),
                           __funnelshift_r(b0, b1, 24));

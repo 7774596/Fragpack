@@ -378,10 +378,10 @@ class FragPackMetadataBuilder(AttentionMetadataBuilder[FragPackMetadata]):
         qlen = qsl[1 : num_reqs + 1] - qsl[:num_reqs]
         num_tokens = min(int(qsl[num_reqs]), cam.slot_mapping.shape[0])
 
-        # Blocks receiving their last token: one per crossed 128 boundary.
-        closes = int(
-            np.sum(seq // BLOCK_TOKENS - np.maximum(seq - qlen, 0) // BLOCK_TOKENS)
-        )
+        # Upper bound on blocks receiving their last token: independent of
+        # ``seq_lens_cpu_upper_bound`` drift (any qlen-token span crosses at
+        # most ceil(qlen / BLOCK_TOKENS) boundaries; equals n_dec on decode).
+        closes = int(np.sum((qlen + BLOCK_TOKENS - 1) // BLOCK_TOKENS))
         max_close = min(max(closes, n_dec), self.max_tokens)
         if not capture:
             store.prepare(cam.slot_mapping, num_tokens, _TRACKER.live_blocks())
